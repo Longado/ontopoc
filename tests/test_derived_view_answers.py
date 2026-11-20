@@ -59,10 +59,9 @@ class DerivedViewAnswerTests(pilot.PilotFoundation):
         self.assertIn('derived', [d['kind'] for d in answer['definitions']])
         self.assertEqual([(d['dataset'], d['version'], bool(d['imported_at'])) for d in answer['data_as_of']], [('customers', 1, True), ('orders', 1, True)])   # the data it read, by version and when it came
 
-    def test_a_question_that_says_the_view_the_model_did_not_list_is_answered_the_same_way(self):
+    def test_a_question_that_says_the_view_the_model_did_not_list_is_refused_as_before(self):
         answer = self.ask({'query': TIER_A, 'definitions_used': []}, 'A 级客户的有效订单金额合计是多少？')
-        self.assertEqual(answer['status'], 'answered', answer.get('reason'))
-        self.assertEqual(answer['answer']['measure']['value'], BY_TIER['A'])
+        self.assertEqual(answer['status'], 'definition_unmet')   # the model must say the view is included; code does not decide the direction for it
         self.assertEqual(BY_TIER['A'], 42380)
 
     def test_the_customer_ranking_is_answered(self):
