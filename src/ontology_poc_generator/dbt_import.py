@@ -272,6 +272,8 @@ def run_import(conn, plan: dict, who: str | None, user: dict | None, meta: dict 
             if test['column'] not in dataset_columns(conn, datasets[unique_id]['id']):
                 continue   # already listed as skipped
             written += _relation(conn, plan, report, test, unique_id, type_of, datasets, who, user, written)
+    unmatched = set(report['unmatched_models'])
+    report['skipped'] = [s for s in report['skipped'] if s['model'] not in unmatched]   # a model with no dataset is listed once, as that; its tests are not
     report['skipped'], more = report['skipped'][:SHOWN_SKIPPED], max(0, len(report['skipped']) - SHOWN_SKIPPED)
     if plan['elsewhere']:
         report['skipped'].append({'model': None, 'what': tr(f'{plan["elsewhere"]} 个不在模型上的测试', f'{plan["elsewhere"]} {"test" if plan["elsewhere"] == 1 else "tests"} not on a model'), 'reason': tr('只读模型上的测试（source、seed、snapshot 上的不读）', 'Only tests on models are read (not on sources, seeds or snapshots)')})
