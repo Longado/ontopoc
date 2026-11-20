@@ -37,7 +37,7 @@ test("each proposal reads as one line: the key and the full-data check for a typ
 
 test("the preview says what would be proposed and offers Apply only when something is new; after Apply it says what was put forward", () => {
   setLocale("en");
-  assert.deepEqual(importSummary(PREVIEW), { fresh: 3, already: 0, canApply: true, headline: "Would propose 2 object types and 1 relation. Nothing is written until you apply." });
+  assert.deepEqual(importSummary(PREVIEW), { fresh: 3, already: 0, canApply: true, headline: "Would propose 2 object types and 1 relation. Nothing changes until you apply." });
   const again = { ...PREVIEW, types: PREVIEW.types.map((x) => ({ ...x, status: "already_there" })), relations: [{ ...RELATION, status: "already_there" }], codes: [] };
   assert.deepEqual(importSummary(again), { fresh: 0, already: 3, canApply: false, headline: "Nothing new to propose: 3 are already there." });
   assert.equal(importSummary({ ...PREVIEW, applied: true }).headline, "Proposed 2 object types and 1 relation. Each waits for another builder to confirm.");
@@ -67,20 +67,22 @@ test("after a failure mid-run the dialog says what was written, what failed and 
   assert.equal(sections[2].items[0].text, "relationships orders.customer_id → customers");
   assert.equal(sections[1].note, "Skipped means a check refused one item and the import went on; failed means an unexpected error stopped the import there.");
   const previewStopped = { ...stopped, applied: false };
-  assert.equal(importSummary(previewStopped).headline, "Stopped on an error. It would have proposed 1 object type before it; nothing was written.");
+  assert.equal(importSummary(previewStopped).headline, "Stopped on an error. It would have proposed 1 object type before it; nothing was changed.");
   assert.equal(importSummary(previewStopped).canApply, false);
   setLocale("zh");
   assert.equal(importSummary(stopped).headline, "出错停下了。之前提出了 1 个对象类型；后面的没有做。");
-  assert.equal(importSummary(previewStopped).headline, "出错停下了。出错之前本会提出 1 个对象类型；什么都没有写入。");
+  assert.equal(importSummary(previewStopped).headline, "出错停下了。出错之前本会提出 1 个对象类型；什么都没有改动。");
   setLocale("en");
 });
 
 test("a proposal written whose details could not be read back, or whose counts a limit keeps, reads as written, with no numbers", () => {
   setLocale("en");
-  assert.equal(typeLine({ id: "customers", name: "customers", dataset: null, key: [], properties: [], status: "new" }), "customers: written; its details are on its page");
-  assert.equal(relationLine({ ...RELATION, numbers: null }), "orders_customer_id: written; its details are on its page");
+  assert.equal(typeLine({ id: "customers", name: "customers", dataset: null, key: [], properties: [], status: "new" }, true), "customers: written; its details are on its page");
+  assert.equal(relationLine({ ...RELATION, numbers: null }, true), "orders_customer_id: written; its details are on its page");
+  assert.equal(relationLine({ ...RELATION, numbers: null }, false), "orders_customer_id: would be proposed; its details show once it is applied");
   setLocale("zh");
-  assert.equal(relationLine({ ...RELATION, numbers: null }), "orders_customer_id：已经写入，详情见它自己的页面");
+  assert.equal(relationLine({ ...RELATION, numbers: null }, true), "orders_customer_id：已经写入，详情见它自己的页面");
+  assert.equal(relationLine({ ...RELATION, numbers: null }, false), "orders_customer_id：会被提出，应用之后能看到详情");
   setLocale("en");
 });
 
@@ -105,6 +107,6 @@ test("the type's log names the import as where a definition came from", () => {
   assert.equal(logText({ element: "type", change: "dbt_import", who: "Ann" }).text, "Proposed the object type from a dbt manifest");
   setLocale("zh");
   assert.equal(logText({ element: "relation", change: "dbt_import", who: "Ann" }).text, "从 dbt manifest 导入，提出了关系");
-  assert.equal(importSummary(PREVIEW).headline, "会提出 2 个对象类型、1 个关系。点“应用”之前什么都不会写入。");
+  assert.equal(importSummary(PREVIEW).headline, "会提出 2 个对象类型、1 个关系。点“应用”之前什么都不会改动。");
   setLocale("en");
 });
