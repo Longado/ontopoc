@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 import json
 
 from ontology_poc_generator.caliber import _text as caliber_text
-from ontology_poc_generator.change_preview import answers, as_last_confirmed, cards, compare, sent_back, waited_on_data, work_out, workspace_copy
+from ontology_poc_generator.change_preview import answers, as_last_confirmed, cards, compare, edited_while_waiting, sent_back, waited_on_data, work_out, workspace_copy
 from ontology_poc_generator.lang import tr
 from ontology_poc_generator.object_views import describe as describe_view
 from ontology_poc_generator.object_types import (
@@ -85,8 +85,9 @@ def change_receipt(conn, user: dict | None, elements: list[str]) -> dict:
                       'before': _said(conn, element_id, json.loads(before[0]), user) if before else None, 'after': _said(conn, element_id, json.loads(last[0][0]), user),
                       'proposed_by': last[0][2], 'confirmed_by': last[0][3], 'confirmed_at': last[0][4], 'on': json.loads(last[0][1] or '{}'),
                       'on_before': on_before if before else None, 'evidence': last[0][5],
-                      'data_moved': [{'name': n, 'from': on_before[n], 'to': v, 'accepted': sent} for n, v in sorted(on.items()) if n in on_before and on_before[n] != v
-                                     for sent in [waited_on_data(conn, element_id) is not None]]})   # accepted: the data sent it back and this confirmation lets the new data's numbers count
+                      'data_moved': [{'name': n, 'from': on_before[n], 'to': v, 'accepted': stood is not None, 'edited': edited_while_waiting(stood, before[0])}
+                                     for n, v in sorted(on.items()) if n in on_before and on_before[n] != v
+                                     for stood in [waited_on_data(conn, element_id)]]})   # accepted: the data sent it back and this confirmation lets the new data's numbers count; edited: it was changed while it waited
     with workspace_copy(conn) as copy:
         picked, checked = cards(copy, user)
         after = work_out(copy, user, picked)

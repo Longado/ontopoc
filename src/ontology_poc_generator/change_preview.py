@@ -252,15 +252,25 @@ def waited_on_data(conn, element_id: str) -> dict | None:
             'cause': looks[-1].get('cause') if waiting else None, 'via': looks[-1].get('via') if waiting else None}
 
 
+def edited_while_waiting(stood: dict | None, confirmed_content: str | None) -> bool:
+    """The data sent it back (`stood`, from waited_on_data) and its content then changed from what was last confirmed: confirming takes both the new data and the
+    edit, so how it stood while it waited already holds the edit and is not "now"."""
+    if not stood or stood.get('content_json') is None or confirmed_content is None:
+        return False
+    return json.loads(stood['content_json']) != json.loads(confirmed_content)
+
+
 def as_last_confirmed(copy, elements: list[str], confirmed_now: bool) -> list[dict]:
     """On a copy only: "now" for these elements, on the data as it is now. An element the data sent back is put as it stood while it waited (what the board showed
     then: confirming it is what lets the new data's number count). Any other is put back to the content it was last confirmed with before this change, and so is what
     the change sent back under it. `confirmed_now`: the change is already confirmed on the copy, so "before" is the confirmation before the latest one; an element
     nobody had confirmed before goes back to waiting for its first confirmation. Returns the datasets that have a newer version now than the one an element was last
-    confirmed on, [{name, from, to, accepted}]: `accepted` when an element the data sent back is confirmed on the new version (the confirmation accepts the new
-    data's numbers), not when the element stayed confirmed through it and only its definition changed."""
+    confirmed on, [{name, from, to, accepted, edited}]: `accepted` when an element the data sent back is confirmed on the new version (the confirmation accepts the new
+    data's numbers), not when the element stayed confirmed through it and only its definition changed. `edited`: such an element was also changed while it waited;
+    then "now" is its content as last confirmed, still waiting, on the new data (how it stood while it waited already holds the edit), so the table shows the edit."""
     versions: dict[str, int] = {}
     accepted: set[str] = set()
+    edited: set[str] = set()
     for element_id in [*elements, *sent_back(copy, elements)]:
         mine = element_id in elements
         rows = copy.execute('SELECT content_json, dataset_versions_json FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 2', (element_id,)).fetchall()
@@ -270,9 +280,10 @@ def as_last_confirmed(copy, elements: list[str], confirmed_now: bool) -> list[di
                 copy.execute("UPDATE element_state SET state = 'checked' WHERE element_id = ?", (element_id,))
             continue
         stood = waited_on_data(copy, element_id) if mine and confirmed_now else None
-        if stood:
+        changed = edited_while_waiting(stood, last[0][0])
+        if stood:   # waiting, as it stood then; edited while it waited, with the content last confirmed, so the table shows the edit too
             copy.execute('UPDATE element_state SET content_json = COALESCE(?, content_json), state = ?, reason = ?, cause = ?, via = ? WHERE element_id = ?',
-                         (stood['content_json'], stood['state'], stood['reason'], stood['cause'], stood['via'], element_id))
+                         (last[0][0] if changed else stood['content_json'], stood['state'], stood['reason'], stood['cause'], stood['via'], element_id))
         else:
             copy.execute("UPDATE element_state SET content_json = ?, state = 'confirmed' WHERE element_id = ?", (last[0][0], element_id))
         if mine:
@@ -280,7 +291,9 @@ def as_last_confirmed(copy, elements: list[str], confirmed_now: bool) -> list[di
                 versions[name] = min(version, versions.get(name, version))
                 if stood:
                     accepted.add(name)
-    return [{**m, 'accepted': m['name'] in accepted} for m in moved_since(copy, versions)]
+                if changed:
+                    edited.add(name)
+    return [{**m, 'accepted': m['name'] in accepted, 'edited': m['name'] in edited} for m in moved_since(copy, versions)]
 
 
 def moved_since(conn, versions: dict[str, int]) -> list[dict]:
