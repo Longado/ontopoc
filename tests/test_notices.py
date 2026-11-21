@@ -192,9 +192,13 @@ class BackForAnotherLookTests(DerivedTestCase):
             self.upload(bob, orders_upload(lambda r, i: {**r, '订单号': first} if i == 1 else r))   # a repeated key: the type itself goes back
             self.assertEqual(self.states(out)['objtype:order'], 'needs_look')
             notice = self.notices(bob, headers={'Accept-Language': 'en'})['notices'][0]
-            self.assertEqual((notice['definition']['kind'], notice['definition']['id'], notice['definition']['can_confirm']), ('type', 'order', True))
+            self.assertEqual((notice['definition']['kind'], notice['definition']['id'], notice['definition']['can_confirm']), ('type', 'order', False))   # its key repeats now: not offered while its check fails
             self.assertIn('Data changed', notice['text'])
             self.assertIn('needs another look', notice['text'])
+            self.upload(bob, orders_upload(lambda r, i: {**r, '金额': str(int(r['金额']) + 1)} if i == 0 else r))   # the key is mended; the data is newer than the confirmation, so it still waits
+            self.assertEqual(self.states(out)['objtype:order'], 'needs_look')
+            notice = self.notices(bob)['notices'][0]
+            self.assertEqual((notice['definition']['id'], notice['definition']['can_confirm']), ('order', True))   # now Bob is offered to confirm it
             own = self.notices(ann)['notices']
             self.assertEqual(len(own), 1)   # she confirmed it last, so she is told it went back
             self.assertEqual(own[0]['definition']['can_confirm'], False)   # but not offered to confirm her own
