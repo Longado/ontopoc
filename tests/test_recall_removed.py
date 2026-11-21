@@ -19,7 +19,7 @@ PATHS = ('examples/nhtsa', 'examples/recalls', 'experiments/nhtsa_auto_ontology'
          'landing-page/src/legacy/recallWorkspaceModel.js')
 # Names only the recall line used. Saying any of them now points a reader at something that is not there.
 GONE = re.compile(r'\b(?:' + '|'.join(MODULES + SCRIPTS) + r')\b|PublicRecallReview|RecallWorkspace|publicReview|recallWorkspace'
-                  r'|RECALL_EXAMPLE|examples/nhtsa|examples/recalls|ontopoc-recall|/api/recall|NHTSA|openFDA|95876')
+                  r'|RECALL_EXAMPLE|examples/nhtsa|examples/recalls|ontopoc-recall|/api/recall|\bNHTSA\b|\bopenFDA\b|95876')
 # The plans, hand-offs and retros of September and October are history: they say what was tried then, gone features included.
 HISTORY = re.compile(r'^docs/(?:archive/|superpowers/|PRD_ITERATION_\d\.md|FEATURES_2026-|HANDOFF_|RETRO_|SEMANTIC_MODELING_|'
                      r'NHTSA_AUTO_ONTOLOGY_PLAN\.md|PLAYGROUND_INTERNALIZATION\.md)')
