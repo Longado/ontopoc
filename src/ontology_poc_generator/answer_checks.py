@@ -52,6 +52,7 @@ import re
 from collections import Counter
 
 from ontology_poc_generator.code_meanings import codes_for_label
+from ontology_poc_generator.derived_measures import to_number
 from ontology_poc_generator.lang import tr
 from ontology_poc_generator.named_views import query_tables, query_types
 from ontology_poc_generator.ontology_questions import RANGES, _conditions, _fields, _matcher, _resolve_field, _shape_limit, _types, clean_used
@@ -193,7 +194,7 @@ def _read_derived(query: dict, types: dict, uses: list, derived: dict | None) ->
 def _same_rows(read: dict, source: str, conditions: set, per_object: bool = False) -> dict | None:
     """The derived property through which the query reads `source` (a table) by exactly these conditions ({(column, op, label)}): every derived property it reads
     that counts rows of that table has them, no more and no fewer, so no row the conditions leave out is in its values. None when it reads none, or one that
-    differs (it would bring rows in that the conditions keep out, or leave out rows they keep). `per_object`: the query keeps to particular objects (_picks_objects),
+    differs (it would bring rows in that the conditions keep out, or leave out rows they keep). `per_object`: the query keeps to particular objects (picks_objects),
     so it reads those objects' own rows: every row of the table need not reach an object, but none may be counted for more than one."""
     about = [d for d in read.values() if d['source'] == source]
     if about and all({(c['column'], c['op'], c['label']) for c in d['conditions']} == conditions and _adds_up(d) and d.get('exact' if not per_object else 'once') and not d.get('waiting') for d in about):
@@ -208,20 +209,23 @@ def _picks_objects(query: dict) -> bool:
 
 
 def picks_objects(query: dict, ontology: dict, bundle: dict, graph: dict) -> bool:
-    """_picks_objects, and its filter keeps fewer objects of the start type than there are in these rows, as run_query reads it: a filter every object matches
-    (国家 = CN for every customer) is a total over all of them, and the rows that reach no object would be left out without a word."""
-    if not _picks_objects(query) or not isinstance(query.get('where'), list) or not all(isinstance(w, dict) for w in query['where']):
+    """_picks_objects, and its filter leaves out an object that the measured property counts something for (a value that is there and not 0), as run_query reads
+    the filter over these rows. A filter that leaves out no counted object, every customer's 国家 = CN or only customers with no orders, is a total over all of
+    them, and the rows that reach no object would be left out without a word. A query the language cannot read is not one (_shape_limit says so)."""
+    if not _picks_objects(query) or _shape_limit(query) or not isinstance(query.get('where'), list) or not all(isinstance(w, dict) for w in query['where']):
         return False
     types = _types(normalize_proposal(ontology))
-    start = query.get('start')
-    if not isinstance(start, str) or start not in types:
+    start, measure = query.get('start'), query.get('measure')
+    if not isinstance(start, str) or start not in types or not isinstance(measure, dict):
         return False
-    where, why = _conditions(types, start, query.get('where'), bundle.get('meanings'), lambda k: k)
-    if why:
+    named = measure.get('field') if isinstance(measure.get('field'), str) else measure.get('derived') if isinstance(measure.get('derived'), str) else None
+    measured = _resolve_field(types[start], named) if named else None
+    where, why = _conditions(types, start, query['where'], bundle.get('meanings'), lambda k: k)
+    if measured is None or why:
         return False
-    _, has, _ = _matcher(types, bundle, graph)
-    everyone = [i for i in graph['sources_of'] if i[0] == start]
-    return sum(all(has(i, w) != w.get('not', False) for w in where) for i in everyone) < len(everyone)
+    values, has, _ = _matcher(types, bundle, graph)
+    counts = lambda i: any(str(v).strip() and to_number(v) != 0 for v in values(i, measured))
+    return any(not all(has(i, w) != w.get('not', False) for w in where) and counts(i) for i in graph['sources_of'] if i[0] == start)
 
 
 def _adds_up(d: dict) -> bool:
