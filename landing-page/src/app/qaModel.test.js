@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { answerView, definitionHref, isAnswer, namedLines, isThenAnswer, queryExample, queryParams, queryRecord, rangeNotes, readText, scopeText, standingText, staleHeading, staleLines } from "./qaModel.js";
+import { answerView, besideView, definitionHref, notAppliedLines, isAnswer, namedLines, isThenAnswer, queryExample, queryParams, queryRecord, rangeNotes, readText, scopeText, standingText, staleHeading, staleLines } from "./qaModel.js";
 
 const types = [{ id: "order", name: "订单" }];
 
@@ -160,4 +160,24 @@ test("a viewer's refusal line that names nothing is shown as its text alone, not
   assert.equal(definitionHref(undefined), null);
   const named = namedLines([{ id: "objview:有效订单", type: "order", kind: "view", name: "有效订单", state: "needs_look" }, { kind: "type", state: "needs_look", waiting: true, text: "x" }]);
   assert.deepEqual(named.map((l) => [l.key, l.plain ?? false, l.href ?? null]), [["objview:有效订单", false, "#/types/order/views"], ["line-1", true, null]]);
+});
+
+test("an answer that names no view shows each confirmed view's own number beside it, with who confirmed it, and a grouped one only the names", () => {
+  const record = { status: "answered", types, answer: { total: 150, measure: { field: "金额", op: "sum", value: 162960, counted: 150, skipped: 0 } },
+    beside: { views: [{ id: "objview:有效订单", name: "有效订单", confirmed_by: "Bob", answer: { total: 107, measure: { field: "金额", op: "sum", value: 119810, counted: 107, skipped: 0 } } }], more: [] } };
+  const view = besideView(record);
+  assert.equal(view.title, "这个类型上确认过的视图，各按同一个问法算：");
+  assert.deepEqual(view.lines.map((l) => [l.name, l.text, l.of, l.by]), [["有效订单", "金额合计 119,810", "150 个订单里的 107 个", "Bob 确认"]]);
+  assert.equal(view.hint, "上面的数算的是你能看到的全部行；问题里说出视图的名字，就按那个视图回答。");
+  const grouped = besideView({ ...record, answer: { groups: [["华东", 3]], total_groups: 1 }, beside: { views: [{ id: "objview:有效订单", name: "有效订单", confirmed_by: "Bob" }], more: ["视图6", "视图7"] } });
+  assert.equal(grouped.title, "这个类型上还确认过这些视图（问题里说出名字就按它回答）：");
+  assert.deepEqual(grouped.lines.map((l) => [l.name, l.text]), [["有效订单", ""]]);
+  assert.equal(grouped.more, "还有 2 个确认过的视图：视图6、视图7");
+  assert.equal(besideView({ ...record, beside: undefined }), null);
+});
+
+test("what the model wrote and code did not apply is listed under the basis", () => {
+  assert.deepEqual(notAppliedLines({ not_applied: [{ kind: "condition", name: "city", values: ["上海"], why: "问题里没有说这个条件，没有按它算" }, { kind: "view", name: "有效订单", why: "问题里没有说这个视图的名字，没有按它算" }] }),
+    ["city = 上海：问题里没有说这个条件，没有按它算", "有效订单：问题里没有说这个视图的名字，没有按它算"]);
+  assert.deepEqual(notAppliedLines({}), []);
 });

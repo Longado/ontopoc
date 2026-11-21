@@ -5,7 +5,7 @@ import { TOOL_GROUPS, connectConfig, endText, firstSentence, groupTools, scopeWo
 import { componentKinds, draftProblem, emptyComponent, emptyDraft, expiryText, refreshOptions, refreshText, scopeLabel, scopeText } from "./boardModel.js";
 import { timeText } from "./format.js";
 import { getLocale, setLocale } from "./i18n/index.js";
-import { answerView, criteriaLine, historyView, queryExample, rangeNotes, readText, scopeText as askScope, staleHeading, staleLines, standingText, statusText, timeWarning, timeWord } from "./qaModel.js";
+import { answerView, besideView, criteriaLine, notAppliedLines, historyView, queryExample, rangeNotes, readText, scopeText as askScope, staleHeading, staleLines, standingText, statusText, timeWarning, timeWord } from "./qaModel.js";
 
 setLocale("en");   // the default; these tests pin the English copy of Ask, Boards, Notifications and AI tool access
 
@@ -110,4 +110,16 @@ test("AI tool access reads in English", () => {
 
 test("the suite leaves the language as English", () => {
   assert.equal(getLocale(), "en");
+});
+
+test("the confirmed views beside an answer read in English", () => {
+  const record = { status: "answered", types, answer: { total: 150 }, beside: { views: [{ id: "objview:valid", name: "Valid orders", confirmed_by: "Demo builder", answer: { total: 107 } }], more: ["A", "B"] } };
+  const view = besideView(record);
+  assert.equal(view.title, "Confirmed views on this type, each worked out the same way:");
+  assert.deepEqual(view.lines.map((l) => [l.name, l.text, l.of, l.by]), [["Valid orders", "107 orders", "107 of 150 orders", "confirmed by Demo builder"]]);
+  assert.equal(view.more, "and 2 more confirmed views: A, B");
+  assert.equal(view.hint, "The number above covers every row you may read. Name a view in the question to answer from it.");
+  assert.equal(besideView({ ...record, answer: { groups: [["x", 1]], total_groups: 1 }, beside: { views: [{ name: "Valid orders" }], more: [] } }).title, "Also confirmed on this type (name one in the question to use it):");
+  assert.deepEqual(notAppliedLines({ not_applied: [{ kind: "condition", name: "status_code", values: ["Cancelled"], why: "The question does not say this condition, so it is not applied" }] }),
+    ["status_code = Cancelled: The question does not say this condition, so it is not applied"]);
 });
