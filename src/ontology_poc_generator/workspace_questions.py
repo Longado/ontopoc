@@ -72,8 +72,9 @@ def scope(conn, user: dict | None) -> dict:
     confirmed meanings of their code columns, the confirmed relations whose two ends are among them, the confirmed views of those types whose conditions stand on
     confirmed meanings (a view on a column marked "don't send values" is left out: what it says would tell the model the meanings), and the confirmed derived
     properties whose types and relations are all among them and that read no column marked "don't send values".
-    The ones that do read such a column are in 'derived_kept_back' (same shape): not for the model, but a person or an agent may still be told they exist."""
-    types, meanings, relations, views, derived, kept_back = {}, {}, {}, {}, {}, {}
+    The ones that do read such a column are in 'derived_kept_back' (same shape): not for the model, but a person or an agent may still be told they exist. So are
+    the confirmed views on such a column, in 'views_kept_back': code applies one when a question names it (the model is told only its name), as a board does."""
+    types, meanings, relations, views, derived, kept_back, views_back = {}, {}, {}, {}, {}, {}, {}
     for name in visible_type_ids(conn, user, confirmed_only=True):
         row = element_row(conn, type_id(name))
         content = _content(row)
@@ -96,9 +97,8 @@ def scope(conn, user: dict | None) -> dict:
         row = element_row(conn, element_id)
         content = _content(row)
         columns = {f['column'] for f in content['filters']}
-        if content['type'] in types and view_visible(conn, row, user) and columns <= set(meanings.get(content['type'], {})) \
-                and not columns & hidden_values(conn, type_id(content['type'])):
-            views[content['name']] = {'row': row, 'content': content}
+        if content['type'] in types and view_visible(conn, row, user) and columns <= set(meanings.get(content['type'], {})):
+            (views_back if columns & hidden_values(conn, type_id(content['type'])) else views)[content['name']] = {'row': row, 'content': content}
     for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'derived:%' AND state = 'confirmed' ORDER BY element_id").fetchall():
         row = element_row(conn, element_id)
         content = _content(row)
@@ -107,7 +107,7 @@ def scope(conn, user: dict | None) -> dict:
         read += [(content['types'][-1], f['column']) for f in content['conditions']]   # what it says names the meaning of that column, as a view's conditions do
         if all(t in types for t in content['types']) and all(r in relations for r in content['path']) and derived_visible(conn, row, user):
             (kept_back if any(c in hidden_values(conn, type_id(t)) for t, c in read) else derived)[element_id] = {'row': row, 'content': content}
-    return {'types': types, 'meanings': meanings, 'relations': relations, 'views': views, 'derived': derived, 'derived_kept_back': kept_back, 'user': user}
+    return {'types': types, 'meanings': meanings, 'relations': relations, 'views': views, 'views_kept_back': views_back, 'derived': derived, 'derived_kept_back': kept_back, 'user': user}
 
 
 def _unsettled(conn, user: dict | None) -> list[dict]:
@@ -427,7 +427,7 @@ def _engine_views(conn, sc: dict, alias: dict, sources: dict) -> list[dict]:
     condition in the words the check looks for ("a view that leaves a meaning out"), anything else is 'combined' and is only ever read by name; `positions` are
     the rows (from 1) it keeps of the dataset as read now."""
     out = []
-    for name, v in sc['views'].items():
+    for name, v in {**sc['views'], **sc['views_kept_back']}.items():
         content, t = v['content'], sc['types'][v['content']['type']]
         source = alias[t['dataset']['name']]
         kinds = {n: c['type'] for n, c in dataset_columns(conn, t['dataset']['id']).items()}
@@ -438,7 +438,7 @@ def _engine_views(conn, sc: dict, alias: dict, sources: dict) -> list[dict]:
         out.append({'name': name, 'sql_name': None, 'kind': 'filter' if not content['latest'] else 'latest' if not content['filters'] else 'combined', 'source': source, 'state': 'confirmed',
                     'why': None, 'from': describe(content, t['content']['name']), 'confirmed_by': who, 'confirmed_at': at,
                     'definition': {'kind': 'filter', **content['filters'][0]} if single else {'kind': 'combined'}, 'rows': len(positions), 'positions': positions,
-                    'element': v['row']['element_id'], 'filters': content['filters'], 'latest': content['latest']})
+                    'element': v['row']['element_id'], 'filters': content['filters'], 'latest': content['latest'], 'kept_back': name in sc['views_kept_back']})
     return out
 
 
@@ -463,7 +463,9 @@ def _catalog_for_model(conn, sc: dict, parts: dict, question: str | None = None)
             if f'{alias[t["dataset"]["name"]]}.{a["path"]}' in hidden or a['path'] in t['content']['key']:
                 a.pop('values', None)
                 a.pop('meanings', None)
-    return catalog, definition_catalog(sent, [v for v in parts['views'] if question is None or _named(question, v['name'])])
+    named = [v for v in parts['views'] if question is not None and _named(question, v['name']) or question is None and not v['kept_back']]
+    withheld = tr('一个确认过的视图；它的条件读的列不把取值发给模型，所以这里不写它留下哪些行', 'A confirmed view; its conditions read a column whose values are not sent to the model, so which rows it keeps is not said here')
+    return catalog, definition_catalog(sent, [{**v, 'from': withheld} if v['kept_back'] else v for v in named])
 
 
 def _checked_relations(conn, sc: dict, parts: dict) -> list[dict]:
@@ -509,7 +511,7 @@ def _used_definitions(conn, sc: dict, parts: dict, read: list[str], walked: list
     """(the definitions the answer stood on with their version and who confirmed them, the types it read, {dataset: version} it read): the types, the
     relations, the views whose rows it read, and the meanings of the code columns the answer used."""
     held = {type_id(k): sc['types'][k]['row'] for k in read} | {f'{RELATION_PREFIX}{k}': sc['relations'][k]['row'] for k in walked}
-    held |= {v['element']: sc['views'][v['name']]['row'] for v in views}
+    held |= {v['element']: {**sc['views'], **sc['views_kept_back']}[v['name']]['row'] for v in views}
     held |= {a['element']: sc['derived'][a['element']]['row'] for f, a in parts['derived'].items() if f in fields and sc['derived'][a['element']]['content']['type'] in read}
     for k in read:
         for column, m in sc['meanings'].get(k, {}).items():
@@ -765,6 +767,8 @@ def _keep_asked(question: str, sc: dict, parts: dict, query, used) -> tuple:
             continue   # a meaning the question does not say: the model's word for it is not taken (a view that leaves it out is not read in its place)
         out.append(u)
     out += [{'id': n, 'direction': 'include', 'basis': n} for n in leaning if all(str(u.get('id')) != n for u in out)]   # the view's conditions in place of the model's
+    unmet += [{'definition': n, 'kind': 'view', 'why': tr('问题里说了它，但模型没有说明它是怎么用的，这条查询也没有读它', 'The question names it, but the model did not say how it is used, and the query does not read it')}
+              for n in named if used is not None and all(str(u.get('id')) != n for u in out)]   # never the number over every row for a question that names a view
     unmet = list({u['definition']: u for u in unmet}.values())
     return ({**query, 'where': where} if start else query), (out if used is not None or leaning else used), dropped, unmet
 
@@ -798,7 +802,7 @@ def _beside(sc: dict, parts: dict, answer, item: dict, asked: str, applied: list
     query = item.get('query')
     if item.get('status') not in ('answered', 'no_data') or not isinstance(query, dict) or query.get('start') not in sc['types'] or query.get('graph') is not None:
         return None
-    if asked and any(_named(asked, n) for n in sc['views']):
+    if asked and any(_named(asked, n) for n in [*sc['views'], *sc['views_kept_back']]):
         return None
     done = {v['name'] for v in applied}
     names = sorted((n for n, v in sc['views'].items() if v['content']['type'] == query['start'] and n not in done), key=str.casefold)
