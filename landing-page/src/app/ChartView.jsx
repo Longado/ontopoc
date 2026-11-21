@@ -156,31 +156,33 @@ function Rows({ result }) {
   const t = useT();
   const type = result.query.type;
   return (
-    <div className="table-wrap">
-      <table>
-        <thead><tr>{result.columns.map((c) => <th key={c.column}>{c.name}</th>)}</tr></thead>
-        <tbody>
-          {result.rows.map((row, r) => {
-            const openAt = Math.max(0, objectNameIndex(result.columns, row));
-            const objectHref = hrefFor({ page: "object", id: type, n: result.numbers[r] });
-            return <tr key={r}>
-              {row.map((v, i) => {
-                const e = result.enums[result.columns[i].column];
-                const cell = e ? codeCell(v, e) : { value: v ?? "", note: "" };
-                if (i === openAt && !sourceHref(cell.value)) {
-                  return <td key={i}><a href={objectHref}>{cell.value === "" || cell.value == null ? "—" : cell.value}</a>{cell.note && <span className="muted small"> {cell.note}</span>}</td>;
-                }
-                return <td key={i}><SourceValue value={cell.value} />{cell.note && <span className="muted small"> {cell.note}</span>}{i === openAt && <> <a href={objectHref}>{t("objects.table.open")}</a></>}</td>;
-              })}
-            </tr>;
-          })}
-        </tbody>
-      </table>
+    <>
+      <div className="table-wrap">
+        <table>
+          <thead><tr>{result.columns.map((c) => <th key={c.column}>{c.name}</th>)}</tr></thead>
+          <tbody>
+            {result.rows.map((row, r) => {
+              const openAt = Math.max(0, objectNameIndex(result.columns, row));
+              const objectHref = hrefFor({ page: "object", id: type, n: result.numbers[r] });
+              return <tr key={r}>
+                {row.map((v, i) => {
+                  const e = result.enums[result.columns[i].column];
+                  const cell = e ? codeCell(v, e) : { value: v ?? "", note: "" };
+                  if (i === openAt && !sourceHref(cell.value)) {
+                    return <td key={i}><a href={objectHref}>{cell.value === "" || cell.value == null ? "—" : cell.value}</a>{cell.note && <span className="muted small"> {cell.note}</span>}</td>;
+                  }
+                  return <td key={i}><SourceValue value={cell.value} />{cell.note && <span className="muted small"> {cell.note}</span>}{i === openAt && <> <a href={objectHref}>{t("objects.table.open")}</a></>}</td>;
+                })}
+              </tr>;
+            })}
+          </tbody>
+        </table>
+      </div>
       <p className="muted small table-note">
         {t("boards.chart.rowsShown", { total: result.total, shown: result.rows.length })}
         {result.total > result.rows.length && <>{" "}<a href={hrefFor({ page: "type", id: type, tab: "objects", q: queryToParam(result.query) })}>{t("boards.chart.openAllRows")}</a></>}
       </p>
-    </div>
+    </>
   );
 }
 
