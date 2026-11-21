@@ -1696,7 +1696,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             conn = open_workspace(output_dir / 'workspace.sqlite')
             try:
                 if self.path == '/api/workspace/query':
-                    body = run_query_text(conn, self.user, payload.get('text'), payload.get('params'))
+                    body = run_query_text(conn, self.user, payload.get('text'), payload.get('params'), beside=True)   # with the confirmed views beside the number, as a question's answer
                 else:
                     body = {'text': query_as_text(conn, self.user, payload.get('query'))}
             except QaRefused as exc:

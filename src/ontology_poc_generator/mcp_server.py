@@ -529,6 +529,9 @@ def _lean(body: dict, keys: tuple, narrow: str = 'ORDER BY 那个数 DESC LIMIT 
     if isinstance(out.get('definitions'), list):
         out['definitions'] = [{k: d[k] for k in ('id', 'kind', 'name', 'state', 'version', 'confirmed_by', 'says') if k in d and not (k == 'state' and d[k] == 'confirmed')}
                               if isinstance(d, dict) else d for d in out['definitions']]
+    if isinstance(out.get('beside'), dict):   # each confirmed view beside the number: its name, who confirmed it and its own number (no id, no version)
+        out['beside'] = {'views': [{k: v[k] for k in ('name', 'confirmed_by', 'answer', 'no_data') if k in v} for v in out['beside'].get('views', []) if isinstance(v, dict)],
+                         **({'more': out['beside']['more']} if out['beside'].get('more') else {})}
     answer = out.get('answer')
     if isinstance(answer, dict) and isinstance(answer.get('groups'), list) and len(answer['groups']) > AGENT_GROUPS:
         out['answer'] = {**answer, 'groups': answer['groups'][:AGENT_GROUPS],
@@ -538,7 +541,7 @@ def _lean(body: dict, keys: tuple, narrow: str = 'ORDER BY 那个数 DESC LIMIT 
 
 def ask(s, a):
     body = s.request('/api/workspace/ask', {'question': _text(a.get('question'), 'question')})
-    out = _lean(body, ('id', 'question', 'status', 'answer', 'path', 'reason', 'refusal', 'query_text', 'definitions', 'datasets', 'limited_by_rule'),
+    out = _lean(body, ('id', 'question', 'status', 'answer', 'beside', 'not_applied', 'path', 'reason', 'refusal', 'query_text', 'definitions', 'datasets', 'limited_by_rule'),
                 '把 query_text 加上 ORDER BY 那个数 DESC LIMIT n 或 WHERE，用 ontopoc_query 再跑（不调用模型）')
     if body.get('status') in ('answered', 'no_data') and re.search(r'\bWHERE\b', str(body.get('query_text') or ''), re.I):   # the number is the model's reading, not a confirmed view: say so, not "valid orders"
         where = re.split(r'\bWHERE\b', str(body['query_text']), maxsplit=1, flags=re.I)[1]
@@ -553,7 +556,7 @@ def ontopoc_query(s, a):
     if a.get('params') is not None:
         body['params'] = a['params']
     body = s.request('/api/workspace/query', body)
-    return _lean(body, ('status', 'answer', 'reason', 'refusal', 'text', 'definitions', 'datasets', 'limited_by_rule'), '要前几名就加 ORDER BY 那个数 DESC LIMIT n，要某一部分就加 WHERE')   # text, not the compiled query: it compiles to it
+    return _lean(body, ('status', 'answer', 'beside', 'reason', 'refusal', 'text', 'definitions', 'datasets', 'limited_by_rule'), '要前几名就加 ORDER BY 那个数 DESC LIMIT n，要某一部分就加 WHERE')   # text, not the compiled query: it compiles to it
 
 
 def list_unconfirmed(s, a):

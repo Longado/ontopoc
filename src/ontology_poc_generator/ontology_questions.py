@@ -18,7 +18,7 @@ from ontology_poc_generator.lang import english, tr
 
 ontopoc_query.SAY = tr   # the query language says its messages in the asker's language (it imports nothing itself)
 
-QUESTION_PROMPT_VERSION = 'company_questions.v18'
+QUESTION_PROMPT_VERSION = 'company_questions.v19'
 ENGLISH_NOTE = '\n\nThe person asking works in English: write the "reasoning" of each question in English.'   # appended only for an English asker
 QUESTION_COUNT = 6          # ponytail: one screen of questions; make it a request field if readers want more
 MAX_GROUPS = 200   # ponytail: a result must fit the browser's local storage (~5 MB) and stay readable; the count of all groups is kept
@@ -58,7 +58,7 @@ Return ONLY a JSON object:
                 "terms": [{{"sign": 1 | -1, "factors": [{{"field": "<attribute path of that type>", "complement": true | false}}]}}]}}
               (only when you propose a new derived measure),
     "definitions_used": [{{"id": "<an id exactly as listed in `definitions`>", "direction": "include" | "exclude" | "mention",
-                         "basis": "<the words of the question that refer to it, in Chinese>"}}],
+                         "basis": "<the words of the question that refer to it, copied exactly from the question>"}}],
     "missing": "ontology" | "query_language"   (only when query is null),
     "unmatched_relation": {{"relation": "<relation key>", "direction": "many_without_one" | "one_without_many", "other_conditions": true | false}}
                           (only for a question of the kind described below)
@@ -828,25 +828,27 @@ def _labels(meanings: dict | None, where: dict) -> dict:
     return {'labels': said} if said else {}
 
 
+def value_said(question: str, value) -> bool:
+    """Does the question say this value? Compared upper-cased with spaces removed, as a substring of the question; a short code such as N sits inside any
+    word, and 0 inside 2026 or 0.5, so one of fewer than three letters or digits has to stand apart from letters where it is a letter and from digits where it
+    is a digit (Q1 still counts in 2026Q1)."""
+    squash = lambda text: (normalize_value(text) or '').replace(' ', '')
+    v = squash(value)
+    if len(v) < 3 and v.isascii():
+        v = normalize_value(value) or ''
+        left, right = ('0-9' if v[:1].isdigit() else 'A-Z'), ('0-9' if v[-1:].isdigit() else 'A-Z')
+        decimal = r'(?!\.\d)' if v[-1:].isdigit() else ''
+        return bool(v) and re.search(rf'(?<![{left}]){re.escape(v)}(?![{right}]){decimal}', normalize_value(question) or '') is not None
+    return v in squash(question)
+
+
 def flag_unasked_filters(result: dict, question: str) -> dict:
-    """Mark the filters whose value the question never says: the model added them on its own. A hint for the person
-    checking the answer, not a refusal. Compared upper-cased with spaces removed, and as a substring of the question."""
+    """Mark the filters whose value the question never says (value_said): the model added them on its own. A hint for the person checking the answer, not a
+    refusal (the workspace's questions do not apply such a filter at all: workspace_questions._keep_asked)."""
     filters = (result.get('evidence') or {}).get('filters')
     if not filters:
         return result
-    squash = lambda value: (normalize_value(value) or '').replace(' ', '')
-    said, words = squash(question), normalize_value(question) or ''
-
-    def named(value):
-        v = squash(value)
-        if len(v) < 3 and v.isascii():
-            # a short code such as N sits inside any word, and 0 inside 2026 or 0.5: it has to stand apart from letters
-            # where it is a letter and from digits where it is a digit, so Q1 still counts in 2026Q1
-            v = normalize_value(value) or ''
-            left, right = ('0-9' if v[:1].isdigit() else 'A-Z'), ('0-9' if v[-1:].isdigit() else 'A-Z')
-            decimal = r'(?!\.\d)' if v[-1:].isdigit() else ''
-            return bool(v) and re.search(rf'(?<![{left}]){re.escape(v)}(?![{right}]){decimal}', words) is not None
-        return v in said
+    named = lambda value: value_said(question, value)
     # a condition that leaves a value out is not marked: the path says it, and the workspace has already checked the model's word for the meaning it leaves out
     marked = [f if f.get('not') or 'range' in f or named(f['equals']) or any(named(label) for label in f.get('labels', [])) else {**f, 'not_in_question': True} for f in filters]
     return {**result, 'evidence': {**result['evidence'], 'filters': marked}}
