@@ -234,7 +234,8 @@ def _blockers(conn, user: dict | None, question: str) -> list[dict]:
 
 def _waiting_blockers(conn, user: dict, question: str) -> list[dict]:
     """For a viewer: the types they may see that were confirmed and now wait for a second look (object_types.waiting_for_viewer), when the question names one.
-    Each is said with what the type list already tells them (its name and who it waits for): no reason, no cause, no count, nothing of the data."""
+    The refusal tells a viewer only that the answer waits (VIEWERS_TOLD_WHAT_WAITS off); turned on, it says what the type list already tells them (its name and who
+    it waits for). Never a reason, a cause, a count or anything of the data."""
     out = []
     for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objtype:%' ORDER BY element_id").fetchall():
         row = element_row(conn, element_id)

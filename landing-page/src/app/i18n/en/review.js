@@ -101,7 +101,7 @@ export default {
   "group.aria": "Confirm together",
   "group.markAll": "Mark all as seen",
   "group.confirmAll": "Confirm {count} together",
-  // --- WP-B: what confirming does to the board numbers, and the receipts (ImpactList.jsx, impactModel.js) ---
+  // --- what confirming does to the board numbers, and the receipts (ImpactList.jsx, impactModel.js) ---
   "impact.title": "Board numbers after confirming",
   "impact.titleUpload": "Board numbers after the upload",
   "impact.board": "Board",
@@ -183,7 +183,7 @@ export default {
   "receipt.dataMoved": "The data had a new version between the two confirmations: {list}. That move is not this confirmation's; the numbers below are all on the current data",
   "receipt.movedOne": "{name} version {from} → version {to}",
   "impact.dataAccepted": "Since the last confirmation, {list}, which is why this waits. Confirming it is what lets the numbers on the new data count: \"now\" is the grey number the board shows while it waits.",
-  "impact.dataAcceptedEdited": "Since the last confirmation, {list}, which is why this waits; the definition was also changed while it waited. Confirming it accepts both the new data and the changed definition: \"now\" is the definition as last confirmed, on the new data, so the table shows what the change does.",
+  "impact.dataAcceptedEdited": "Since the last confirmation, {list}, which is why this waits; a definition was also changed while it waited. Confirming it accepts both the new data and the changed definition: \"now\" is the definition as last confirmed, on the new data, so the table shows what the change does.",
   "receipt.dataAcceptedEdited": "The data had a new version between the two confirmations: {list}. This confirmation accepts the new data and the changed definition: the numbers below put the definition as last confirmed and the new one both on the current data",
   "receipt.dataAccepted": "The data had a new version between the two confirmations: {list}. This confirmation accepts the new data: the numbers worked out on it count from this confirmation on",
 };

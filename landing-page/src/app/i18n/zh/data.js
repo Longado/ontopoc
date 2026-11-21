@@ -225,6 +225,6 @@ export default {
   "tasks.state": "状态",
   "tasks.by": "操作人",
   "tasks.note": "说明",
-  // WP-B: an upload that moves board numbers without sending a definition back
+  // an upload that moves board numbers without sending a definition back
   "upl.askFootBoards": "继续就会写成新版本，上面看板上的数随之改变",
 };
