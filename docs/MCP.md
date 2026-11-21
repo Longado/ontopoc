@@ -37,7 +37,7 @@ claude mcp add ontopoc -- env ONTOPOC_TOKEN=<令牌> ONTOPOC_TOOLSET=read PYTHON
 
 `ask` 的回答带着 `query_text`，也就是这道题写成本体查询的样子。智能体可以先用 `ask` 学写法，再用 `ontopoc_query` 改条件、重复跑，后面这些都不再调用模型。
 
-一个问题只给一个数，由代码决定算哪些行：问题说出视图的名字才按视图算；没说时 `answer` 算的是令牌主人能看到的全部行，`beside.views` 里是这个类型上他看得到的每个已确认视图各自的数（`name`、`confirmed_by`、`answer`，最多 5 个，其余的名字在 `beside.more`；分组和前 N 名只给名字）。模型写了、问题里没说的条件不算，列在 `not_applied`。`ontopoc_query` 的文字不点名视图，回答同样带 `beside`。
+问题没说视图的名字、模型用了一个视图或没加条件时，`answer` 算的是令牌主人能看到的全部行，`beside.views` 里是这个类型上他看得到的每个已确认视图各自的数（`name`、`confirmed_by`、`answer`，最多 5 个，其余的名字在 `beside.more`；分组和前 N 名只给名字）。`ontopoc_query` 的文字没有条件时，回答同样带 `beside`。问题说出视图的名字时按视图确认过的条件算。其他条件是模型写的，照它算。
 
 这几个工具按给模型用的工具该有的样子来做（`tests/test_agent_tools.py` 守着）：
 

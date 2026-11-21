@@ -46,7 +46,7 @@ Three outcomes, all on the bundled sample data (150 orders, status codes 0 to 5)
 | A question that names a definition nobody has confirmed yet | Held back before the model is asked, naming the definition and who can confirm it | Proposed is not confirmed. A person who may see the definition gets its name and who can confirm it; a viewer, who only reads confirmed definitions, is not told the names of definitions never confirmed, and for a confirmed one waiting for another look is told only that the answer waits for a confirmation |
 | The same question after `orders_update.csv` arrives (new code 6, nobody gave it a meaning) | Refused: *Valid orders* needs another look; a board shows that it waits and the last number | The data changed under the confirmation |
 
-One question gives one number, and code decides which rows it covers, not the model. A confirmed view is applied only when the question says its name; otherwise the number covers every row you may read, and each confirmed view on that type that you may see is listed beside it with its own number and who confirmed it. A condition the model adds that the question does not say is not applied; a confirmed name said in another language (the demo's names are English) is refused with the name to use.
+Code decides two things about which rows a question's number covers. When the question names a confirmed view and the model uses it, the view's confirmed conditions are applied. When the question names no view and the model applies one view or none, the number covers every row you may read, with each confirmed view on that type beside it: its own number and who confirmed it. Any other condition, a range included, is the model's reading: it is applied, and the line under the answer says it is the model's filter, not a confirmed view.
 
 On the live demo a guest gets the first answer and one refusal of the third kind: the type Customer was confirmed once and now waits for a second look, so a question that writes its name, Customer (any case, singular or plural, as a whole word, for example "Valid order amount by Customer city"), is refused before the model is asked, and the guest is told only that the answer waits for a confirmation. "客户" is not its name, and such a question goes to the model as usual.
 
@@ -203,7 +203,7 @@ Issues and pull requests are welcome. Read the [development guardrails](docs/DEV
 
 ```bash
 PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (2,407 on 2026-11-20; install ".[check,sources]" first, or TTL and some source checks are skipped)
-npm --prefix landing-page run test:unit                       # page tests (798 on 2026-11-20)
+npm --prefix landing-page run test:unit                       # page tests (797 on 2026-11-20)
 PYTHONPATH=src:. python3 scripts/real_model_check.py --out /tmp/check   # real model against SQL (needs a model key; fails only on a wrong number)
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # a trial run in another data directory
 ```
