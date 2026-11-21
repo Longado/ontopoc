@@ -86,10 +86,7 @@ section[id] { scroll-margin-top: 78px; }
 .app-nav [aria-current="page"] { color: var(--primary-ink); background: var(--primary-soft); font-weight: 700; }
 .app-nav [aria-current="page"] i { background: var(--primary); }
 .app-nav button:disabled { opacity: 0.5; cursor: not-allowed; }
-.app-more { display: grid; gap: 2px; }
-.app-more summary { padding: 6px 10px; border-radius: 8px; color: var(--text-2); font-size: 12px; font-weight: 600; cursor: pointer; }
-.app-more summary:hover, .app-more[open] summary { color: var(--ink); }
-.app-more summary:focus-visible, .app-nav button:focus-visible, .app-nav a:focus-visible, .app-lang:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.app-nav button:focus-visible, .app-nav a:focus-visible, .app-lang:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .app-lang { align-self: flex-start; padding: 5px 10px; border: 1px solid var(--edge-strong); border-radius: 6px; color: var(--text-2); background: var(--surface); font-size: 12px; font-weight: 700; letter-spacing: 0.06em; }
 .app-main { min-width: 0; min-height: 0; overflow-y: auto; display: flex; }
 .app-main > * { flex: 1; }
@@ -106,7 +103,6 @@ section[id] { scroll-margin-top: 78px; }
   .app-nav { order: 3; width: 100%; display: flex; flex-wrap: wrap; gap: 4px; }
   .app-nav button, .app-nav a { width: auto; padding: 8px 10px; }
   .app-nav small { display: none; }
-  .app-more { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
   .app-lang { margin: 0 0 0 auto; }
   .app-new { width: auto; padding: 6px 12px; }
   .app-library { order: 4; width: 100%; max-height: 168px; padding-bottom: 4px; border-bottom: 1px solid var(--edge); }   /* the run list must not push the run itself off a phone screen */
