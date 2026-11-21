@@ -333,7 +333,7 @@ class GroupTests(ImpactCase):
             self.assertEqual(cards['valid']['now'], shown['valid'])
             self.assertFalse(cards['valid']['after']['grey'])
             self.assertEqual(cards['valid']['change'], {'kind': 'confirmed'})
-            self.assertEqual(preview['data_moved'], [{'name': '订单', 'from': 1, 'to': 2, 'accepted': True}])   # this confirmation accepts the new data
+            self.assertEqual(preview['data_moved'], [{'name': '订单', 'from': 1, 'to': 2, 'accepted': True, 'edited': True}])   # this confirmation accepts the new data, and the meanings Ann wrote again while they waited
             status, done = bob.post('/api/workspace/queue/confirm-group', body)
             self.assertEqual(status, 200, done)
             self.preview_is_reality(bob, board['id'], preview)
@@ -341,7 +341,7 @@ class GroupTests(ImpactCase):
             self.assertEqual(status, 200, receipt)
             self.assertEqual(self.by_card(receipt)['valid']['change'], {'kind': 'confirmed'})
             view = next(i for i in receipt['items'] if i['element'] == 'objview:有效订单')
-            self.assertEqual(view['data_moved'], [{'name': '订单', 'from': 1, 'to': 2, 'accepted': True}])
+            self.assertEqual(view['data_moved'], [{'name': '订单', 'from': 1, 'to': 2, 'accepted': True, 'edited': False}])
 
     def test_a_definition_the_data_sent_back_and_then_edited_shows_the_edit_on_the_new_data(self):
         """The data sends 有效订单 back, then Ann edits it to leave out 已交付 too. "Now" is the view as last confirmed, on the new data; "after" is the edited one: the
@@ -447,13 +447,13 @@ class DataBetweenConfirmationsTests(ImpactCase):
             self.assertEqual(cards['amount']['now'], before['amount'])   # the board as it was, on the new data
             self.assertEqual(cards['amount']['change'], {'kind': 'number', 'delta': sum(float(r['金额']) for r in made) - sum(float(r['金额']) for r in live)})
             self.assertEqual(cards['valid']['change'], {'kind': 'number', 'delta': len(made) - len(live)})
-            self.assertEqual(preview['data_moved'], [{'name': '订单', 'from': 1, 'to': 2, 'accepted': False}])   # said apart, not put on the change: the view stayed confirmed on it
+            self.assertEqual(preview['data_moved'], [{'name': '订单', 'from': 1, 'to': 2, 'accepted': False, 'edited': False}])   # said apart, not put on the change: the view stayed confirmed on it
             self.assertEqual(bob.post('/api/workspace/queue/confirm', payload)[0], 200)
             self.preview_is_reality(bob, board['id'], preview)
             status, receipt = bob.post('/api/workspace/receipt', {'elements': ['objview:有效订单']})
             self.assertEqual(status, 200, receipt)
             self.assertEqual({k: (c['now'], c['after'], c['change']) for k, c in self.by_card(receipt).items()}, {k: (c['now'], c['after'], c['change']) for k, c in cards.items()})
-            self.assertEqual(receipt['items'][0]['data_moved'], [{'name': '订单', 'from': 1, 'to': 2, 'accepted': False}])
+            self.assertEqual(receipt['items'][0]['data_moved'], [{'name': '订单', 'from': 1, 'to': 2, 'accepted': False, 'edited': False}])
 
     def test_without_new_data_nothing_is_said_to_have_moved(self):
         with self.service() as (base, out):
