@@ -231,10 +231,11 @@ class AcceptanceTests(DerivedTestCase):
             self.assertEqual((status, answer['status']), (200, 'definition_unmet'), answer)
             self.assertIn('不是每一行都正好连上一个对象', answer['reason'])
 
-    def test_a_total_written_with_a_filter_every_customer_matches_is_still_refused_when_some_orders_reach_no_customer(self):
-        """国家 = CN keeps every customer, so the query is a total over all of them, not particular customers: the orders that reach no customer (KH099) would be
-        left out without a word. It is refused as the total without the filter is."""
-        everyone_cn = table_csv('客户.csv', [{**r, '国家': 'CN'} for r in {r['客户编号']: r for r in reversed(CUSTOMERS)}.values()], target='客户', mode='overwrite')
+    def ask_by_country(self, extra=(), moved=()):
+        """已取消订单数 summed over the customers whose 国家 is CN, on a customer table where every customer is CN except those in `moved` (US), plus `extra`
+        customers (US, with no orders). The orders that reach no customer (KH099) are in no customer's count."""
+        rows = [{**r, '国家': 'US' if r['客户编号'] in moved else 'CN'} for r in {r['客户编号']: r for r in reversed(CUSTOMERS)}.values()]
+        customers = table_csv('客户.csv', [*rows, *({**rows[0], '客户编号': k, '客户名称': k, '国家': 'US'} for k in extra)], target='客户', mode='overwrite')
         customer = {**CUSTOMER, 'properties': [*CUSTOMER['properties'], {'column': '国家'}]}
         total = {'start': 'customer', 'where': [{'field': '国家', 'equals': 'CN'}], 'via': [], 'group_by': None, 'share': None, 'measure': {'field': '已取消订单数', 'op': 'sum'}}
         model = AskModel({'reasoning': '中国客户的已取消订单数加起来', 'query': total, 'definitions_used': INCLUDES_CANCELLED})
@@ -242,13 +243,47 @@ class AcceptanceTests(DerivedTestCase):
         with self.service(gateway=model) as (base, out):
             team = self.team(base)
             ann, bob = team['ann'], team['bob']
-            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [everyone_cn]})[0], 200)
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [customers]})[0], 200)
             self.foundation(team, types=(ORDER, customer, PRODUCT, STOCK, COMMIT, TICKET))
             self.assertEqual(ann.post('/api/workspace/types/derived', CANCELLED)[0], 200)
             self.assertEqual(self.confirm(bob, CANCELLED)[0], 200)
             status, answer = ann.post('/api/workspace/ask', {'question': '已取消订单一共有多少？'})
-            self.assertEqual((status, answer['status']), (200, 'definition_unmet'), answer)
-            self.assertIn('不是每一行都正好连上一个对象', answer['reason'])
+            self.assertEqual(status, 200, answer)
+            return answer
+
+    def test_a_total_written_with_a_filter_every_customer_matches_is_still_refused_when_some_orders_reach_no_customer(self):
+        """国家 = CN keeps every customer, so the query is a total over all of them, not particular customers: the orders that reach no customer (KH099) would be
+        left out without a word. It is refused as the total without the filter is."""
+        answer = self.ask_by_country()
+        self.assertEqual(answer['status'], 'definition_unmet', answer)
+        self.assertIn('不是每一行都正好连上一个对象', answer['reason'])
+
+    def test_a_filter_that_leaves_out_only_customers_with_no_orders_is_still_a_total(self):
+        """KH900 is US and has no orders: leaving it out leaves no row out, so the filter keeps every row a customer is counted from and the query is still a total."""
+        answer = self.ask_by_country(extra=('KH900',))
+        self.assertEqual(answer['status'], 'definition_unmet', answer)
+        self.assertIn('不是每一行都正好连上一个对象', answer['reason'])
+
+    def test_a_filter_that_leaves_out_a_customer_with_cancelled_orders_answers_for_the_customers_it_keeps(self):
+        mine = Counter(r['客户编号'] for r in ORDERS if r['状态码'] == '2')
+        known = {r['客户编号'] for r in CUSTOMERS}
+        moved = next(k for k in sorted(mine) if k in known)
+        answer = self.ask_by_country(moved=(moved,))
+        self.assertEqual(answer['status'], 'answered', answer)
+        self.assertEqual(answer['answer']['measure']['value'], sum(n for k, n in mine.items() if k in known and k != moved))
+
+    def test_a_filter_the_query_language_cannot_read_is_said_so_not_a_failure(self):
+        """The model's reply is not trusted: a value that is a dict or a nested list, or a range that is not a number, is a query the language cannot read."""
+        model = AskModel({})
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            self.foundation(team)
+            ann = team['ann']
+            for where in ([{'field': '状态码', 'equals': {'a': 1}}], [{'field': '状态码', 'equals': ['2', ['3']]}],
+                          [{'field': '状态码', 'equals': '2'}, {'field': '状态码', 'not_equals': {'a': 1}}], [{'field': '交付天数', 'equals': '1', 'at_least': 'abc'}]):
+                model.item = {'reasoning': '订单', 'query': {'start': 'order', 'where': where, 'via': [], 'group_by': None, 'share': None, 'measure': None}, 'definitions_used': []}
+                status, answer = ann.post('/api/workspace/ask', {'question': '订单有多少？'})
+                self.assertEqual((status, answer.get('status')), (200, 'query_limit'), (where, answer))
 
     def test_a_confirmed_property_the_model_writes_as_a_derived_measure_is_still_cited(self):
         query = {'start': 'customer', 'where': [{'field': '客户编号', 'equals': 'KH026'}], 'via': [], 'group_by': None, 'share': None,
