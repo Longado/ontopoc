@@ -54,7 +54,7 @@ class TokenMayNotConfirmTests(GateTestCase):
                 self.assertEqual(status, 403, body)
                 self.assertIn(REFUSED_ZH, body['error'])
                 self.assertTrue(body.get('needs_person'))
-            self.assertEqual(builder.get('/api/workspace/types/order')[1]['state'], 'proposed')
+            self.assertEqual(builder.get('/api/workspace/types/order')[1]['state'], 'checked')   # checked by code, waiting for a person
             for column in ('status_code', None):   # the same person, signed in on the page, still confirms
                 status, body = builder.post('/api/workspace/types/confirm', self.confirm_body(builder, column))
                 self.assertEqual(status, 200, body)
