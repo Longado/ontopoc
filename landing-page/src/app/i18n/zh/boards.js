@@ -85,6 +85,7 @@ export default {
   "chart.noMissing": "没有缺值",
   "chart.rows": "行数",
   "chart.rowsShown": "共 {total} 行，显示前 {shown} 行",
+  "chart.openAllRows": "查看全部匹配对象",
   "chart.yourRows": "你能看到的行",
   "chart.noRows": "没有可画的行",
   "chart.noNumbers": "没有可画的数字",

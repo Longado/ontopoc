@@ -140,6 +140,10 @@ function Editor({ id, board }) {
               <option value="">{t("boards.form.pickField")}</option>
               {allFields.map(([k, name]) => <option key={k} value={k}>{name}</option>)}
             </Select>
+            <Select label={t("objects.filter.compare")} value={f.op ?? "eq"} onChange={(op) => set({ filters: draft.filters.map((x, j) => j === i ? { ...x, op } : x) })}>
+              <option value="eq">{t("objects.op.eq")}</option>
+              <option value="name_is">{t("objects.op.name_is")}</option>
+            </Select>
             <input type="text" aria-label={t("boards.form.filterLabel")} value={f.label} onChange={(e) => set({ filters: draft.filters.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) })} />
             <button className="plain" onClick={() => set({ filters: draft.filters.filter((_, j) => j !== i) })}>{t("boards.form.remove")}</button>
           </div>

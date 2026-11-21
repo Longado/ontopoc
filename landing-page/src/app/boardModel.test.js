@@ -44,6 +44,11 @@ test("a saved board becomes the form's draft and the draft becomes what the serv
   assert.equal(payloadOf({ ...draft, expires_at: "" }).expires_at, null);
 });
 
+test("a name filter keeps its matching rule after a board is edited", () => {
+  const filters = [{ field: "names", label: "Company", op: "name_is" }];
+  assert.deepEqual(specOf(draftOf({ ...SAVED, spec: { ...SAVED.spec, filters } })).filters, filters);
+});
+
 test("the form says what is missing before it can be saved", () => {
   assert.equal(draftProblem(emptyDraft()), "要写看板的名字");
   assert.equal(draftProblem({ ...emptyDraft(), name: "x" }), "至少加一个组件");
