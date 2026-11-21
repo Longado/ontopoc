@@ -6,8 +6,8 @@
 </p>
 
 <h1 align="center">OntoPoc</h1>
-<p align="center"><strong>An ontology platform for a team: every definition is checked against the data and confirmed by a named person; anything unconfirmed, or out of date since the data changed, is refused in Q&amp;A with the reason.</strong></p>
-<p align="center">Datasets → pipelines → object types, relations, views, actions, derived properties → Q&amp;A, boards, agents (MCP).</p>
+<p align="center"><strong>The confirmation gate between a team's data and the AI that answers questions about it: agents answer only from definitions a named person confirmed against the current data, otherwise they refuse and say who can confirm.</strong></p>
+<p align="center">Ontology tool for teams and MCP / Claude: data → definitions → checks → confirmation → gated answers, boards and agents.</p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-blue" alt="AGPL-3.0"></a>
@@ -21,8 +21,8 @@
   <a href="README.md">中文</a> ·
   <a href="https://longado.github.io/ontopoc/">Docs</a> ·
   <a href="#quick-start">Quick start</a> ·
-  <a href="docs/LEGACY_SCREEN.en.md#try-it">Try it</a> ·
-  <a href="#use-with-mcp--claude">MCP / Claude</a> ·
+  <a href="docs/pilot/FIRST_DEFINITION.md">Try it</a> ·
+  <a href="#for-agents-mcp--claude">MCP / Claude</a> ·
   <a href="#ontology-faq">Ontology FAQ</a> ·
   <a href="#contributing">Contributing</a>
 </p>
@@ -30,31 +30,39 @@
 <p align="center"><sub>Ontology tool for MCP / Claude · Docs: <a href="https://longado.github.io/ontopoc/">longado.github.io/ontopoc</a> · Follow on X: <a href="https://x.com/linyutai120479">@linyutai120479</a></sub></p>
 
 <p align="center">
-  <img src="docs/media/ontopoc-hero.gif" alt="OntoPoc companion connects business tables into a draft ontology for review" width="960">
+  <img src="docs/media/ontopoc-hero.gif" alt="OntoPoc: business tables become definitions that wait for a person to confirm them" width="960">
 </p>
 <p align="center"><sub>Concept illustration · <a href="docs/media/ontopoc-poster.png">Still image</a> · <a href="docs/media/ontopoc-motion.mp4">MP4</a></sub></p>
 
-OntoPoc is an ontology tool for teams and for MCP / Claude clients. It is still in development and nobody but the author uses it yet. The main line is now a team app (the page root, `/`). Upload tables or connect read-only to PostgreSQL or MySQL, build datasets and pipelines, and build object types, relations, views, actions and derived properties from the data. Code checks each one against the data, another builder confirms it, and the data version it was confirmed on is kept. Q&A, boards and agents use confirmed definitions only. When the data changes, the affected definitions go back to "needs another look", and questions that use them are refused, naming which one and who can confirm it. It is not a knowledge-graph platform; this is schema work ahead of a knowledge graph or semantic layer.
+OntoPoc is an ontology tool for a team's own data. The team writes down what its tables mean: object types and their keys, what each code in a column means, relations, views such as "valid orders", derived properties. That is the team's ontology, the part of a semantic layer that says how a number is worked out. Code checks each definition against every row, and a second, named person confirms it on a given version of the data. Q&A, boards and AI agents over MCP then answer only from what was confirmed. When the data or a definition changes, what rests on it goes back for another look, and questions that use it are refused, naming the definition and who can confirm it. It is not a knowledge-graph platform or a data platform; it is still in development and nobody but the author uses it yet.
 
-The interface is in Chinese only. This page gives the Chinese label in parentheses the first time it names a screen, tab or button.
+## How it refuses
 
-## The team app
+Three outcomes, all on the bundled sample data (150 orders, status codes 0 to 5), which the [live demo](https://35-229-236-140.sslip.io/) (temporary address) also serves to read-only guests:
 
-| Part | What it does |
-|---|---|
-| Accounts and permissions | Local accounts with three roles (admin, builder, viewer) and server-side sessions. An admin can limit an object type to named people, limit rows by rule (allow-lists only), and keep a column's values from the model |
-| Data | Datasets: upload CSV or Excel, update by key or overwrite, a new version each time. Sources: read-only PostgreSQL and MySQL, with certificate checks. Schedules: hourly or daily pulls and pipeline runs |
-| Pipelines | Filter, join, group, dedupe, calculated columns and more, with an expression editor. Union stacks the rows of several steps by column name: it refuses differing types, missing columns and code columns whose confirmed meanings differ, and counts rows that appear in more than one input. Split sends each row to the first branch whose condition holds, with an optional rest branch, and counts rows per branch, rows whose condition field is empty and rows that went to no branch. An AI step asks the model row by row; what it writes can become a key or a code meaning only after a sample review and another person's confirmation |
-| Ontology | Object types (properties, key, the meaning of code columns), relations (how many rows connect, whether the declared cardinality holds), views (such as 有效订单, valid orders), actions (parameters and conditions, writing data only after approval), derived properties (a formula over a row, or a statistic through relations) |
-| Confirmation | Proposed → checked by code → confirmed by another builder (with one builder it opens up and the log says so). The data version and anchors are kept at confirmation. A new upload re-checks them; whatever no longer holds goes back to "needs another look", with what reads it, and the cause says whether the data changed, the definition changed, or something upstream did; whoever can confirm it, and whoever confirmed it last, gets one notice in Notifications (消息). One exception for relations: one confirmed with every row connected and no repeated key stays confirmed while that is still true, even when the row counts changed. What one upload moved can be confirmed together on one screen |
-| Q&A | Scope is the confirmed types the person may see. A question that names an unconfirmed or stale definition is refused before the model is asked, with the reason. The model sees structure, meanings and the values of columns with few distinct values, never rows, and writes a structured query; code runs it and checks the definitions it used. It can leave a meaning out ("not cancelled") and take the top or bottom N. Each answer is kept with its definitions, who confirmed them and the data versions |
-| Use | Object explorer, boards, MCP tools for agents (personal token, read-only by default), the relation graph and lineage graph (from data sources, uploads and pipelines to datasets, then types and answers; coloured by data changed, definition changed, one step behind, further upstream; sources are shown to builders and admins, without connection details) |
+| You ask | OntoPoc says | Why |
+|---|---|---|
+| "Total amount of valid orders?" | **119,810**, with the line it rests on: the view *Valid orders* (paid, shipped, delivered), who confirmed it, on orders v1 | Every definition the answer uses is confirmed |
+| A question that names a definition nobody has confirmed yet | Held back before the model is asked, naming the definition and who can confirm it | Proposed is not confirmed. A person who may see the definition gets its name and who can confirm it; a viewer, who only reads confirmed definitions, is not told the names of definitions never confirmed, and for a confirmed one waiting for another look is told only that the answer waits for a confirmation |
+| The same question after `orders_update.csv` arrives (new code 6, nobody gave it a meaning) | Refused: *Valid orders* needs another look; a board shows that it waits and the last number | The data changed under the confirmation |
 
-The earlier screen organised around runs is still at `legacy.html`; see [docs/LEGACY_SCREEN.en.md](docs/LEGACY_SCREEN.en.md).
+On the live demo a guest gets the first answer and one refusal of the third kind: the type Customer was confirmed once and now waits for a second look, so a question that names Customer is refused before the model, and the guest is told only that the answer waits for a confirmation.
+
+The sum of the amount column is 162,960. It is arithmetically right and it is not revenue: cancelled and refunded orders still carry an amount. That gap is what the gate is for.
+
+## How a definition gets confirmed
+
+1. **Put it forward.** A builder writes the definition, asks the model to suggest one from the datasets, or imports the tests of a dbt `manifest.json` (a suggestion or an import is only a proposal).
+2. **Code checks it on every row.** Keys are unique and filled, relations connect (and say how many rows do not), every code has a meaning. A key check over no rows does not count as passed (relation checks do not yet make that distinction).
+3. **A second builder confirms it.** Never the one who proposed it; with one builder the rule opens up and the log says so. The confirmation keeps who, when and which data version.
+4. **It is used.** Q&A, boards and agents see it, each number with the line it rests on.
+5. **It goes back when things move.** A new upload or pull re-checks it; if it no longer holds, it and what reads it go to "needs another look", with the cause (data changed, definition changed, upstream). The review queue brings it back to step 3.
+
+Walk through it in 40 minutes with two people: [docs/pilot/FIRST_DEFINITION.md](docs/pilot/FIRST_DEFINITION.md).
 
 ## Quick start
 
-You need Python 3.11+, Node 22+ and a DeepSeek API key. Uploading a PDF also needs `pdftotext` (poppler) installed on this machine.
+You need Python 3.11+ and Node 22+. A model key (DeepSeek or OpenRouter) is optional: without one, Q&A and suggestions say the key is missing and everything else works.
 
 ### One command (Mac / Linux)
 
@@ -62,7 +70,7 @@ You need Python 3.11+, Node 22+ and a DeepSeek API key. Uploading a PDF also nee
 git clone https://github.com/Longado/ontopoc.git && cd ontopoc && ./scripts/ontopoc-start.sh
 ```
 
-It installs the dependencies, builds the page, makes the first admin on the first run, and serves the page and the API on one address, `http://127.0.0.1:8767/`; data lives in `~/.ontopoc/data` (`ONTOPOC_DATA_DIR`, `ONTOPOC_PORT` to change). Without a model key, meanings and suggestions are off. For a team behind HTTPS see [docs/DEPLOY.md](docs/DEPLOY.md).
+It installs the dependencies, builds the page, makes the first admin on the first run, and serves the page and the API on one address, `http://127.0.0.1:8767/`; data lives in `~/.ontopoc/data` (`ONTOPOC_DATA_DIR`, `ONTOPOC_PORT` to change). For a team behind HTTPS see [docs/DEPLOY.md](docs/DEPLOY.md). To try it with your team for two weeks, use the [pilot kit](docs/pilot/README.md).
 
 ### Option A: let your AI install it
 
@@ -77,7 +85,7 @@ Install and run OntoPoc (https://github.com/Longado/ontopoc) on this machine:
 5. From the repository root, first make the admin: PYTHONPATH=src python3 -m ontology_poc_generator.accounts create-admin (I type the name and password myself).
 6. Then start the service: PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --origin http://127.0.0.1:5178
 7. In another terminal, start the page: cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
-8. Open http://127.0.0.1:5178/, sign in to the team app, upload examples/company/demo_company.xlsx, and tell me how many tables the datasets page shows.
+8. Open http://127.0.0.1:5178/, sign in, upload docs/pilot/sample/orders.csv and customers.csv, and tell me how many rows each dataset shows.
 ```
 
 ### Option B: install it yourself
@@ -91,127 +99,127 @@ python3 -m pip install -e '.[sources]'   # sources: the PostgreSQL and MySQL dri
 PYTHONPATH=src python3 -m ontology_poc_generator.accounts create-admin
 
 # terminal 1: the service (port 8767, data in output/ontology-runs/workspace.sqlite; --data-dir for another folder)
-export OPENROUTER_API_KEY=your-key          # or DEEPSEEK_API_KEY
+export OPENROUTER_API_KEY=your-key          # or DEEPSEEK_API_KEY; optional
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --origin http://127.0.0.1:5178
 
 # terminal 2: the page
 cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 ```
 
-`http://127.0.0.1:5178/` is the team app; the earlier screen is at `http://127.0.0.1:5178/legacy.html`. The admin adds other people on the Users (用户) page. Without a key everything else works, and Q&A and modelling say the key is missing. After changing backend code, restart the service; the page says so when it finds the service running old code.
+The admin adds other people on the Users page. After changing backend code, restart the service; the page says so when it finds the service running old code.
 
 Model: `DEEPSEEK_API_KEY` goes to DeepSeek's own API. With only `OPENROUTER_API_KEY` it goes to OpenRouter, `deepseek/deepseek-v4.1-flash` by default. `EIP_MODEL_API_BASE` and `EIP_MODEL_NAME` name another OpenAI-compatible endpoint and model.
 
-Page code: the team app is in `landing-page/src/app/` and uses only the workspace API `/api/workspace/*`; the earlier screen is in `landing-page/src/legacy/` (entry `legacy.html`; the old landing text is `legacy.html?landing`).
+## For agents (MCP / Claude)
 
-## Use with MCP / Claude
+An outside agent connects as a named person, with a personal token an admin makes on the AI tool access page. With `ONTOPOC_TOOLSET=read` set, as in every command below, or with a read-only token (what that page offers first), it gets only six read-only MCP tools, worked out with that person's permissions:
 
-Some features are exposed as 40 MCP tools, and the repository is also a Claude Code plugin. The tools share the local service with the page: start the service first, then connect a client. An outside agent using a personal token (`ONTOPOC_TOKEN`) gets the 6 read-only tools by default: read definitions, ask, run an OntoPoc Query, list unconfirmed items, read a derived property, check whether each definition is confirmed now.
+| Tool | What it does |
+|---|---|
+| `describe_definitions` | The confirmed object types, properties, code meanings, relations, views and derived properties, with the refusal rules |
+| `ontopoc_query` | Work out a number straight from an ontology query ([QUERY.md](docs/QUERY.md)): no model |
+| `ask` | Ask in one sentence when a query cannot be written; the model writes the query, code runs it |
+| `list_unconfirmed` | What cannot be used yet, and why |
+| `read_derived_property` | The value of a confirmed derived property |
+| `definition_standing` | Whether each definition is confirmed now, by whom and on which data version; for one that is not, why and who can confirm it. The same is at `GET /api/workspace/agent/standing`, with a CSV download |
 
-### Install as a Claude Code plugin
-
-The repository is itself a Claude Code plugin. Once installed you can build and confirm ontologies from Claude Code; modelling, checking and the confirmation record still happen in the local OntoPoc service, so start it first (see above).
-
-```bash
-claude plugin marketplace add Longado/ontopoc
-claude plugin install ontopoc@ontopoc
-```
-
-In a new session there are two commands: `/ontopoc:ontopoc-build` (upload files and build) and `/ontopoc:ontopoc-review` (confirm item by item). At session start the plugin says one line if the local service is not running. It looks for Python as `ONTOPOC_PYTHON`, then `python3`, then `python`.
-
-### Connect Claude Code or another MCP client
-
-The 39 tools share the same local service as the page and can be called directly from Claude Code and other clients (run this in the repository root). 34 of them work on the earlier screen's runs (building, browsing, questions, confirmation, export) and 5 on the team app: read confirmed definitions, ask, run an OntoPoc Query ([QUERY.md](docs/QUERY.md)), list unconfirmed items, read a derived property. Uploading, writing definitions and confirming in the team app have no MCP tool yet; use the page or HTTP.
+What it refuses: anything that rests on a definition that is not confirmed, or needs another look, or that the token's person may not see. The refusal is passed on as it is, with the reason; no guessed answer. These six tools cannot upload, write definitions or confirm. A token with the scope "all" (the default for a token a person makes on their own account page) used without `ONTOPOC_TOOLSET=read` also exposes the earlier screen's 34 run tools, which can upload files, build and confirm there; so set it. Start the service first, then, from the repository root:
 
 ```bash
-claude mcp add ontopoc -- env ONTOPOC_TOOLSET=all PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server
+claude mcp add ontopoc -- env ONTOPOC_TOKEN=<your token> ONTOPOC_TOOLSET=read PYTHONPATH=$PWD/src python3 -m ontology_poc_generator.mcp_server
 ```
 
-The tool list is in [docs/MCP.md](docs/MCP.md).
+The AI tool access page shows a JSON block for Claude Desktop, Cursor and other MCP clients, with the service address filled in; add `"ONTOPOC_TOOLSET": "read"` to its `env`. The full list is in [docs/MCP.md](docs/MCP.md). The page also offers a skill pack (zip): a snapshot of the confirmed definitions that does not refuse when the data changes later, so prefer MCP.
 
-## The earlier screen organised around runs
+**Claude Code plugin.** The repository is also a Claude Code plugin (`claude plugin marketplace add Longado/ontopoc`, then `claude plugin install ontopoc@ontopoc`). Its two commands, `/ontopoc:ontopoc-build` and `/ontopoc:ontopoc-review`, still work on the earlier run-based screen, not on the team app's gate; see [docs/LEGACY_SCREEN.en.md](docs/LEGACY_SCREEN.en.md).
 
-The earlier screen organised around one run at a time is still at `legacy.html`. Its overview, screenshots, how it works, a walkthrough and features are in [docs/LEGACY_SCREEN.en.md](docs/LEGACY_SCREEN.en.md).
+## What is in it, and what it does not do
 
-## Ontology FAQ
+| Part | What it does |
+|---|---|
+| Accounts and permissions | Local accounts with three roles (admin, builder, viewer) and server-side sessions. A viewer reads confirmed definitions only. An admin can limit an object type to named people, limit rows by rule (allow-lists only), hide a column, and keep a column's values from the model |
+| Data | Upload CSV or Excel, update by key or overwrite, a new version each time, with the rows counted on the way in. Read-only PostgreSQL and MySQL: a pull **copies** the table into a new version, at most 500,000 rows and about 200 MB per pull; a larger table is refused, not cut short. Only PostgreSQL and MySQL; checking in place in your database is not built. Schedules pull or run pipelines hourly, daily, weekly |
+| Definitions | Object types (key, properties, what code columns mean), relations (how many rows connect, whether the declared cardinality holds), views, derived properties (a formula over a row, or a statistic through relations) |
+| Confirmation | Proposed → checked by code → confirmed by another builder, with the data version and anchors kept. When the data or a definition changes, what no longer holds goes back to "needs another look", and whoever can confirm it, and whoever confirmed it last, gets one notice in Notifications. One exception for relations: one confirmed with every row connected and no repeated key stays confirmed while that is still true, even when the row counts changed. What one upload moved can be confirmed together on one screen |
+| Answers | Q&A: a question that names an unconfirmed or stale definition is refused before the model is asked. The model sees structure, meanings and the values of columns with few distinct values, never rows, and writes a structured query; code runs it and checks the definitions it used. OntoPoc Query works out numbers with no model. Boards answer through the same gate |
+| Around it | Light pipelines (filter, join, group, dedupe, calculated columns, union, split), the lineage and relation graphs (coloured by why something went back), an object explorer, English and Chinese pages |
 
-### What is ontology engineering?
-
-Here, ontology engineering means turning business objects, how they are identified, and the relations between them into definitions you can check. OntoPoc is trying a concrete path: draft an ontology from a few business tables or one document, let code check the draft against the data, then have a person confirm item by item and save the result.
-
-### How is an ontology different from a knowledge graph?
-
-An ontology first states which objects exist, how they are identified, and which relations are allowed. A knowledge graph usually also contains specific instances and their relations. OntoPoc focuses on the former: drafting and checking definitions, then running checks and Q&A on the data you uploaded this time. It is not a knowledge-graph platform and does not provide a durable instance store or online object query.
-
-### How is this different from generating an ontology automatically?
-
-Recent work has a language model do most of the building of an ontology or a graph from text: AutoOntic ([arXiv 2611.15467](https://arxiv.org/abs/2611.15467)) induces types, a hierarchy and relation constraints, and Causals ([arXiv 2611.16267](https://arxiv.org/abs/2611.16267)) is a graph built from news. Both say what they leave unmeasured: AutoOntic's evaluation "does not directly measure extraction precision", and the Causals release "has no representative estimate of semantic accuracy". OntoPoc works on the step after drafting, and mainly on tables: in the team app, code checks each definition against the data, a named person confirms it, and it goes back for another look when the data changes. A model may draft a definition there, but Q&A and agents do not use it before those checks and a confirmation; until then a board shows a number that rests on it only to builders and admins, in grey with the reason, and not to viewers. (The earlier screen organised around runs is looser: it keeps what nobody has judged yet.)
-
-### How does this relate to a semantic layer?
-
-A semantic layer often sits on a warehouse or metrics platform and defines business meaning (objects, measures, definitions) for reuse in queries. OntoPoc sits one step earlier: the first time you receive a client's tables or a document, it helps sort objects, identity fields, relations, and the definitions that still need the client's answer. You can export object forms, a pipeline requirements sheet, and Turtle (OWL / SHACL) for later platform or pipeline work. Import into any specific platform has not been tested yet.
-
-### What is an ontology MCP, and how do I use it here?
-
-Here, ontology MCP means calling ontology-related functions through MCP tools. OntoPoc exposes some page features as MCP tools (39 in all, 5 of them for the team app: read definitions, ask, run an OntoPoc Query, list unconfirmed items, read a derived property) for clients such as Claude Code, Claude Desktop, and Cursor. The tools use local stdio and talk to the modelling service already running on this machine. Claude Code can also install the repository as a plugin and use `/ontopoc:ontopoc-build` and `/ontopoc:ontopoc-review`. Setup is under [Use with MCP / Claude](#use-with-mcp--claude); the tool list is in [docs/MCP.md](docs/MCP.md).
-
-### Who is OntoPoc for today?
-
-The team app is meant for a data team: builders make definitions from the data and confirm each other's, viewers ask questions and read boards. The earlier screen is meant for an implementation consultant on a data platform, sorting business objects and relations the first time client data arrives. Nobody outside the author has used either independently yet; the UI has only been used on macOS. See [Known issues](docs/KNOWN_ISSUES.en.md) for current limits.
+It does not do heavy orchestration, large data, live queries against your database, or a wide choice of charts. Actions (approved writes to data) and the AI steps inside pipelines are still there but off the main path. The earlier run-based screen is at `legacy.html` (last line below).
 
 ## Privacy
 
-- Uploaded files and all results stay on this machine, in `output/ontology-runs/`.
-- In the team app the model sees the names and types of object types and properties, confirmed code meanings, relations, what derived properties say, and every value of columns with few distinct values (such as city or tier). Key columns and columns an admin marks "don't send values" (不发取值) send no values. No rows are sent.
-- Sent to the model by the earlier screen (DeepSeek, or a model on OpenRouter): the modelling purpose; for each table its row count, each column's name, up to 3 example values, the counts code took (values present, distinct values, whether all differ), the columns or column pairs that differ on every row, and likely links (including into the same table); every value of a category-like column; when writing questions, every value of columns with at most 12 distinct values, and any question you type in 智能问答 (Q&A) as written; when you click "起草" (draft) for field descriptions, each field's type and maximum length; when you click "找出可能的对应" (find possible matches), for objects identified by a single field with 2 to 200 values, all identity values and how many rows each appears in; for documents, the text, at most 12 chunks per upload. The upload page shows exactly what will be sent for modelling, column by column.
-- Each model call leaves one line in `output/ontology-runs/model_calls.jsonl` (which agent, how long, success or failure), never the content.
-- The service accepts requests from this machine only.
+- Uploaded files, pulled tables and all results stay on the machine running the service.
+- The model sees the names and types of object types and properties, confirmed code meanings, relations, what derived properties say, and every value of columns with few distinct values (such as city or tier). Key columns and columns an admin marks "don't send values" send no values. No rows are sent.
+- Each model call leaves one line in `model_calls.jsonl` (which agent, how long, success or failure), never the content.
+- What the earlier screen sends to the model is in [docs/LEGACY_SCREEN.en.md](docs/LEGACY_SCREEN.en.md#what-the-model-sees).
 
 ## Known issues
 
 See [docs/KNOWN_ISSUES.en.md](docs/KNOWN_ISSUES.en.md).
 
+## Ontology FAQ
+
+### What is ontology engineering here?
+
+Writing checkable definitions for business objects: how each is identified, what its codes mean, which rows count (a view) and which relations hold. In OntoPoc a person or a model puts a definition forward, code checks it against the data, and a different person confirms it.
+
+### How is an ontology different from a knowledge graph?
+
+An ontology first states which objects exist, how they are identified, and which relations are allowed. A knowledge graph usually also contains the specific instances and their links. OntoPoc keeps to the former, on data copied into its own workspace; it is not a knowledge-graph platform and does not provide a durable instance store.
+
+### How is this different from generating an ontology automatically?
+
+Recent work has a language model do most of the building of an ontology or a graph from text: AutoOntic ([arXiv 2611.15467](https://arxiv.org/abs/2611.15467)) induces types, a hierarchy and relation constraints, and Causals ([arXiv 2611.16267](https://arxiv.org/abs/2611.16267)) is a graph built from news. Both say what they leave unmeasured: AutoOntic's evaluation "does not directly measure extraction precision", and the Causals release "has no representative estimate of semantic accuracy". OntoPoc works on the step after drafting, and mainly on tables: code checks each definition against the data, a named person confirms it, and it goes back for another look when the data changes. A model may draft a definition, but Q&A and agents do not use it before those checks and a confirmation; until then a board shows a number that rests on it only to builders and admins, in grey with the reason, and not to viewers.
+
+### How does this relate to a semantic layer?
+
+Your metrics may already be defined in a semantic layer on a warehouse. Who signed them? Who notices when the data changes underneath? OntoPoc is about that part: each definition carries the person who confirmed it and the data version, goes back for another look when the data moves, and the AI refuses to use it until someone confirms it again. It keeps its own copy of the data. If you use dbt, upload `manifest.json` on the object types page: OntoPoc reads its model tests (unique, not_null, relationships, accepted_values) and proposes object types and relations, at most 50 per import and shown as a preview before anything is written; another builder still confirms each against the data. It does not read composite keys, dbt constraints, metrics, the semantic layer or dbt Cloud, it does not follow later changes to the manifest, and the import confirms nothing. It does not export to a specific semantic layer yet.
+
+### What is an ontology MCP, and how do I use it here?
+
+Here, ontology MCP means an agent reading a team's confirmed ontology through MCP tools. With `ONTOPOC_TOOLSET=read` or a read-only personal token, OntoPoc's MCP server gives an agent six read-only tools (read definitions, ask, run an OntoPoc Query, list unconfirmed items, read a derived property, see whether each definition is confirmed now) for clients such as Claude Code, Claude Desktop and Cursor, over local stdio. Setup is under [For agents](#for-agents-mcp--claude); the list is in [docs/MCP.md](docs/MCP.md).
+
+### Who is OntoPoc for today?
+
+A small data team (three to eight people, ops, finance, data) that wants an AI to answer questions about its own tables, and wants it to refuse rather than answer quietly wrong. Builders write definitions and confirm each other's; viewers ask questions and read boards. Nobody outside the author has used it independently yet; the page has only been used on macOS.
+
 ## Contributing
 
-**Can an ontology be read, corrected and carried forward by the people whose business it describes?**
+**Does a team's AI refuse at the right moments, and only then?**
 
 | Area | Contribution |
 |---|---|
-| User research | Have a consultant who is not the author use it from upload to exporting the meeting note without help, and record where they get stuck |
-| Data quality | Rule discovery has only "required" and "date order"; value ranges, non-negative and others need defining on real data first |
-| Platform integration | Test batch import on a specific data platform and add the relation table export |
-| Prompts and evaluation | Pick accepted results from local runs as labelled samples, and compare old and new prompts with one command |
+| Pilot | Run the [pilot kit](docs/pilot/README.md) with a small team and send the question log: right, wrong, refused, and whether each refusal was for a good reason |
+| Checks | Find a definition that passes the checks and is still wrong on real-looking data, and file it with the data |
+| Agents | Connect an MCP client with a read-only token and report where the refusal rules were unclear to it |
+| Prompts and evaluation | Pick accepted answers as labelled samples and compare old and new prompts with one command |
 | Cross-platform | Run it on Windows or Linux and file what breaks |
 
-Issues and pull requests are welcome. Read the [development guardrails](docs/DEVELOPMENT_GUARDRAILS.md) first.
-
-### Sign-in and accounts
-
-The service requires sign-in and has no default account or password. Creating the admin, roles, tokens, two-person confirmation and running it for a team are in [docs/ACCOUNTS.en.md](docs/ACCOUNTS.en.md).
+Issues and pull requests are welcome. Read the [development guardrails](docs/DEVELOPMENT_GUARDRAILS.md) first. Sign-in, roles, tokens and two-person confirmation are in [docs/ACCOUNTS.en.md](docs/ACCOUNTS.en.md); the service has no default account or password.
 
 ## Development
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (about 2000; install ".[check,sources]" first, or TTL and some source checks are skipped)
-npm --prefix landing-page run test:unit                       # page tests (about 530)
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (2,435 on 2026-11-20; install ".[check,sources]" first, or TTL and some source checks are skipped)
+npm --prefix landing-page run test:unit                       # page tests (832 on 2026-11-20)
 PYTHONPATH=src:. python3 scripts/real_model_check.py --out /tmp/check   # real model against SQL (needs a model key; fails only on a wrong number)
-PYTHONPATH=src:. python3 scripts/run_company_ontology.py --file examples/company/demo_company.xlsx --output output/demo-run.json
-PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # a trial run in another data directory, leaving your runs alone
-PYTHONPATH=src:. python3 scripts/make_demo_company.py         # regenerate the synthetic workbook
+PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # a trial run in another data directory
 ```
 
-The design documents are in Chinese:
+Page code: the team app is in `landing-page/src/app/` and uses only `/api/workspace/*`; the earlier screen is in `landing-page/src/legacy/`. The design documents are in Chinese:
 
 | Document | About |
 |---|---|
-| [docs/PRODUCT.md](docs/PRODUCT.md) | Direction and boundaries |
-| [docs/PLAYGROUND_INTERNALIZATION.md](docs/PLAYGROUND_INTERNALIZATION.md) | Where the ontology library comes from, the limits of the RDF/XML import, and later rounds |
-| [docs/AGENTS.md](docs/AGENTS.md) | The 6 agents' definition cards and the call log |
+| [docs/PRODUCT.md](docs/PRODUCT.md) | What OntoPoc is for, and what it keeps and leaves out |
+| [docs/QUERY.md](docs/QUERY.md) | OntoPoc Query |
 | [docs/MCP.md](docs/MCP.md) | The MCP tools |
-| [docs/PLATFORM_FORM_REFERENCE.md](docs/PLATFORM_FORM_REFERENCE.md) | Data platform object forms, compared |
-| [docs/PRD_ITERATION_9.md](docs/PRD_ITERATION_9.md) | The latest iteration plan (round 9, closing the loop); changes in later rounds are described in the merged PRs |
+| [docs/AGENTS.md](docs/AGENTS.md) | Every model call: its definition card and the call log |
 | [docs/DEVELOPMENT_GUARDRAILS.md](docs/DEVELOPMENT_GUARDRAILS.md) | Red lines, and directions waiting for a trigger |
 
 ## License
 
 [AGPL-3.0](LICENSE) © Yutai Lin. v0.2.0 and earlier stay under MIT; for a commercial license, see [NOTICE.md](NOTICE.md).
+
+---
+
+The earlier screen, organised around one modelling run at a time (drafting an ontology from a few tables or a document, the caliber card, object forms and Turtle export; a PDF upload there also needs `pdftotext` from poppler), is still at `legacy.html`: [docs/LEGACY_SCREEN.en.md](docs/LEGACY_SCREEN.en.md).

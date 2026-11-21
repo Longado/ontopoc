@@ -1,6 +1,7 @@
 // The words of the object type pages, as plain functions of what the service sends, so they can be tested without a browser.
 import { timeText } from "./format.js";
 import { t } from "./i18n/index.js";
+import { TYPE_TABS } from "./routeModel.js";
 import { WORD_LIST, WORDS } from "./typeWords.js";
 
 const STATES = ["proposed", "checked", "confirmed", "needs_look", "rejected"];
@@ -118,6 +119,12 @@ export function tabCounts(type, uses, live = {}) {   // `live`: a tab's own list
   const of = (kind) => uses.used_by.find((u) => u.kind === kind)?.count ?? 0;
   return { ...own, derived: of("derived"), views: of("views"), actions: of("actions"), ...live };
 }
+
+/** The tabs a type page shows, in order: 行为 only to a builder, and only when the type has actions (or the person opened that tab by its address). */
+export const typeTabs = (counts, tab, mayBuild) => TYPE_TABS.filter((k) => k !== "actions" || (mayBuild && ((counts?.actions ?? 0) > 0 || tab === "actions")));
+
+/** Whether a builder sees "+ 行为" after the tabs: the type has no actions yet (so the 行为 tab is hidden) and the count is known. The tab opens to make the first one. */
+export const offerFirstAction = (counts, tab, mayBuild) => mayBuild && tab !== "actions" && counts?.actions === 0;
 
 /** What uses a type, as one line: "Views 1 · Actions 3 · Relations 4"; "" when nothing uses the type. */
 export const usesSummary = (uses) => (uses?.used_by ?? []).map((u) => `${u.label} ${u.count}`).join(" · ");

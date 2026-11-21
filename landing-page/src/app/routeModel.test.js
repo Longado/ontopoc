@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { readFileSync } from "node:fs";
 import { ADMIN_NAV, NAV, PAGES, PLANNED, afterSignIn, hrefFor, mayOpen, navFor, navKeyOf, navLabelOf, parseRoute } from "./routeModel.js";
-import { setLocale } from "./i18n/index.js";
+import { setLocale, t } from "./i18n/index.js";
 
 setLocale("zh");   // these tests assert the Chinese words; the English ones are in english.test.js
 
@@ -80,23 +80,42 @@ test("a page not built yet has an address of its own and says what it will do", 
   for (const { items } of NAV) for (const i of items) assert.ok(i.built || i.key in PLANNED, i.key);   // nothing in the sidebar leads nowhere
 });
 
-test("the sidebar groups what the product has, and marks what is built", () => {
-  assert.deepEqual(NAV.map((g) => g.label ?? null), [null, "数据", "业务对象", "应用"]);
-  assert.deepEqual(NAV.flatMap((g) => g.items.map((i) => i.label)), ["首页", "助手", "看板", "消息", "数据集", "数据源", "管道", "调度", "血缘", "任务", "待确认", "对象类型", "关系", "AI 工具接入"]);
+test("the sidebar groups what the product has, and marks what is built: the gate's daily work (定义) before the data that feeds it", () => {
+  assert.deepEqual(NAV.map((g) => g.label ?? null), [null, "定义", "数据", "智能体"]);
+  assert.deepEqual(NAV.flatMap((g) => g.items.map((i) => i.label)), ["首页", "助手", "看板", "消息", "待确认", "对象类型", "关系", "血缘", "数据集", "数据源", "管道", "调度", "AI 工具接入"]);
   for (const g of [...NAV, ...ADMIN_NAV].filter((g) => g.label)) assert.ok(g.hint && g.icon, g.label);   // a one-line grey explainer and an icon under each group
   for (const i of [...NAV, ...ADMIN_NAV].flatMap((g) => g.items)) assert.ok(i.icon, i.key);
   assert.equal(navKeyOf({ page: "dataset", name: "x" }), "datasets");
 });
 
-test("a viewer sees four items and the definitions they may read, a builder the three groups in full, an admin settings too", () => {
-  const names = (user) => navFor(user).map((g) => [g.label ?? null, g.items.map((i) => i.label)]);
-  assert.deepEqual(names({ role: "viewer" }), [[null, ["首页", "助手", "看板", "消息"]], ["数据", ["数据集", "血缘"]], ["业务对象", ["对象类型", "关系"]]]);   // read-only pages the service serves a viewer
-  assert.deepEqual(names({ role: "builder" }).map((g) => g[0]), [null, "数据", "业务对象", "应用"]);
-  assert.deepEqual(names({ role: "admin" }).map((g) => g[0]), [null, "数据", "业务对象", "应用", "设置"]);
+test("a viewer sees the main line and the definitions they may read, a builder the review queue first, the data and the agents, an admin settings too", () => {
+  const names = (user, has) => navFor(user, has).map((g) => [g.label ?? null, g.items.map((i) => i.label)]);
+  assert.deepEqual(names({ role: "viewer" }), [[null, ["首页", "助手", "看板"]], ["定义", ["对象类型", "关系", "血缘"]], ["数据", ["数据集"]]]);   // read-only pages the service serves a viewer; 数据集 stays, as it shipped for viewers
+  assert.deepEqual(names({ role: "builder" }).map((g) => g[0]), [null, "定义", "数据", "智能体"]);
+  assert.deepEqual(names({ role: "admin" }).map((g) => g[0]), [null, "定义", "数据", "智能体", "设置"]);
   assert.deepEqual(names({ role: "admin" })[4][1], ["工作区", "用户", "权限"]);
-  assert.deepEqual(names({ role: "builder" })[1][1], ["数据集", "数据源", "管道", "调度", "血缘", "任务"]);   // 血缘 lives under 数据
+  assert.deepEqual(names({ role: "builder" })[1][1], ["待确认", "对象类型", "关系", "血缘"]);   // the queue first; 血缘 says why a definition went back, so it lives here
+  assert.deepEqual(names({ role: "builder" })[2][1], ["数据集", "数据源", "管道", "调度"]);   // no 任务: the page stays at its address
   assert.deepEqual(navFor(null).map((g) => g.label ?? null), [null]);
-  for (const role of ["viewer", "builder", "admin"]) for (const g of navFor({ role })) for (const i of g.items) assert.equal(mayOpen(i.key, { role }), true, `${role} ${i.key}`);   // nothing offered leads to a refusal
+  for (const role of ["viewer", "builder", "admin"]) for (const g of navFor({ role }, { notices: true })) for (const i of g.items) assert.equal(mayOpen(i.key, { role }), true, `${role} ${i.key}`);   // nothing offered leads to a refusal
+});
+
+test("消息 is in the sidebar only for someone who has received a notice; the page stays at its address and in the top bar", () => {
+  const main = (user, has) => navFor(user, has)[0].items.map((i) => i.key);
+  for (const role of ["viewer", "builder", "admin"]) {
+    assert.deepEqual(main({ role }), ["home", "qa", "boards"], role);
+    assert.deepEqual(main({ role }, { notices: true }), ["home", "qa", "boards", "notices"], role);
+  }
+  assert.equal(mayOpen("notices", { role: "viewer" }), true);
+  assert.deepEqual(parseRoute("#/notices"), { page: "notices" });
+});
+
+test("the task list is not in the sidebar but its page and address stay", () => {
+  assert.ok(!NAV.flatMap((g) => g.items).some((i) => i.key === "tasks"));
+  assert.deepEqual(parseRoute("#/tasks"), { page: "tasks" });
+  assert.equal(hrefFor({ page: "tasks" }), "#/tasks");
+  assert.equal(mayOpen("tasks", { role: "builder" }), true);
+  assert.equal(navKeyOf({ page: "tasks" }), null);
 });
 
 test("every page stays reachable from some item or by its address", () => {
@@ -209,4 +228,25 @@ test("a fresh sign-in lands on the home page; an expired session returns to wher
   for (const hash of ["", "#/", "#/qa", "#/types/order/props", "#/home"]) assert.equal(afterSignIn(hash, false), "#/home", hash);
   assert.equal(afterSignIn("#/qa/3", true), "#/qa/3");
   assert.equal(afterSignIn("", true), "#/home");
+});
+
+test("a viewer cannot open the pages that make or change definitions, nor the task list: refused at the address, not after filling a form", () => {
+  const viewer = { role: "viewer" }, builder = { role: "builder" };
+  for (const page of ["typenew", "typeedit", "relationnew", "relationedit", "tasks"]) {
+    assert.equal(mayOpen(page, viewer), false, page);
+    assert.equal(mayOpen(page, builder), true, page);
+  }
+});
+
+test("the words for a page one may not open do not say builders may open an admin's page; the guest banner says what really happens", () => {
+  for (const locale of ["zh", "en"]) {
+    setLocale(locale);
+    try {
+      assert.doesNotMatch(t("shell.forbidden.title") + t("shell.forbidden.text"), /建设者或管理员|builder or admin|builders or admins/i, locale);
+      assert.doesNotMatch(t("auth.guest.banner"), /每天重置|resets daily/i, locale);
+      assert.match(t("auth.guest.banner"), /24/, locale);
+    } finally {
+      setLocale("zh");
+    }
+  }
 });

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { answerView, definitionHref, isAnswer, isThenAnswer, queryExample, queryParams, queryRecord, rangeNotes, readText, scopeText, standingText, staleHeading, staleLines } from "./qaModel.js";
+import { answerView, definitionHref, isAnswer, namedLines, isThenAnswer, queryExample, queryParams, queryRecord, rangeNotes, readText, scopeText, standingText, staleHeading, staleLines } from "./qaModel.js";
 
 const types = [{ id: "order", name: "订单" }];
 
@@ -81,7 +81,7 @@ test("a query that finds nothing says so instead of breaking the card", () => {
   assert.equal(answerView({ status: "refused" }), null);
 });
 
-import { timeWord, timeWarning, criteriaLine, historyView } from "./qaModel.js";
+import { timeWord, timeWarning, criteriaLine, dataAsOf, historyView } from "./qaModel.js";
 import { setLocale } from "./i18n/index.js";
 
 setLocale("zh");   // these tests assert the Chinese words; the English ones are in askEnglish.test.js
@@ -110,6 +110,18 @@ test("the caliber line says what was counted and as of when", () => {
   assert.equal(criteriaLine({}, ""), "");
 });
 
+test("the caliber line names the derived property an answer read its values from", () => {
+  const record = { query_text: "SELECT sum(c.有效订单金额) AS 合计\nFROM (c:客户)", definitions: [{ kind: "type", name: "客户" }, { kind: "derived", name: "客户.有效订单金额" }] };
+  assert.equal(criteriaLine(record, ""), "按已确认的定义：派生属性「客户.有效订单金额」");   // not 全部客户 alone: the amounts are the property's
+  assert.equal(criteriaLine({ ...record, query_text: `${record.query_text}\nWHERE c.tier = 'A'` }, ""), "按已确认的定义：派生属性「客户.有效订单金额」，客户.tier = A");
+});
+
+test("the data an answer read is named by its version and when that version came, not by when the question was asked", () => {
+  const record = { asked_at: "2026-11-20T09:00:00+00:00", data_as_of: [{ dataset: "orders", version: 2, imported_at: "2026-11-20T07:43:00+00:00" }, { dataset: "customers", version: 1, imported_at: "2026-11-20T07:27:00+00:00" }] };
+  assert.equal(dataAsOf(record, (iso) => iso.slice(11, 16)), "orders 第 2 版（07:43）、customers 第 1 版（07:27）");
+  assert.equal(dataAsOf({ asked_at: "2026-11-20T09:00:00+00:00" }, (iso) => iso), "");   // an answer kept before versions were noted says nothing rather than the question's time
+});
+
 test("the caliber line names the view an answer read and no query quoting", () => {
   const view = { evidence: { views: [{ name: "Valid orders", kind: "filter", rows: 107 }] } };
   assert.equal(criteriaLine({ query_text: "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)", ...view }, ""), "按已确认的定义：视图「Valid orders」");   // not 全部Order: the view chose the rows
@@ -128,4 +140,12 @@ test("a grouped total has a header over each of its three columns", () => {
 
 test("history rows carry question, status and time", () => {
   assert.deepEqual(historyView({ id: 3, question: "q", status: "answered", asked_at: "t" }, "T"), { id: 3, question: "q", meta: "T 已回答" });
+});
+
+test("a viewer's refusal line that names nothing is shown as its text alone, not as a link (the payload a viewer gets while a definition waits)", () => {
+  const refusal = { kind: "unsettled", definitions: [{ kind: "type", state: "needs_look", waiting: true, text: "A definition it uses is waiting to be confirmed again" }] };
+  assert.deepEqual(namedLines(refusal.definitions), [{ key: "line-0", plain: true, text: "A definition it uses is waiting to be confirmed again" }]);
+  assert.equal(definitionHref(undefined), null);
+  const named = namedLines([{ id: "objview:有效订单", type: "order", kind: "view", name: "有效订单", state: "needs_look" }, { kind: "type", state: "needs_look", waiting: true, text: "x" }]);
+  assert.deepEqual(named.map((l) => [l.key, l.plain ?? false, l.href ?? null]), [["objview:有效订单", false, "#/types/order/views"], ["line-1", true, null]]);
 });

@@ -68,7 +68,7 @@ export const csvHref = (name, version = null) => datasetPath(name, version, "for
 export const deleteDataset = (name, who) =>
   request("/api/workspace/datasets/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, who: who.trim() }) });
 
-/** What an upload would send back to "needs another look", worked out on a copy: {moved: [{element, kind, title, reason}], datasets}. Nothing is written. */
+/** What an upload would send back to "needs another look", worked out on a copy: {moved: [{element, kind, title, reason}], datasets, boards (the board cards it moves, as previewImpact)}. Nothing is written. */
 export const previewUpload = (payload) =>
   request("/api/workspace/datasets/upload/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
 
@@ -107,15 +107,15 @@ export const getTypeDerived = (id) => request(typePath(id, "/derived"));
 export const getDerivedLog = (id, name) => request(typePath(id, `/derived/${encodeURIComponent(name)}/log`));
 export const createDerived = (payload) => send("/api/workspace/types/derived", payload);
 export const updateDerived = (payload, version) => send("/api/workspace/types/derived/update", { ...payload, version });
-export const confirmDerived = (type, englishName, version, seen) => send("/api/workspace/types/derived/confirm", { type, english_name: englishName, version, seen });
+export const confirmDerived = (type, englishName, version, seen, newValues = undefined) => send("/api/workspace/types/derived/confirm", { type, english_name: englishName, version, seen, ...(newValues?.length ? { new_values: newValues } : {}) });
 export const trialDerived = (payload) => tryDerived("/trial", payload);
 export const shapeDerived = (type, path) => tryDerived("/shape", { type, path });
 export const checkDerivedExpression = (type, expression) => tryDerived("/expression", { type, expression });
 export const suggestTypes = (datasets, purpose) => send("/api/workspace/types/suggest", { datasets, purpose });
 /** A dbt manifest.json (its text): with apply false, what it would propose and skip, nothing written; with apply true, put forward for another builder to confirm. */
 export const importDbt = (manifest, apply) => send("/api/workspace/types/dbt-import", { manifest, apply });
-/** The assistant's draft of the meanings of one type's code columns: one model call over counts, nothing is saved. */
-export const draftMeanings = (id) => send("/api/workspace/types/meanings-draft", { id });
+/** The assistant's draft of the meanings of one type's code columns: one model call over counts, nothing is saved. `hint`: what the person typed, sent as the purpose. */
+export const draftMeanings = (id, hint = "") => send("/api/workspace/types/meanings-draft", { id, ...(hint.trim() ? { hint: hint.trim() } : {}) });
 
 // actions: the definitions of one type with their parameters, one action with its records and log, submitting, approving
 const actionPath = (name, tail = "") => `/api/workspace/actions/${encodeURIComponent(name)}${tail}`;
@@ -193,6 +193,13 @@ export const getQueueGroup = (dataset, version) => request(`/api/workspace/queue
 /** Confirms them in one action: `items` [{element, version, seen, new_values?}], what the person looked at. All or nothing. */
 export const confirmGroup = (dataset, version, items) => send("/api/workspace/queue/confirm-group", { dataset, version, items });
 export const sendBack = (element, version, reason) => send("/api/workspace/queue/send-back", { element, version, reason });
+/** What confirming would do to the board numbers this person may open, worked out on a copy: the same body as confirmItem (one item) or confirmGroup ({dataset, version,
+ * items}). {refused, cards: [{board, card, now, after, change}], answers: {mine, others}, checked}. Nothing is written. */
+export const previewImpact = (body) => send("/api/workspace/impact", body);
+/** The receipt of confirmed definitions: what changed, who proposed and confirmed it on which version, and the board numbers before and after. */
+export const getReceipt = (elements) => send("/api/workspace/receipt", { elements });   // a POST: it copies the workspace, which a read-only token may not make it do
+/** What the workspace stands on: definitions by state, checks, rows covered, who confirmed what on which version. */
+export const getWorkspaceReceipt = () => request("/api/workspace/receipt");
 export const getPermissions = () => request("/api/workspace/permissions");
 /** `visibleTo`: "everyone" or the ids of the people who may see the type. */
 export const setPermission = (type, visibleTo) => send("/api/workspace/permissions", { type, visible_to: visibleTo });
@@ -258,6 +265,8 @@ export const previewBoard = (spec, bar = {}, params = {}) => readPost("/api/work
 export const createBoard = (payload) => send("/api/workspace/dashboards", payload);
 export const updateBoard = (payload) => send("/api/workspace/dashboards/update", payload);
 export const deleteBoard = (id) => send("/api/workspace/dashboards/delete", { id });
+export const recordCheck = (payload) => send("/api/workspace/checked", payload);   // a number the team checked: {board, component} or {question}, with value and note
+export const getAnswerCheck = (id) => request(`/api/workspace/checked/question/${id}`);
 
 export const getAgentInfo = () => request("/api/workspace/agent");
 /** The address that downloads the skill folder (a zip) as the signed-in person. */

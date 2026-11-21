@@ -82,7 +82,7 @@ export default {
   "gotoLink": "{other}（{name}）{unconfirmed}",
   "gotoUnconfirmed": "，关系未确认",
   "page.row": "第 {n} 行",
-  "page.crumbGroup": "业务对象",
+  "page.crumbGroup": "定义",
   "page.crumbTypes": "对象类型",
   "page.sub": "{type}，来自 {dataset} 第 {version} 版",
   "page.toQueue": "去待确认",

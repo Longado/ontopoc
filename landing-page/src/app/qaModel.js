@@ -56,14 +56,18 @@ export function staleHeading(record) {
 /** The answer's figure is greyed ("当时的答案") when a definition it stood on is no longer confirmed as it was. */
 export const isThenAnswer = (record) => (record.changed ?? []).length > 0;
 
-/** Where a definition's own page is: a type or its meanings, or a relation. */
+/** Where a definition's own page is: a type or its meanings, or a relation. null for a line that names no definition. */
 export function definitionHref(id, type = null) {
+  if (typeof id !== "string") return null;
   if (id.startsWith("objview:")) return `#/types/${encodeURIComponent(type ?? "")}/views`;   // a view is shown on its type's page
   if (id.startsWith("derived:")) return `#/types/${encodeURIComponent(type ?? id.slice("derived:".length).split(":")[0])}/derived`;   // so is a derived property
   if (id.startsWith("relation:")) return `#/relations/${encodeURIComponent(id.slice("relation:".length))}`;
   const name = id.startsWith("enum:") ? id.slice("enum:".length).split(":")[0] : id.slice("objtype:".length);
   return `#/types/${encodeURIComponent(name)}`;
 }
+
+/** A refusal's list as lines to show: a definition it names, with its page; or a line that names none (a viewer is told only that something waits), its text alone. */
+export const namedLines = (list) => (list ?? []).map((d, i) => (typeof d.id === "string" ? { ...d, key: d.id, href: definitionHref(d.id, d.type) } : { key: `line-${i}`, plain: true, text: d.text ?? "" }));
 
 /** The line that says what a person may ask about. */
 export const scopeText = (scope) => t("ask.scope", { count: scope.types.length });
@@ -145,11 +149,16 @@ export function criteriaLine(record, asOf) {
   const plain = (s) => s.replace(/`([^`]*)`/g, "$1");
   const alias = new Map(aliases.map((m) => [m[1], plain(m[2])]));
   const where = /\bWHERE\b([\s\S]*?)(?:\bGROUP BY\b|\bORDER BY\b|\bLIMIT\b|$)/i.exec(text)?.[1]?.trim();
-  const views = (record.evidence?.views ?? []).map((v) => t("ask.criteria.view", { name: v.name }));
+  const views = [...(record.evidence?.views ?? []).map((v) => t("ask.criteria.view", { name: v.name })),
+    ...(record.definitions ?? []).filter((d) => d.kind === "derived").map((d) => t("ask.criteria.derived", { name: d.name }))];   // the views that chose its rows, the derived properties it read values from
   const conds = where ? [plain(where.replace(/\b(\w+)\.(?=[^\s.])/g, (s, a) => (alias.has(a) ? `${alias.get(a)}.` : s)).replace(/'((?:[^']|'')*)'/g, "$1").replace(/\s+/g, " "))] : [];
   const cond = [...views, ...conds].join(t("ask.criteria.sep")) || t("ask.criteria.all", { type: alias.get(aliases[0][1]) });
   return t("ask.criteria", { cond, asOf: asOf ? t("ask.criteria.asOf", { when: asOf }) : "" });
 }
+
+/** "数据截至" of an answer: each dataset it read by its version and when that version came (`when` formats the time), "" when the answer does not say (one kept
+ * before this was noted): never the time the question was asked. */
+export const dataAsOf = (record, when) => (record.data_as_of ?? []).map((d) => t("ask.criteria.version", { name: d.dataset, version: d.version, when: d.imported_at ? when(d.imported_at) : "" })).join(t("ask.criteria.and"));
 
 /** A row of the history list: the question and one grey line (when, and how it went). */
 export const historyView = (h, whenText) => ({ id: h.id, question: h.question, meta: `${whenText} ${statusText(h.status)}`.trim() });

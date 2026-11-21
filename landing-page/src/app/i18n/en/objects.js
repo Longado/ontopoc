@@ -82,7 +82,7 @@ export default {
   "gotoLink": "{other} ({name}){unconfirmed}",
   "gotoUnconfirmed": ", relation not confirmed",
   "page.row": "Row {n}",
-  "page.crumbGroup": "Business objects",
+  "page.crumbGroup": "Definitions",
   "page.crumbTypes": "Object types",
   "page.sub": "{type}, from {dataset} v{version}",
   "page.toQueue": "Go to the review queue",

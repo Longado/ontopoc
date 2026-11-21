@@ -78,6 +78,31 @@ export function exampleQuestions(types, relations, max = 6) {
   return [...counts, ...by, ...rest].slice(0, max);
 }
 
+/** The demo workspace (demo.py seed: Order confirmed, Customer confirmed once and now waiting for a second look) offers a guest three questions with three outcomes:
+ * an answer (119,810), a refusal because Customer waits (its name and who it waits for), and another answer. null on any other workspace (the usual examples). */
+export function demoQuestions(types) {
+  const list = types ?? [];
+  if (!list.some((x) => x.id === "order" && x.state === "confirmed")) return null;
+  const waits = list.some((x) => x.id === "customer" && x.waiting);
+  return [t("home.demo.answered"), ...(waits ? [t("home.demo.waiting")] : []), t("home.demo.another")];
+}
+
+/** A guest's three start cards [{key, href, icon, external?}]: the first board, why its numbers can be trusted (the confirmed view on the demo, else the board), and
+ * what gets refused: on the demo the refused question asked for real, else the README. */
+export function startCards(boards, types) {
+  const first = boards?.dashboards?.[0];
+  const board = first ? `#/boards/${first.id}` : "#/boards";
+  const demo = demoQuestions(types);
+  const waits = demo?.includes(t("home.demo.waiting"));
+  return [
+    { key: "orders", href: board, icon: "board" },
+    { key: "trust", href: demo ? "#/types/order/views" : board, icon: "check-circle" },
+    waits
+      ? { key: "refuse", href: `#/qa?ask=${encodeURIComponent(t("home.demo.waiting"))}`, icon: "alert" }
+      : { key: "refuse", href: "https://github.com/Longado/ontopoc#readme", icon: "alert", external: true },
+  ];
+}
+
 /** Up to four number cards for the home page: each confirmed type that has rows, as {key, label, value, asOf, href}. `asOf` is "Data as of …" from the dataset the type reads. */
 export function kpiCards(types, datasets, max = 4) {
   const when = new Map((datasets ?? []).map((d) => [d.name, d.updated_at]));
@@ -100,6 +125,20 @@ export function updatedText(datasets) {
   return times.length ? t("home.updated", { time: formatDateTime(times[times.length - 1]) }) : "";
 }
 
+/** The gate in one line for a builder or admin: object types and relations confirmed, those that need another look, and what waits for this person to confirm
+ * (the queue count). [{key, count, text, href}]; null for a viewer (they are not told about definitions they cannot read) and before anything is defined.
+ * Read from the lists the home page already loads; checked numbers can join it once the app has them. */
+export function gateStatus({ types, relations, queue = 0, mayBuild = false }) {
+  const all = [...(types ?? []), ...(relations ?? [])];
+  if (!mayBuild || !all.length) return null;
+  const count = (state) => all.filter((x) => x.state === state).length;
+  return [
+    { key: "confirmed", count: count("confirmed"), href: "#/types" },
+    { key: "look", count: count("needs_look"), href: "#/types" },
+    { key: "queue", count: queue, href: "#/confirm" },
+  ].map((x) => ({ ...x, text: t(`home.gate.${x.key}`, { count: x.count }) }));
+}
+
 /** What waits for this person, most urgent first: [{key, count, text, href}]. Only builders see the confirm queue and failed runs. */
 export function todoItems({ unread = 0, queue = 0, failedRuns = 0, mayBuild = false }) {
   const items = [];
@@ -117,7 +156,8 @@ export function tallyView(tally) {
   const share = now.asked > 0 ? t("home.tally.share", { percent: `${Math.round((100 * now.answered) / now.asked)}%` }) : "";
   const figures = ["asked", "answered", "refused", "unanswered"].map((key) => ({ key, label: t(`home.tally.${key}`), value: formatNumber(now[key]), note: key === "answered" ? share : "" }));
   const held = (tally.held_back ?? []).map((d) => ({ key: d.id, count: d.questions, href: "#/confirm", text: t("home.tally.held.row", { kind: t(`ask.kind.${d.kind}`), name: d.name, count: d.questions }) }));
-  return { figures, before: t("home.tally.before", { asked: formatNumber(was.asked), answered: formatNumber(was.answered) }), held };
+  const checked = !tally.checked ? "" : tally.checked.total ? tally.checked.text : t("home.tally.checkedNone");   // the answers checked against the team's own numbers, worked out again by the service
+  return { figures, before: t("home.tally.before", { asked: formatNumber(was.asked), answered: formatNumber(was.answered) }), held, checked };
 }
 
 /** The compact row of shortcuts a builder sees under the greeting: [{key, label, href, icon}]; nothing for a viewer. */

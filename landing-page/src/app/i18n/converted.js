@@ -5,6 +5,8 @@ export const CONVERTED = [
   "DatasetList.jsx",
   "DatasetPage.jsx",
   "UploadDialog.jsx",
+  "ImpactList.jsx",
+  "impactModel.js",
   "SourcesPage.jsx",
   "SourcePage.jsx",
   "SourceWizard.jsx",

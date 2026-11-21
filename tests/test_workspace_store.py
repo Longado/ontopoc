@@ -132,6 +132,13 @@ class WorkspaceStoreTests(unittest.TestCase):
         blank = import_records(self.conn, 'blank', [{'k': ''}, {'k': 'a'}], 't', 'sha-blank')
         self.assertEqual((check_key(self.conn, blank['id'], ['k'])['status']), 'failed')
 
+    def test_a_key_checked_over_no_rows_does_not_read_as_passed(self):
+        d = import_records(self.conn, 'emptied', [{'k': 'a'}], 't', 'sha-emptied')
+        self.conn.execute(f'DELETE FROM "{d["table_name"]}"')   # a version whose rows are gone: nothing was looked at
+        r = check_key(self.conn, d['id'], ['k'])
+        self.assertEqual((r['status'], r['rows_checked'], r['violations'], r['null_key_rows']), ('failed', 0, 0, 0))
+        self.assertEqual(self.conn.execute('SELECT status FROM check_result WHERE id = ?', (r['id'],)).fetchone()[0], 'failed')
+
     def test_a_check_is_tied_to_the_dataset_version_it_ran_on(self):
         r = self.key('客户', '客户编号')
         self.assertEqual(self.conn.execute('SELECT dataset_id FROM check_result WHERE id = ?', (r['id'],)).fetchone()[0],

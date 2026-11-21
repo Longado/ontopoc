@@ -1,7 +1,7 @@
 // AI tool access: the tools an outside agent may call, how to connect, tokens, the skill pack (AgentsPage, agentModel).
 export default {
   "title": "AI tool access",
-  "sub": "Let outside AI agents work with OntoPoc through scoped tokens, as a named person.",
+  "sub": "Outside AI agents connect with a token, as a named person. They answer only from confirmed definitions; for anything unconfirmed they refuse; when the token belongs to a builder or admin, the refusal also says which definition waits and who can confirm it.",
   "loading": "Loading…",
   "tools.title": "What they can call",
   "tools.tool": "Tool",
@@ -42,8 +42,9 @@ export default {
   "tokens.revokeTitle": "Revoke this token",
   "tokens.revokeConfirm": "Confirm revoke",
   "tokens.revokeText": "“{label}” (token for {name}) stops working immediately, and an agent using it will be refused. This cannot be undone; to use it again you would have to create a new one.",
-  "skill.title": "Skill pack",
+  "skill.title": "Skill pack (snapshot)",
   "skill.sentence": "{text}.",
+  "skill.snapshot": "The skill pack is a snapshot taken when you download it. If the data changes or a definition goes back for another look afterwards, it does not know and will not refuse. For answers that follow the current data, connect over MCP above.",
   "skill.download": "Download skill pack (zip)",
   "standing.text": "The skill pack is a snapshot of the day it was exported. Whether each definition is confirmed now, by whom and on which data version is read live at GET /api/workspace/agent/standing (MCP tool definition_standing); the confirmed definitions also download as a sheet.",
   "standing.download": "Download confirmed definitions (CSV)",

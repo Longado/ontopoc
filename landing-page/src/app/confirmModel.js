@@ -29,7 +29,7 @@ export function queueRow(item) {
   let mode;
   if (item.kind === "approval") mode = item.can_confirm ? "approve" : item.can_withdraw ? "withdraw" : "wait";
   else if (item.kind === "pipeline") mode = item.can_confirm ? "open" : "wait";
-  else if (item.kind === "view" && item.can_confirm && item.new_values?.length) mode = "open";   // the new values are picked on the view's own page first
+  else if ((item.kind === "view" || item.kind === "derived") && item.can_confirm && item.new_values?.length) mode = "open";   // the new values are picked on the view's (or derived property's) own page first
   else mode = itemAction(item);
   return {
     kind: KIND[item.kind] ?? item.kind, verb: item.kind === "approval" ? t("review.row.approve") : t("review.row.confirm"), tag: TAG[item.kind] ?? TAG.definition, title: item.title, summary: first?.text ?? "", summaryLevel: !first || first.ok ? "ok" : first.strong ? "error" : "warn",

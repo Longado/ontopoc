@@ -42,8 +42,8 @@ export function taskRow(t) {
     at: t.at,
     kind: kindLabel(t.kind),
     title: t.title,
-    // an upload opens its dataset's versions; a modelling job opens the old workbench, where its run is kept (it has no page of its own yet)
-    href: t.mode === "deleted" ? null : t.kind === "upload" ? hrefFor({ page: "dataset", name: t.title, tab: "versions" }) : t.kind === "suggest" ? hrefFor({ page: "types" }) : "/legacy.html",   // a deleted dataset has no page
+    // an upload opens its dataset's versions, a suggestion the types; a modelling job belongs to the earlier screen, which the team app does not link into
+    href: t.mode === "deleted" ? null : t.kind === "upload" ? hrefFor({ page: "dataset", name: t.title, tab: "versions" }) : t.kind === "suggest" ? hrefFor({ page: "types" }) : null,   // a deleted dataset has no page
     state: stateLabel(t.state),
     bad: t.state === "failed" || t.state === "interrupted",
     who: t.who ?? "",

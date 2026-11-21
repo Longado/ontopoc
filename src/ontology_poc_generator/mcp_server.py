@@ -726,10 +726,10 @@ READ_TOOLS = ('describe_definitions', 'ask', 'ontopoc_query', 'list_unconfirmed'
 # where each tool works, first in its description, so look-alike tools are told apart (Glama, 2026-11-17): the team's confirmed definitions, one build run (saved_as), or the service
 SCOPE_TEAM, SCOPE_RUN, SCOPE_SERVICE = '【团队已确认的定义】', '【一次建模运行 saved_as】', '【本机服务】'
 LOOK_ALIKE = {
-    'ask': '（设了 ONTOPOC_TOOLSET=all 时才有）问的是一次建模运行里上传的数据、还没进团队定义时，用 ask_question。',
-    'describe_definitions': '（设了 ONTOPOC_TOOLSET=all 时才有）某次建模运行里模型提出、还没确认的对象用 list_objects。',
+    'ask': '（早期界面的工具只在本机设了 ONTOPOC_TOOLSET=all、或用“全部”范围的令牌且没设 ONTOPOC_TOOLSET=read 时才有）问的是一次建模运行里上传的数据、还没进团队定义时，用 ask_question。',
+    'describe_definitions': '（早期界面的工具只在本机设了 ONTOPOC_TOOLSET=all、或用“全部”范围的令牌且没设 ONTOPOC_TOOLSET=read 时才有）某次建模运行里模型提出、还没确认的对象用 list_objects。',
     'list_objects': '这是这次运行模型提出的对象，不是团队已确认的定义；那个用 describe_definitions。',
-    'list_unconfirmed': '（设了 ONTOPOC_TOOLSET=all 时才有）某次建模运行里等确认的视图用 list_proposed_views。',
+    'list_unconfirmed': '（早期界面的工具只在本机设了 ONTOPOC_TOOLSET=all、或用“全部”范围的令牌且没设 ONTOPOC_TOOLSET=read 时才有）某次建模运行里等确认的视图用 list_proposed_views。',
     'list_proposed_views': '团队工作区里所有没确认的定义用 list_unconfirmed。',
     'read_derived_property': '全部派生属性的清单在 describe_definitions 返回的 derived 里。',
     'definition_standing': '定义的内容（属性、含义、算式）用 describe_definitions；只要没确认的那些和原因，用 list_unconfirmed。',

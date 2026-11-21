@@ -1,11 +1,27 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { exampleQuestions, kpiCards, greeting, needsSetup, setupSteps, tallyView, todoItems, updatedText } from "./homeModel.js";
-import { setLocale } from "./i18n/index.js";
+import { demoQuestions, exampleQuestions, gateStatus, kpiCards, greeting, needsSetup, setupSteps, startCards, tallyView, todoItems, updatedText } from "./homeModel.js";
+import { setLocale, t } from "./i18n/index.js";
 
 setLocale("zh");   // these tests assert the Chinese words; the English ones are in english.test.js
 
 const T = (id, name, state = "confirmed") => ({ id, name, state });
+
+test("a builder's gate line counts confirmed and needs-another-look types and relations, and what waits for them; a viewer gets none", () => {
+  const types = [T("a", "A"), T("b", "B", "needs_look"), T("c", "C", "proposed"), T("d", "D", "rejected")];
+  const relations = [{ id: "r1", state: "confirmed" }, { id: "r2", state: "needs_look" }];
+  const line = gateStatus({ types, relations, queue: 2, mayBuild: true });
+  assert.deepEqual(line.map((x) => [x.key, x.count, x.href]), [["confirmed", 2, "#/types"], ["look", 2, "#/types"], ["queue", 2, "#/confirm"]]);
+  assert.deepEqual(line.map((x) => x.text), ["已确认 2", "需再看 2", "等你确认 2"]);
+  assert.equal(gateStatus({ types, relations, queue: 0, mayBuild: false }), null);   // a viewer is not told about definitions they cannot read
+  assert.equal(gateStatus({ types: [], relations: [], queue: 0, mayBuild: true }), null);   // nothing defined yet: the setup checklist speaks instead
+  setLocale("en");
+  try {
+    assert.deepEqual(gateStatus({ types, relations, queue: 1, mayBuild: true }).map((x) => x.text), ["2 confirmed", "2 need another look", "1 waiting for you"]);
+  } finally {
+    setLocale("zh");
+  }
+});
 
 test("the workspace is not ready with no dataset, or with no confirmed type", () => {
   assert.equal(needsSetup({ datasets: [], types: [] }), true);
@@ -134,4 +150,41 @@ test("the question tally: the last 7 days by outcome with the answered share, th
   // a quiet week after a busy one still shows, with no share to work out
   const quiet = tallyView({ last_7_days: zero, previous_7_days: { asked: 4, answered: 4, refused: 0, unanswered: 0 }, held_back: [] });
   assert.deepEqual([quiet.figures[0].value, quiet.figures[1].note, quiet.held], ["0", "", []]);
+});
+
+// the demo workspace as a guest's type list shows it: Order confirmed, Customer waiting for a second look (name and who only)
+const DEMO = [T("order", "Order"), { id: "customer", name: "Customer", state: "needs_look", waiting: true, waiting_for: ["demo-admin"] }];
+
+test("a guest on the demo is offered three questions with three outcomes: an answer, a refusal for the type that waits, another answer", () => {
+  assert.deepEqual(demoQuestions(DEMO), ["有效订单的总金额是多少？", "按 Customer 城市看有效订单金额", "已送达的订单有几笔？"]);   // the refused one says the type's name, which is how the service finds it
+  assert.deepEqual(demoQuestions([T("order", "Order"), T("customer", "Customer")]), ["有效订单的总金额是多少？", "已送达的订单有几笔？"]);   // nothing waits: no refusal to show
+  assert.equal(demoQuestions([T("ticket", "Ticket")]), null);   // not the demo's workspace: the usual examples
+  assert.equal(demoQuestions([]), null);
+  setLocale("en");
+  try {
+    assert.deepEqual(demoQuestions(DEMO), ["What is the total amount of valid orders?", "Valid order amount by customer city", "How many orders were delivered?"]);
+  } finally {
+    setLocale("zh");
+  }
+});
+
+test("a guest's start cards: the board, why it can be trusted (the confirmed view), and the refusal asked for real, not a page elsewhere", () => {
+  const cards = startCards({ dashboards: [{ id: 7 }] }, DEMO);
+  assert.deepEqual(cards.map((c) => c.key), ["orders", "trust", "refuse"]);
+  assert.equal(cards[0].href, "#/boards/7");
+  assert.equal(cards[1].href, "#/types/order/views");
+  assert.equal(cards[2].href, `#/qa?ask=${encodeURIComponent("按 Customer 城市看有效订单金额")}`);
+  assert.ok(cards.every((c) => !c.external && !c.href.startsWith("http")));
+  assert.match(t("home.start.refuse.text"), /Customer/);
+  const plain = startCards(null, [T("ticket", "Ticket")]);   // not the demo's workspace: the boards list and the README as before
+  assert.equal(plain[0].href, "#/boards");
+  assert.equal(plain[2].external, true);
+});
+
+test("the tally says how many checked answers still hold against the team's numbers, or how to start", () => {
+  const week = { asked: 3, answered: 3, refused: 0, unanswered: 0 };
+  const checked = { total: 3, same: 2, moved: 0, refused: 1, differs: 0, text: "3 个回答核对过：2 一致、0 变了、1 拒答、0 不一致" };
+  assert.equal(tallyView({ last_7_days: week, previous_7_days: week, held_back: [], checked }).checked, "3 个回答核对过：2 一致、0 变了、1 拒答、0 不一致");
+  assert.equal(tallyView({ last_7_days: week, previous_7_days: week, held_back: [], checked: { ...checked, total: 0, same: 0, refused: 0, text: "" } }).checked, "还没有核对过的回答：在问答里一个数的下面点“核对过”，记下团队信任的数和来源。");
+  assert.equal(tallyView({ last_7_days: week, previous_7_days: week, held_back: [] }).checked, "");   // a service from before checks were kept
 });

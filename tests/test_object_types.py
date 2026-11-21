@@ -291,6 +291,26 @@ class ObjectTypeTests(SigningTestCase):
             status, body = ann.post('/api/workspace/types/key-check', {'dataset': '订单承诺', 'key': ['订单号', '承诺版本']})   # a composite key is fine
             self.assertEqual((status, body['rows_checked']), (200, 121))
 
+    def test_a_key_check_over_no_rows_is_not_a_pass_so_nothing_is_built_or_confirmed_on_it(self):
+        with self.service() as (base, out):
+            team = self.team(base, 'ann', 'bob')
+            ann, bob = team['ann'], team['bob']
+            self.assertEqual(ann.post('/api/workspace/types', COMMIT)[0], 200)
+            detail = self.detail(bob, 'commit')
+            conn = sqlite3.connect(out / 'workspace.sqlite')
+            table = conn.execute("SELECT table_name FROM dataset WHERE name = '订单承诺' ORDER BY version DESC LIMIT 1").fetchone()[0]
+            conn.execute(f'DELETE FROM "{table}"')   # the version's rows are gone: a check would look at none
+            conn.commit()
+            conn.close()
+            status, body = bob.post('/api/workspace/types/confirm', {'id': 'commit', 'version': detail['version'], 'seen': detail['seen']})
+            self.assertEqual(status, 409, body)
+            self.assertIn('一行数据都没有', body['error'])
+            self.assertEqual(self.detail(bob, 'commit')['state'], 'checked')   # not confirmed
+            status, body = ann.post('/api/workspace/types/key-check', {'dataset': '订单承诺', 'key': ['订单号', '承诺版本']})
+            self.assertEqual((status, body['key_check']['rows_checked'], body['key_check']['status']), (400, 0, 'failed'))
+            self.assertIn('一行数据都没有', body['error'])
+            self.assertNotIn('重复', body['error'])   # nothing repeats: there is nothing to look at
+
     def test_a_decimal_or_yes_no_key_is_refused_and_a_date_key_warns(self):
         with self.service() as (base, _):
             ann = self.team(base, 'ann')['ann']
@@ -420,7 +440,8 @@ class ObjectTypeTests(SigningTestCase):
             self.assertIn('状态码', model.asked[0])   # it saw the column names
             self.assertNotIn('DD20260001', model.asked[0])   # and no row
             detail = self.detail(ann)
-            self.assertEqual((detail['state'], detail['proposed_by'], detail['model_draft'], detail['can_confirm']), ('proposed', None, True, True))
+            self.assertEqual((detail['state'], detail['proposed_by'], detail['model_draft'], detail['can_confirm']), ('proposed', None, True, False))   # Ann asked for it: she counts as its proposer
+            self.assertEqual(self.detail(bob)['can_confirm'], True)
             self.assertEqual([p['column'] for p in detail['properties']], ['订单号', '状态码'])   # the amount had no reason, the other columns were not asked for
             tasks = ann.get('/api/workspace/tasks')[1]['tasks']
             task = next(t for t in tasks if t['kind'] == 'suggest')

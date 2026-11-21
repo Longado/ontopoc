@@ -5,23 +5,24 @@ import { DemoAskNote } from "./DemoAskNote.jsx";
 import { askOff } from "./demoModel.js";
 import { useDemoAsk } from "./useDemoAsk.js";
 import { canBuild, isAdmin, isGuest } from "./authModel.js";
-import { exampleQuestions, greeting, kpiCards, needsSetup, quickActions, setupSteps, tallyView, todoItems, updatedText } from "./homeModel.js";
+import { demoQuestions, exampleQuestions, gateStatus, greeting, kpiCards, needsSetup, quickActions, setupSteps, startCards, tallyView, todoItems, updatedText } from "./homeModel.js";
 import { formatDate, formatDateTime, t } from "./i18n/index.js";
 import { hrefFor } from "./routeModel.js";
 import { useLoad } from "./useLoad.js";
 import "./boards-home.css";
+import "./checked.css";
 import { Icon } from "./ui/Icon.jsx";
 
-/** Everything the home page shows, read at once; a list this person may not read comes back as null instead of failing the page. */
+/** What the home page shows, read at once (the question tally is read apart, see HomePage); a list this person may not read comes back as null instead of failing the page. */
 async function loadHome(user) {
   const builder = canBuild(user);
   const ok = (p) => p.then((v) => v, () => null);
-  const [datasets, types, relations, ask, notices, queue, pipelines, users, sources, boards, tally] = await Promise.all([
+  const [datasets, types, relations, ask, notices, queue, pipelines, users, sources, boards] = await Promise.all([
     ok(getDatasets()), ok(getTypes()), ok(getRelations()), ok(getAsk()), ok(getNotices()),
     builder ? ok(getQueueCount()) : null, builder ? ok(getPipelines()) : null, isAdmin(user) ? ok(getUsers()) : null, builder ? ok(getSources()) : null,
-    isGuest(user) ? ok(getBoards()) : null, builder ? ok(getAskTally()) : null,
+    isGuest(user) ? ok(getBoards()) : null,
   ]);
-  return { datasets, types, relations, ask, notices, queue: queue ?? 0, pipelines, users, sources, boards, tally };
+  return { datasets, types, relations, ask, notices, queue: queue ?? 0, pipelines, users, sources, boards };
 }
 
 const qaStatus = (status) => t(status === "answered" ? "home.qa.answered" : status === "no_data" ? "home.qa.noData" : "home.qa.unanswered");
@@ -74,15 +75,9 @@ function Kpis({ cards }) {
   );
 }
 
-/** A guest's first row: three compact cards, two into the first board and one to the README. */
-function StartHere({ boards }) {
-  const first = boards?.dashboards?.[0];
-  const board = first ? `#/boards/${first.id}` : "#/boards";
-  const cards = [
-    { key: "orders", href: board, icon: "board" },
-    { key: "trust", href: board, icon: "check-circle" },
-    { key: "refuse", href: "https://github.com/Longado/ontopoc#readme", icon: "alert", external: true },
-  ];
+/** A guest's first row: three compact cards, to the first board, to why its numbers can be trusted, and to a question that is refused (homeModel.startCards). */
+function StartHere({ boards, types }) {
+  const cards = startCards(boards, types);
   return (
     <section aria-labelledby="start-title">
       <h2 id="start-title" className="bh-section">{t("home.start.title")}</h2>
@@ -92,7 +87,7 @@ function StartHere({ boards }) {
             <a className="bh-start-card" href={c.href} {...(c.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
               <span className="bh-start-icon" aria-hidden="true"><Icon name={c.icon} size={16} /></span>
               <span className="bh-start-title">{t(`home.start.${c.key}.title`)}{c.external && <span className="visually-hidden"> {t("home.start.newTab")}</span>}</span>
-              <span className="bh-start-text">{t(`home.start.${c.key}.text`)}</span>
+              <span className="bh-start-text">{t(c.key === "refuse" && c.external ? "home.start.refuse.other" : `home.start.${c.key}.text`)}</span>
             </a>
           </li>
         ))}
@@ -123,6 +118,18 @@ function AskBox({ examples, ready }) {
         <p className="examples"><span className="muted">{t("home.ask.try")}</span>{examples.map((q) => <button key={q} className="example" onClick={() => ask(q)}>{q}</button>)}</p>
       ) : !ready && <p className="muted examples">{t("home.ask.none")}</p>}
     </section>
+  );
+}
+
+const GATE_TONE = { confirmed: "bh-chip-ok", look: "bh-chip-grey", queue: "bh-chip-blue" };
+
+/** For builders and admins, under the greeting: how many object types and relations are confirmed, how many need another look, and what waits for them. */
+function GateLine({ items }) {
+  return (
+    <nav className="gate-line" aria-label={t("home.gate.aria")}>
+      <span className="muted">{t("home.gate.lead")}</span>
+      {items.map((x) => <a key={x.key} className={`bh-chip ${x.count ? GATE_TONE[x.key] : ""}`} href={x.href}>{x.text}</a>)}
+    </nav>
   );
 }
 
@@ -183,6 +190,7 @@ function Tally({ view }) {
           </ul>
         </>
       )}
+      {view.checked && <p className="tally-checked">{view.checked}</p>}
       <p className="tally-note muted small">{t("home.tally.note")}</p>
     </section>
   );
@@ -192,21 +200,23 @@ function Tally({ view }) {
 export function HomePage() {
   const { user } = useAuth();
   const [state] = useLoad(() => loadHome(user), []);
-  const d = state.data;
   const mayBuild = canBuild(user);
+  const [tallyState] = useLoad(() => (mayBuild ? getAskTally().catch(() => null) : Promise.resolve(null)), []);   // read apart: it works checked answers out again, and the rest of Home does not wait for it
+  const d = state.data;
   if (!d) return <main className="page"><h1 tabIndex={-1} className="visually-hidden">{t("home.title")}</h1><p className="muted">{t("common.loading")}</p></main>;
   const types = d.types ?? [];
   const setup = mayBuild && needsSetup({ datasets: d.datasets, types });
   const failedRuns = (d.pipelines ?? []).filter((p) => p.last_run?.status === "failed").length;
   const todos = todoItems({ unread: d.notices?.unread ?? 0, queue: d.queue, failedRuns, mayBuild });
-  const examples = exampleQuestions(types, d.relations ?? []);
+  const guest = isGuest(user);
+  const examples = (guest && demoQuestions(types)) || exampleQuestions(types, d.relations ?? []);
   const cards = kpiCards(types, d.datasets);
   const quick = quickActions(mayBuild);
   const today = new Date();
   const fresh = updatedText(d.datasets);
-  const guest = isGuest(user);
   const history = d.ask?.history ?? [];
-  const tally = mayBuild ? tallyView(d.tally) : null;
+  const tally = mayBuild ? tallyView(tallyState.data) : null;
+  const gate = gateStatus({ types, relations: d.relations, queue: d.queue, mayBuild });
   const showTodo = !guest || todos.length > 0;
   const showRecent = !guest || history.length > 0;
   return (
@@ -215,6 +225,7 @@ export function HomePage() {
         <div>
           <h1 tabIndex={-1}>{greeting(today, user?.display_name ?? "")}</h1>
           <p className="muted bh-date">{formatDate(today, { weekday: "long", month: "long", day: "numeric" })}{fresh && ` · ${fresh}`}</p>
+          {gate && <GateLine items={gate} />}
         </div>
         {quick.length > 0 && (
           <nav className="quick" aria-label={t("home.quick.aria")}>
@@ -224,7 +235,7 @@ export function HomePage() {
       </header>
       {setup && <Checklist steps={setupSteps({ datasets: d.datasets, types, users: d.users, sources: d.sources, role: user?.role, meId: user?.id ?? null, canConfirm: d.queue > 0 })} />}
       {!setup || (d.datasets ?? []).length > 0 ? <AskBox examples={examples} ready={types.some((t) => t.state === "confirmed")} /> : null}
-      {guest && !setup && <StartHere boards={d.boards} />}
+      {guest && !setup && <StartHere boards={d.boards} types={types} />}
       {!setup && cards.length > 0 && <Kpis cards={cards} />}
       {(!setup || todos.length > 0) && (showTodo || showRecent) && (
         <div className={`home-grid${showTodo && showRecent ? "" : " bh-single"}`}>

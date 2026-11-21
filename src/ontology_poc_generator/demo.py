@@ -187,7 +187,9 @@ def _confirm(builder: _Client, type_id: str, column: str | None = None) -> None:
 
 
 def seed(data_dir: Path, admin_name: str = 'demo-admin', force_fresh: bool = False) -> dict:
-    """Builds the demo workspace in data_dir and returns {'admin': name, 'password': password, 'data_dir': path}."""
+    """Builds the demo workspace in data_dir and returns {'admin': name, 'password': password, 'data_dir': path}. What a visitor meets: Order with its status
+    meanings, the view Valid orders and the board Orders overview, all confirmed; and Customer, confirmed and then sent back to needs_look by a later customers
+    extract (customers_update.csv) that lists one customer twice, so a guest's question naming it is refused, saying who it waits for."""
     from ontology_poc_generator.ontology_server import make_server
     from ontology_poc_generator.workspace_store import open_workspace
     data_dir = Path(data_dir)
@@ -215,8 +217,8 @@ def seed(data_dir: Path, admin_name: str = 'demo-admin', force_fresh: bool = Fal
         base = f'http://127.0.0.1:{server.server_port}'
         admin, builder = _Client(base, admin_name, admin_pw), _Client(base, 'demo-builder', builder_pw)
         sample = sample_dir()
-        files = [{'filename': n, 'content_base64': base64.b64encode((sample / n).read_bytes()).decode()} for n in ('orders.csv', 'customers.csv')]
-        admin.must('POST', '/api/workspace/datasets/upload', {'files': files})
+        part = lambda n: {'filename': n, 'content_base64': base64.b64encode((sample / n).read_bytes()).decode()}
+        admin.must('POST', '/api/workspace/datasets/upload', {'files': [part('orders.csv'), part('customers.csv')]})
         meanings = [{'value': v, 'label': l} for v, l in (('0', 'New'), ('1', 'Paid'), ('2', 'Shipped'), ('3', 'Delivered'), ('4', 'Cancelled'), ('5', 'Refunded'))]
         admin.must('POST', '/api/workspace/types', {'english_name': 'order', 'name': 'Order', 'dataset': 'orders', 'key': ['order_id'],
                    'properties': [{'column': c} for c in ('order_id', 'customer_id', 'order_date', 'amount')] + [{'column': 'status_code', 'enum': True}],
@@ -229,7 +231,16 @@ def seed(data_dir: Path, admin_name: str = 'demo-admin', force_fresh: bool = Fal
         builder.must('POST', '/api/workspace/types/views/confirm', {'id': 'Valid orders', 'version': view['version'], 'seen': view['seen']})
         admin.must('POST', '/api/workspace/types', {'english_name': 'customer', 'name': 'Customer', 'dataset': 'customers', 'key': ['customer_id'],
                    'properties': [{'column': c} for c in ('customer_id', 'name', 'city', 'tier')]})
-        # Customer stays unconfirmed on purpose: a question about customers is refused with the reason, which is what the demo shows
+        _confirm(builder, 'customer')
+        admin.must('POST', '/api/workspace/relations', {'english_name': 'order_customer', 'name': 'Order belongs to customer', 'from': 'order', 'to': 'customer',
+                                                        'cardinality': 'many_to_one', 'from_column': 'customer_id', 'to_column': 'customer_id'})
+        relation = builder.must('GET', '/api/workspace/relations/order_customer')
+        builder.must('POST', '/api/workspace/relations/confirm', {'id': 'order_customer', 'version': relation['version'], 'seen': relation['check']['signature']})
+        # a later customers extract lists C012 twice (they moved city), so the key no longer holds: Customer and the relation go back to needs_look. A guest
+        # (a viewer) is shown only that Customer waits and for whom, and a question naming it is refused before the model with just that; no board card reads it
+        admin.must('POST', '/api/workspace/datasets/upload', {'files': [{**part('customers_update.csv'), 'target': 'customers', 'mode': 'overwrite'}]})
+        if admin.must('GET', '/api/workspace/types/customer')['state'] != 'needs_look':
+            raise RuntimeError('the customers update did not send Customer back for a second look')
         types = [t['id'] for t in admin.must('GET', '/api/workspace/types')['types']]
         # boards for every viewer, guests included: only confirmed definitions, worked out without a model
         valid, every = {'type': 'order', 'view': 'Valid orders'}, {'type': 'order'}
