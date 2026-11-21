@@ -160,5 +160,17 @@ class PublicOntologyGraphTests(unittest.TestCase):
                                   component('ELECTRICAL SYSTEM'), component('AIR BAGS')})
 
 
+class SharedCoreStandsAloneTests(unittest.TestCase):
+    def test_the_shared_core_hashes_a_bundle_itself_without_the_recall_sources_module(self):
+        import ast
+        core = importlib.import_module('ontology_poc_generator.public_ontology')
+        # the same canonical JSON and SHA-256 as before, so hashes kept in saved runs still match
+        self.assertEqual(core.bundle_content_hash({'b': ['x'], 'a': 1}),
+                         'fd5e92badbe24726f55b88132dd5fa1ceec0efd960b3bcd44f527b4bcc84af34')
+        tree = ast.parse(Path(core.__file__).read_text(encoding='utf-8'))
+        imported = {node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)}
+        self.assertNotIn('ontology_poc_generator.nhtsa_sources', imported)
+
+
 if __name__ == '__main__':
     unittest.main()
