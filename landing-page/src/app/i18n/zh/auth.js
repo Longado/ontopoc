@@ -21,7 +21,7 @@ export default {
   "demo.trying": "正在打开演示…",
   "demo.haveAccount": "已有账号？登录",
   "guest.banner": "演示 · 只读示例数据 · 访客账号和提问 24 小时后删除",
-  "guest.try": "试着问：“有效订单的总金额是多少？”",
+  "guest.try": "试着问：“Valid orders 的 amount 合计是多少？”",
   "guest.signOut": "退出",
   "guest.openBoards": "打开看板",
   "guest.askOff.text": "提问需要模型，而这个公开演示没有开启模型。想问你自己的数据，请自己运行 OntoPoc，详见",

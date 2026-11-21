@@ -164,6 +164,14 @@ class DemoTests(unittest.TestCase):
                 self.assertEqual([(v['name'], v['answer']['total']) for v in body['beside']['views']], [('Valid orders', VALID_COUNT)])
             self.assertIsNone(body['model'])
 
+    def test_the_questions_the_demo_suggests_are_answered_the_same_every_time(self):
+        for question in ('Valid orders 的 amount 合计是多少？', 'What is the total amount of valid orders?'):   # the page's suggestion in Chinese and in English
+            body, asked = self.ask(question, 'not json')
+            self.assertEqual((headline(body), asked), (('answered', VALID_AMOUNT, VALID_COUNT), 0), question)
+        delivered = {**ALL_ORDERS, 'where': [{'field': 'status_code', 'equals': 'Delivered'}]}
+        body, _ = self.ask('Delivered 的订单有几笔？', item(delivered, [{'id': 'orders.status_code=Delivered', 'direction': 'include', 'basis': 'Delivered'}]))
+        self.assertEqual((body['status'], body['answer']['total']), ('answered', sql("SELECT COUNT(*) FROM orders WHERE status_code = '3'")))
+
     def test_a_question_that_names_the_view_gets_the_views_number_whatever_filter_the_model_writes_in_its_place(self):
         replies = {
             'applies the view': [item(used=[{'id': 'Valid orders', 'direction': 'include', 'basis': 'Valid orders'}])],
