@@ -1,5 +1,5 @@
-"""D17: on the team workspace, confirming a definition and approving a submitted action need a signed-in person's session. A request that carries a token is refused,
-whatever the token's scope, with a sentence that says a person confirms on the page and where. Proposing, editing, sending back and the early screen are not touched."""
+"""A token may not vouch for anything: on the team workspace, confirming a definition, approving a submitted change and recording a checked number need a signed-in person's session. A request that carries a token is refused,
+whatever the token's scope, with a sentence that says a person does it on the page and where. Proposing, editing, sending back and the early screen are not touched."""
 import ast
 import base64
 import importlib
@@ -69,7 +69,7 @@ class TokenMayNotConfirmTests(GateTestCase):
         return {'id': 'order', 'version': node['version'], 'seen': node['seen'], **({'column': column} if column else {})}
 
     def test_a_full_scope_token_of_another_builder_cannot_confirm_what_the_admin_proposed(self):
-        """The finding: before D17 this token confirmed Order's meanings and Order itself, and the log said the builder did."""
+        """The finding: before tokens were kept from confirming, this token confirmed Order's meanings and Order itself, and the log said the builder did."""
         with self.service() as (base, _):
             team, full, _ = self.workspace(base)
             agent, builder = Client(base), team['builder']

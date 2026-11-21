@@ -66,7 +66,7 @@ class AnnotationTests(unittest.TestCase):
 
 class NoToolNeedsAPersonOnlyRouteTests(unittest.TestCase):
     def test_no_tool_calls_a_route_a_token_is_refused(self):
-        """The three confirming tools work on one run of the early screen (/api/ontology/...), which D17 leaves as it was."""
+        """The three confirming tools work on one run of the early screen (/api/ontology/...), which the rule that a token may not confirm on the team workspace leaves as it was."""
         source = Path(mcp_server.__file__).read_text(encoding='utf-8')
         paths = set(re.findall(r"""['"](/api/[A-Za-z0-9_/-]*)""", source))
         self.assertTrue(paths)
