@@ -141,7 +141,9 @@ export function timeWarning(record) {
 }
 
 /** The one-line caliber under an answer: what was counted by which definitions (the views that chose its rows, then its conditions), and the data as of
- * when. Names are shown without the query's `quoting`. Empty when the answer carries no written query. */
+ * when. Names are shown without the query's `quoting`. Empty when the answer carries no written query. In a question's answer (`record.model`: the model wrote
+ * the query) the conditions are the model's filter, not a confirmed definition: they are said as its reading of the confirmed code meanings (when they read a
+ * code column) and never as a confirmed view. In a query a person wrote they are that person's, said as before. */
 export function criteriaLine(record, asOf) {
   const text = String(record.query_text ?? "");
   const aliases = [...text.matchAll(/\(\s*(\w+)\s*:\s*(`[^`]*`|[^)\s]+)\s*\)/g)];
@@ -152,8 +154,15 @@ export function criteriaLine(record, asOf) {
   const views = [...(record.evidence?.views ?? []).map((v) => t("ask.criteria.view", { name: v.name })),
     ...(record.definitions ?? []).filter((d) => d.kind === "derived").map((d) => t("ask.criteria.derived", { name: d.name }))];   // the views that chose its rows, the derived properties it read values from
   const conds = where ? [plain(where.replace(/\b(\w+)\.(?=[^\s.])/g, (s, a) => (alias.has(a) ? `${alias.get(a)}.` : s)).replace(/'((?:[^']|'')*)'/g, "$1").replace(/\s+/g, " "))] : [];
-  const cond = [...views, ...conds].join(t("ask.criteria.sep")) || t("ask.criteria.all", { type: alias.get(aliases[0][1]) });
-  return t("ask.criteria", { cond, asOf: asOf ? t("ask.criteria.asOf", { when: asOf }) : "" });
+  const all = t("ask.criteria.all", { type: alias.get(aliases[0][1]) });
+  const when = asOf ? t("ask.criteria.asOf", { when: asOf }) : "";
+  if (record.model && conds.length) {
+    const coded = (record.definitions ?? []).some((d) => d.kind === "meaning" && conds[0].includes(d.name));
+    const filter = t(coded ? "ask.criteria.modelMeanings" : "ask.criteria.modelFilter", { cond: conds[0] });
+    return t("ask.criteria", { cond: `${views.join(t("ask.criteria.sep")) || all}${t("ask.criteria.then")}${filter}`, asOf: when });
+  }
+  const cond = [...views, ...conds].join(t("ask.criteria.sep")) || all;
+  return t("ask.criteria", { cond, asOf: when });
 }
 
 /** "数据截至" of an answer: each dataset it read by its version and when that version came (`when` formats the time), "" when the answer does not say (one kept

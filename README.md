@@ -48,7 +48,7 @@ OntoPoc is an ontology tool for a team's own data: the team writes down what its
 | 问题点名了一个还没人确认的定义 | 在问模型之前就挡下，说出是哪个定义、谁能确认 | 提出不等于确认。能看到这个定义的人会得知名字和谁能确认；查看者只读已确认的定义，从没确认过的定义不会被告知名字，已确认、正在等再确认的只被告知回答在等确认 |
 | 上传 `orders_update.csv`（出现新代码 6，没人写过含义）之后再问同一题 | 拒答：“有效订单”需再看；看板上显示它在等谁、上次的数 | 确认之后数据变了 |
 
-演示站上，访客能看到第一种回答，和一次第三种拒答：类型 Customer 确认过一次、现在在等第二次确认，点名 Customer 的问题会在问模型之前被拒，访客只会被告知回答在等确认。
+演示站上，访客能看到第一种回答，和一次第三种拒答：类型 Customer 确认过一次、现在在等第二次确认，问题里写出它的名字 Customer（不分大小写和单复数，作为一个整词，例如“按 Customer 城市看有效订单金额”）时，会在问模型之前拒答，访客只会被告知回答在等确认；只写“客户”不算写出它的名字，这样的问题照常交给模型。
 
 金额列直接加总是 162,960。算术没错，但它不是营收：已取消、已退款的订单也带着金额。关口就是为这个差额准备的。
 
@@ -202,8 +202,8 @@ Ontology 先约定「有哪些对象、怎么识别、对象之间可以有什�
 ## 开发
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # 后端测试（2026-11-20 共 2,345 个；先 pip install -e ".[check,sources]"，否则 TTL 校验等会跳过）
-npm --prefix landing-page run test:unit                       # 前端测试（2026-11-20 共 794 个）
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # 后端测试（2026-11-20 共 2,386 个；先 pip install -e ".[check,sources]"，否则 TTL 校验等会跳过）
+npm --prefix landing-page run test:unit                       # 前端测试（2026-11-20 共 795 个）
 PYTHONPATH=src:. python3 scripts/real_model_check.py --out /tmp/check   # 真实模型对照 SQL 的检查（要模型 key；只有错数才算失败）
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # 试跑用另一个数据目录
 ```
