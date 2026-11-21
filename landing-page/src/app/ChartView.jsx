@@ -1,7 +1,9 @@
 import React from "react";
+import { SourceValue } from "./SourceValue.jsx";
 import { GROUP_ORDERS, GROUP_TOPS, barRows, formatNumber, greyText, histogramBars, leftOutLines, notOfficial, pieSlices, sliceColor } from "./explorerModel.js";
 import { useT } from "./i18n/index.js";
 import { hrefFor } from "./routeModel.js";
+import { objectNameIndex, sourceHref } from "./objectModel.js";
 import { Select } from "./Select.jsx";
 import { codeCell } from "./typeModel.js";
 
@@ -158,15 +160,20 @@ function Rows({ result }) {
       <table>
         <thead><tr>{result.columns.map((c) => <th key={c.column}>{c.name}</th>)}</tr></thead>
         <tbody>
-          {result.rows.map((row, r) => (
-            <tr key={r}>
+          {result.rows.map((row, r) => {
+            const openAt = Math.max(0, objectNameIndex(result.columns, row));
+            const objectHref = hrefFor({ page: "object", id: type, n: result.numbers[r] });
+            return <tr key={r}>
               {row.map((v, i) => {
                 const e = result.enums[result.columns[i].column];
                 const cell = e ? codeCell(v, e) : { value: v ?? "", note: "" };
-                return <td key={i}>{i === 0 ? <a href={hrefFor({ page: "object", id: type, n: result.numbers[r] })}>{v ?? "—"}</a> : <>{cell.value}{cell.note && <span className="muted small"> {cell.note}</span>}</>}</td>;
+                if (i === openAt && !sourceHref(cell.value)) {
+                  return <td key={i}><a href={objectHref}>{cell.value === "" || cell.value == null ? "—" : cell.value}</a>{cell.note && <span className="muted small"> {cell.note}</span>}</td>;
+                }
+                return <td key={i}><SourceValue value={cell.value} />{cell.note && <span className="muted small"> {cell.note}</span>}{i === openAt && <> <a href={objectHref}>{t("objects.table.open")}</a></>}</td>;
               })}
-            </tr>
-          ))}
+            </tr>;
+          })}
         </tbody>
       </table>
       <p className="muted small table-note">{t("boards.chart.rowsShown", { total: result.total, shown: result.rows.length })}</p>

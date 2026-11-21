@@ -2,6 +2,7 @@
 export default {
   "op.eq": "等于",
   "op.ne": "不等于",
+  "op.name_is": "名称或别名等于",
   "op.contains": "包含",
   "op.gt": "大于",
   "op.ge": "不小于",

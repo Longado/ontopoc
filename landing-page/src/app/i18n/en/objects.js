@@ -2,6 +2,7 @@
 export default {
   "op.eq": "equals",
   "op.ne": "does not equal",
+  "op.name_is": "matches a name or alias",
   "op.contains": "contains",
   "op.gt": "is greater than",
   "op.ge": "is at least",

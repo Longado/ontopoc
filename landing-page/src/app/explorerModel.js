@@ -15,12 +15,12 @@ const pair = (value, key) => {
   return a;
 };
 
-export const OPS = worded(["eq", "ne", "contains", "gt", "ge", "lt", "le", "empty", "filled"], "objects.op");
+export const OPS = worded(["eq", "ne", "contains", "name_is", "gt", "ge", "lt", "le", "empty", "filled"], "objects.op");
 export const CHART_KINDS = ["number", "bar", "pie", "histogram", "table"].map((k) => pair(k, `objects.chart.${k}`));
 const NUMERIC_ONLY = ["sum", "avg", "median", "p25", "p75"];
 
 /** The ways a filter on this field may compare: size only where the service can put the values in order (numbers, years-months, dates). */
-export const opsFor = (field) => [...["eq", "ne", "contains", "empty", "filled"], ...(field?.ordered ? ["gt", "ge", "lt", "le"] : [])];
+export const opsFor = (field) => [...["eq", "ne", "contains"], ...(field?.type === "text" ? ["name_is"] : []), ...["empty", "filled"], ...(field?.ordered ? ["gt", "ge", "lt", "le"] : [])];
 
 export const emptyFilter = (fields) => ({ field: fields[0]?.key ?? "", op: "eq", value: "" });
 
