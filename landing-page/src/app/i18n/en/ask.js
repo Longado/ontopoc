@@ -94,6 +94,7 @@ export default {
   "basis.limited": "Only rows you can see",
   "basis.limitedLine": "{name}: a row rule limits the rows ({rule}); the number is computed from those rows",
   "basis.steps": "Show steps",
+  "card.broken": "This answer cannot be shown here.",
   "card.basis": "Show basis",
   "saved.missing": "That question no longer exists",
   "history.aria": "Question history",

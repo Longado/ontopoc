@@ -94,6 +94,7 @@ export default {
   "basis.limited": "只算了你看得到的行",
   "basis.limitedLine": "{name}：行规则限制了行（{rule}），数是按这些行算的",
   "basis.steps": "查看步骤",
+  "card.broken": "这条回答在这里显示不了。",
   "card.basis": "查看依据",
   "saved.missing": "没有这条问题",
   "history.aria": "我问过的问题",

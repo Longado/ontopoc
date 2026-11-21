@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { answerView, definitionHref, isAnswer, isThenAnswer, queryExample, queryParams, queryRecord, rangeNotes, readText, scopeText, standingText, staleHeading, staleLines } from "./qaModel.js";
+import { answerView, definitionHref, isAnswer, namedLines, isThenAnswer, queryExample, queryParams, queryRecord, rangeNotes, readText, scopeText, standingText, staleHeading, staleLines } from "./qaModel.js";
 
 const types = [{ id: "order", name: "订单" }];
 
@@ -140,4 +140,12 @@ test("a grouped total has a header over each of its three columns", () => {
 
 test("history rows carry question, status and time", () => {
   assert.deepEqual(historyView({ id: 3, question: "q", status: "answered", asked_at: "t" }, "T"), { id: 3, question: "q", meta: "T 已回答" });
+});
+
+test("a viewer's refusal line that names nothing is shown as its text alone, not as a link (the payload a viewer gets while a definition waits)", () => {
+  const refusal = { kind: "unsettled", definitions: [{ kind: "type", state: "needs_look", waiting: true, text: "A definition it uses is waiting to be confirmed again" }] };
+  assert.deepEqual(namedLines(refusal.definitions), [{ key: "line-0", plain: true, text: "A definition it uses is waiting to be confirmed again" }]);
+  assert.equal(definitionHref(undefined), null);
+  const named = namedLines([{ id: "objview:有效订单", type: "order", kind: "view", name: "有效订单", state: "needs_look" }, { kind: "type", state: "needs_look", waiting: true, text: "x" }]);
+  assert.deepEqual(named.map((l) => [l.key, l.plain ?? false, l.href ?? null]), [["objview:有效订单", false, "#/types/order/views"], ["line-1", true, null]]);
 });

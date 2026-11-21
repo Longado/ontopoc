@@ -11,7 +11,7 @@ import { MeaningsCard, NoModel, PlanCard, ProposalCard } from "./AssistantCards.
 import { filterByMode, filterModes, pastTurn, railItems, scopeOf } from "./assistantHistoryModel.js";
 import { PastTurn, modeLabel } from "./PastTurn.jsx";
 import { timeText } from "./format.js";
-import { answerView, criteriaLine, dataAsOf, definitionHref, historyView, isAnswer, isThenAnswer, paramsIn, queryExample, queryParams, queryRecord, rangeNotes, readText, staleHeading, staleLines, standingText, timeWarning } from "./qaModel.js";
+import { answerView, criteriaLine, dataAsOf, definitionHref, historyView, namedLines, isAnswer, isThenAnswer, paramsIn, queryExample, queryParams, queryRecord, rangeNotes, readText, staleHeading, staleLines, standingText, timeWarning } from "./qaModel.js";
 import { groupByDay, isThinking, newTurn, savedTurn, sendsOn, settle, suggestions, threadTitle } from "./chatModel.js";
 import { ObjectGraph } from "./ObjectGraph.jsx";
 import { State } from "./TypesPage.jsx";
@@ -28,16 +28,16 @@ function Named({ list, mayBuild }) {
   const t = useT();
   return (
     <ul className="named">
-      {list.map((d) => (
-        <li key={d.id}>
+      {namedLines(list).map((d) => d.plain ? <li key={d.key}><p>{d.text}</p></li> : (
+        <li key={d.key}>
           <p>
-            <span className="muted">{t(KIND[d.kind])}</span> <a href={definitionHref(d.id, d.type)}>{d.name}</a> <State item={d} />
+            <span className="muted">{t(KIND[d.kind])}</span> <a href={d.href}>{d.name}</a> <State item={d} />
           </p>
           <p className="muted">{standingText(d)}</p>
           {d.who_can_confirm?.length > 0 && <p className="muted small">{t("ask.named.confirmers", { names: d.who_can_confirm.join(t("ask.sep")) })}</p>}
         </li>
       ))}
-      {mayBuild && list.some((d) => d.state !== "confirmed") && <li><a href="#/confirm">{t("ask.named.toConfirm")}</a></li>}
+      {mayBuild && list.some((d) => d.id && d.state !== "confirmed") && <li><a href="#/confirm">{t("ask.named.toConfirm")}</a></li>}
     </ul>
   );
 }
@@ -170,8 +170,30 @@ export function Basis({ record, onEdit }) {
   );
 }
 
+/** One answer that cannot be drawn stays one card that says so, with the service's own sentence: the rest of the page and the app go on. */
+class CardBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { failed: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return <section className="qa-card"><p className="warn">{this.props.fallback}</p>{this.props.reason && <p className="muted">{this.props.reason}</p>}</section>;
+  }
+}
+
+function AnswerCard(props) {
+  const t = useT();
+  return <CardBoundary fallback={t("ask.card.broken")} reason={props.record?.reason}><AnswerCardBody {...props} /></CardBoundary>;
+}
+
 /** An answer as a message: the figure or table first, the time-word warning when the question's time was not used, one caliber line, and the technical basis folded. */
-function AnswerCard({ record, mayBuild, onEdit }) {
+function AnswerCardBody({ record, mayBuild, onEdit }) {
   const t = useT();
   const warning = isAnswer(record) ? timeWarning(record) : null;
   const line = isAnswer(record) ? criteriaLine(record, dataAsOf(record, timeText)) : "";
