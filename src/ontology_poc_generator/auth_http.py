@@ -43,7 +43,11 @@ def not_here() -> str:
     return tr('这个服务没有开登录（--no-auth），没有账号可管理', 'This service runs without sign-in (--no-auth), so there are no accounts to manage')
 def no_token() -> str:
     return tr('这个操作要用登录后的页面做，不能用令牌', 'This needs the signed-in page; a token cannot do it')
-def person_only() -> str:
+def person_only(path: str) -> str:
+    """Why a token is refused one of access.PERSON_ONLY_POSTS, and where a person does it instead."""
+    if path == '/api/workspace/checked':
+        return tr('核对过的数要由本人登录页面来记，令牌不能记（不论令牌的范围）。请登录团队应用，在看板卡片上或自己存下的回答上点“核对过”。',
+                  'A checked number is recorded by a person signed in to the page, not with a token (whatever its scope). Sign in to the team app and choose Mark as checked on the board card or on your saved answer.')
     return tr('确认和批准要由本人登录页面来做，令牌不能做（不论令牌的范围）。请登录团队应用，在“待确认”里或这一项自己的页面上确认。',
               'Confirming and approving are done by a person signed in to the page, not with a token (whatever its scope). Sign in to the team app and confirm it in the Review queue or on the item\'s own page.')
 
@@ -177,7 +181,7 @@ class Gate:
             h.reply(403, {'error': tr('这个令牌只能读和提问，不能做这个。需要别的权限请让管理员另发一个。', 'This token can only read and ask questions. For other rights, ask an admin to issue another.')})
             return False
         if user.get('token_id') is not None and not token_allows(method, path):   # before the body is read: the answer is the same whether or not the definition exists
-            h.reply(403, {'error': person_only(), 'needs_person': True})
+            h.reply(403, {'error': person_only(path), 'needs_person': True})
             return False
         return True
 
