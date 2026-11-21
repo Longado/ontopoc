@@ -828,27 +828,25 @@ def _labels(meanings: dict | None, where: dict) -> dict:
     return {'labels': said} if said else {}
 
 
-def value_said(question: str, value) -> bool:
-    """Does the question say this value? Compared upper-cased with spaces removed, as a substring of the question; a short code such as N sits inside any
-    word, and 0 inside 2026 or 0.5, so one of fewer than three letters or digits has to stand apart from letters where it is a letter and from digits where it
-    is a digit (Q1 still counts in 2026Q1)."""
-    squash = lambda text: (normalize_value(text) or '').replace(' ', '')
-    v = squash(value)
-    if len(v) < 3 and v.isascii():
-        v = normalize_value(value) or ''
-        left, right = ('0-9' if v[:1].isdigit() else 'A-Z'), ('0-9' if v[-1:].isdigit() else 'A-Z')
-        decimal = r'(?!\.\d)' if v[-1:].isdigit() else ''
-        return bool(v) and re.search(rf'(?<![{left}]){re.escape(v)}(?![{right}]){decimal}', normalize_value(question) or '') is not None
-    return v in squash(question)
-
-
 def flag_unasked_filters(result: dict, question: str) -> dict:
-    """Mark the filters whose value the question never says (value_said): the model added them on its own. A hint for the person checking the answer, not a
-    refusal."""
+    """Mark the filters whose value the question never says: the model added them on its own. A hint for the person
+    checking the answer, not a refusal. Compared upper-cased with spaces removed, and as a substring of the question."""
     filters = (result.get('evidence') or {}).get('filters')
     if not filters:
         return result
-    named = lambda value: value_said(question, value)
+    squash = lambda value: (normalize_value(value) or '').replace(' ', '')
+    said, words = squash(question), normalize_value(question) or ''
+
+    def named(value):
+        v = squash(value)
+        if len(v) < 3 and v.isascii():
+            # a short code such as N sits inside any word, and 0 inside 2026 or 0.5: it has to stand apart from letters
+            # where it is a letter and from digits where it is a digit, so Q1 still counts in 2026Q1
+            v = normalize_value(value) or ''
+            left, right = ('0-9' if v[:1].isdigit() else 'A-Z'), ('0-9' if v[-1:].isdigit() else 'A-Z')
+            decimal = r'(?!\.\d)' if v[-1:].isdigit() else ''
+            return bool(v) and re.search(rf'(?<![{left}]){re.escape(v)}(?![{right}]){decimal}', words) is not None
+        return v in said
     # a condition that leaves a value out is not marked: the path says it, and the workspace has already checked the model's word for the meaning it leaves out
     marked = [f if f.get('not') or 'range' in f or named(f['equals']) or any(named(label) for label in f.get('labels', [])) else {**f, 'not_in_question': True} for f in filters]
     return {**result, 'evidence': {**result['evidence'], 'filters': marked}}

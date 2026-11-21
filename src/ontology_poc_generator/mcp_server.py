@@ -529,8 +529,8 @@ def _lean(body: dict, keys: tuple, narrow: str = 'ORDER BY 那个数 DESC LIMIT 
     if isinstance(out.get('definitions'), list):
         out['definitions'] = [{k: d[k] for k in ('id', 'kind', 'name', 'state', 'version', 'confirmed_by', 'says') if k in d and not (k == 'state' and d[k] == 'confirmed')}
                               if isinstance(d, dict) else d for d in out['definitions']]
-    if isinstance(out.get('beside'), dict):   # each confirmed view beside the number: its name, who confirmed it and its own number (no id, no version)
-        out['beside'] = {'views': [{k: v[k] for k in ('name', 'confirmed_by', 'answer', 'no_data') if k in v} for v in out['beside'].get('views', []) if isinstance(v, dict)],
+    if isinstance(out.get('beside'), dict):   # the other readings beside the number: every row or a view, its name, who confirmed it and its own number (no id, no version)
+        out['beside'] = {'views': [{k: v[k] for k in ('all_rows', 'name', 'confirmed_by', 'answer', 'no_data') if k in v} for v in out['beside'].get('views', []) if isinstance(v, dict)],
                          **({'more': out['beside']['more']} if out['beside'].get('more') else {})}
     answer = out.get('answer')
     if isinstance(answer, dict) and isinstance(answer.get('groups'), list) and len(answer['groups']) > AGENT_GROUPS:
@@ -705,7 +705,7 @@ TOOLS = [
           '属性只有 column 和 type；name 只在和列名不同时给，code 只在是代码列时给。定义多时给 types，只取这几个类型和连着它们的关系、视图、派生属性。只是读，可以重试。'
           '只有已确认的、令牌的主人看得到的；没有数据行，没有全部数据的行数。不在这里的东西没有定义：不要猜，照 rules 拒答。',
           {'types': {'type': 'array', 'items': {'type': 'string'}, 'description': '只要这几个类型（英文名或中文名），不写就是全部'}}),
-    _tool(ask, '只在写不出 ontopoc_query 时用（问题里的说法对不上任何属性或关系，要模型来理解）：用已确认的定义回答一句话问的业务问题（模型把问题写成查询，代码在数据上算）。答得出来给 answer 和它用到的定义 definitions；有 beside 时，answer 算的是全部能看的行，beside.views 里是这个类型上每个已确认视图各自的数和确认人，转述时把它们一起说。用到的定义没确认、问题超出范围、取值没有含义时是拒绝：'
+    _tool(ask, '只在写不出 ontopoc_query 时用（问题里的说法对不上任何属性或关系，要模型来理解）：用已确认的定义回答一句话问的业务问题（模型把问题写成查询，代码在数据上算）。答得出来给 answer 和它用到的定义 definitions；beside 里是同一个问法换成别的行算出的数：answer 算的是全部能看的行时，是这个类型上每个已确认视图各自的数和确认人；answer 只算一个已确认视图时，第一条（all_rows）是全部行的数。转述时把它们一起说。用到的定义没确认、问题超出范围、取值没有含义时是拒绝：'
           'status 是 refused 或 ontology_gap / query_limit / definition_unmet，reason 说原因，refusal 说拒绝的种类和涉及的定义。拒绝就把原因原样转告人，不要换问法绕过，更不要自己猜一个答案。'
           'query_text 是这道题写成的本体查询，改条件、重跑都用 ontopoc_query，不再调用模型。会调用模型，慢且花钱；每问一次都记进问答历史、算一次提问，不要为了重试再问。',
           {'question': {'type': 'string', 'maxLength': 300, 'description': '要问的业务问题'}}, ('question',)),
