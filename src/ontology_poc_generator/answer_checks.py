@@ -209,9 +209,9 @@ def _picks_objects(query: dict) -> bool:
 
 
 def picks_objects(query: dict, ontology: dict, bundle: dict, graph: dict) -> bool:
-    """_picks_objects, and its filter leaves out an object that the measured property counts something for (a value that is there and not 0), as run_query reads
-    the filter over these rows. A filter that leaves out no counted object, every customer's 国家 = CN or only customers with no orders, is a total over all of
-    them, and the rows that reach no object would be left out without a word. A query the language cannot read is not one (_shape_limit says so)."""
+    """_picks_objects, and what its filter leaves out changes the number: the measured property's values of the objects it leaves out (as run_query reads the
+    filter over these rows) do not add up to 0. A filter that leaves out nothing counted, every customer's 国家 = CN, only customers with no orders, or customers
+    whose amounts cancel out, is a total over all of them, and the rows that reach no object would be left out without a word. A query the language cannot read is not one (_shape_limit says so)."""
     if not _picks_objects(query) or _shape_limit(query) or not isinstance(query.get('where'), list) or not all(isinstance(w, dict) for w in query['where']):
         return False
     types = _types(normalize_proposal(ontology))
@@ -224,8 +224,9 @@ def picks_objects(query: dict, ontology: dict, bundle: dict, graph: dict) -> boo
     if measured is None or why:
         return False
     values, has, _ = _matcher(types, bundle, graph)
-    counts = lambda i: any(str(v).strip() and to_number(v) != 0 for v in values(i, measured))
-    return any(not all(has(i, w) != w.get('not', False) for w in where) and counts(i) for i in graph['sources_of'] if i[0] == start)
+    left_out = [i for i in graph['sources_of'] if i[0] == start and not all(has(i, w) != w.get('not', False) for w in where)]
+    read = [to_number(v) for i in left_out for v in values(i, measured) if str(v).strip()]
+    return any(x is None for x in read) or abs(sum(read)) > 1e-9   # what it leaves out changes the number: their values do not add up to 0
 
 
 def _adds_up(d: dict) -> bool:
