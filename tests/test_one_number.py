@@ -321,7 +321,7 @@ class PlantedTests(Planted):
             self.assertEqual([(v.get('all_rows'), v['answer']['total']) for v in body['beside']['views']][0], (True, 160))
             self.assertNotIn('视图1', [v['name'] for v in body['beside']['views']])
 
-    def test_a_saved_answer_says_when_a_view_beside_it_has_changed(self):
+    def test_a_saved_answer_says_when_a_view_beside_it_was_confirmed_again_since(self):
         with self.service(gateway=Scripted(item(ALL_ORDERS))) as (base, out):
             team = self.team(base)
             self.with_valid(team)
@@ -332,9 +332,34 @@ class PlantedTests(Planted):
             status, body = ann.post('/api/workspace/types/views/update', {'id': '有效订单', 'version': view['version'], 'type': 'order',
                                                                          'filters': [*VALID['filters'], {'column': '状态码', 'op': 'is_not', 'label': '生产中'}]})
             self.assertEqual(status, 200, body)
+            self.confirm_view(team['bob'], 'order', '有效订单')
             reopened = ann.get(f'/api/workspace/ask/{saved["id"]}')[1]
             self.assertEqual(reopened['beside_changed'], ['有效订单'])
             self.assertEqual(reopened['changed'], [])   # the answer itself stood on nothing that changed
+
+    def test_a_reopened_answer_names_no_view_beside_it_that_now_waits_for_a_builder_or_a_viewer(self):
+        kinds = [[('is', '已交付')], [('is', '生产中')], [('is', '已取消')], [('is_not', '已交付')], [('is_not', '生产中')], [('is_not', '已交付'), ('is_not', '生产中')]]
+        views = [{'name': f'视图{i}', 'type': 'order', 'filters': [{'column': '状态码', 'op': op, 'label': label} for op, label in k]} for i, k in enumerate(kinds, 1)]
+        with self.service(gateway=Scripted(item(ALL_ORDERS))) as (base, out):
+            team = self.team(base)
+            self.with_valid(team)
+            ann = team['ann']
+            for v in views:
+                self.assertEqual(ann.post('/api/workspace/types/views', v)[0], 200)
+                self.confirm_view(team['bob'], 'order', v['name'])
+            saved = {who: self.ask(team[who], '订单有多少？')[1] for who in ('ann', 'vera')}
+            for body in saved.values():
+                self.assertEqual(([v['name'] for v in body['beside']['views']], body['beside']['more']), (['有效订单', '视图1', '视图2', '视图3', '视图4'], ['视图5', '视图6']))
+            for name in ('视图1', '视图6'):   # one with a number beside, one named in `more`: both are changed and wait for confirming
+                view = next(v for v in ann.get('/api/workspace/types/order/views')[1]['views'] if v['name'] == name)
+                status, body = ann.post('/api/workspace/types/views/update', {'id': name, 'version': view['version'], 'type': 'order', 'filters': [*view['filters'], {'column': '状态码', 'op': 'is_not', 'label': '已取消'}]})
+                self.assertEqual((status, body['state']), (200, 'checked'), body)
+            for who in ('ann', 'vera'):
+                reopened = team[who].get(f'/api/workspace/ask/{saved[who]["id"]}')[1]
+                self.assertEqual(([v['name'] for v in reopened['beside']['views']], reopened['beside']['more']), (['有效订单', '视图2', '视图3', '视图4'], ['视图5']), who)
+                said = json.dumps({k: reopened.get(k) for k in ('beside', 'beside_changed')}, ensure_ascii=False)
+                for name in ('视图1', '视图6'):
+                    self.assertNotIn(name, said, who)
 
 
 class QueryTextTests(Planted):
