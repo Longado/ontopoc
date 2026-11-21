@@ -684,10 +684,6 @@ def _content_hash(value) -> str:
     return hashlib.sha256(canonical.encode('utf-8')).hexdigest()
 
 
-def ontology_content_hash(ontology: dict) -> str:
-    return _content_hash(ontology)
-
-
 def bundle_content_hash(bundle: dict) -> str:
     """The hash a saved run keeps of the data it was built from: canonical JSON, SHA-256."""
     return _content_hash(bundle)
