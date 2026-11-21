@@ -173,7 +173,7 @@ Recent work has a language model do most of the building of an ontology or a gra
 
 ### How does this relate to a semantic layer?
 
-Your metrics may already be defined in a semantic layer on a warehouse. Who signed them? Who notices when the data changes underneath? OntoPoc is about that part: each definition carries the person who confirmed it and the data version, goes back for another look when the data moves, and the AI refuses to use it until someone confirms it again. It keeps its own copy of the data. If you use dbt, upload `manifest.json` on the object types page: OntoPoc reads its model tests (unique, not_null, relationships, accepted_values) and proposes object types and relations, which another builder still confirms against the data. It does not read composite keys, dbt constraints, metrics or the semantic layer, and the import confirms nothing. It does not export to a specific semantic layer yet.
+Your metrics may already be defined in a semantic layer on a warehouse. Who signed them? Who notices when the data changes underneath? OntoPoc is about that part: each definition carries the person who confirmed it and the data version, goes back for another look when the data moves, and the AI refuses to use it until someone confirms it again. It keeps its own copy of the data. If you use dbt, upload `manifest.json` on the object types page: OntoPoc reads its model tests (unique, not_null, relationships, accepted_values) and proposes object types and relations, at most 50 per import and shown as a preview before anything is written; another builder still confirms each against the data. It does not read composite keys, dbt constraints, metrics, the semantic layer or dbt Cloud, it does not follow later changes to the manifest, and the import confirms nothing. It does not export to a specific semantic layer yet.
 
 ### What is an ontology MCP, and how do I use it here?
 
@@ -200,8 +200,8 @@ Issues and pull requests are welcome. Read the [development guardrails](docs/DEV
 ## Development
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (2,300 on 2026-11-20; install ".[check,sources]" first, or TTL and some source checks are skipped)
-npm --prefix landing-page run test:unit                       # page tests (820 on 2026-11-20)
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (2,427 on 2026-11-20; install ".[check,sources]" first, or TTL and some source checks are skipped)
+npm --prefix landing-page run test:unit                       # page tests (831 on 2026-11-20)
 PYTHONPATH=src:. python3 scripts/real_model_check.py --out /tmp/check   # real model against SQL (needs a model key; fails only on a wrong number)
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # a trial run in another data directory
 ```

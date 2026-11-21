@@ -400,7 +400,7 @@ class DemoStory(unittest.TestCase):
         self.assertNotIn(reason, json.dumps(customer, ensure_ascii=False))
 
     def test_a_guests_question_on_a_waiting_type_is_refused_before_the_model_saying_only_that_it_waits(self):
-        """Until the owner decides D9 a viewer is told only that the answer waits for a confirmation: not the type, not who (VIEWERS_TOLD_WHAT_WAITS turns names on)."""
+        """A viewer is told only that the answer waits for a confirmation: not the type, not who (VIEWERS_TOLD_WHAT_WAITS turns names on)."""
         admin = signed_in(self.base, self.password)
         detail = admin.call('GET', '/api/workspace/types/customer')[1]
         secrets = [detail['reason'], 'C012', '不唯一', 'customers_update', '41']   # why it waits quotes the data: its keys, counts and file
@@ -457,7 +457,7 @@ class DemoStory(unittest.TestCase):
                 self.assertNotIn(secret, said, qid)
             self.assertNotIn('changed', body)
             self.assertNotIn('answer', body)
-            for word in ('Customer', 'demo-admin'):   # what a fresh question says: only that it waits (D9 not widened)
+            for word in ('Customer', 'demo-admin'):   # what a fresh question says: only that it waits (a viewer is not told names)
                 self.assertNotIn(word, json.dumps({k: body[k] for k in ('reason', 'withheld')}, ensure_ascii=False), qid)
 
     def test_the_board_still_answers_while_the_customer_type_waits(self):

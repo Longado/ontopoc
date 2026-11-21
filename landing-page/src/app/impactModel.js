@@ -31,12 +31,15 @@ export function changeCell(change) {
 const movedText = (moved, key = "review.impact.movedOne") => (moved ?? []).map((m) => t(key, { name: m.name, from: m.from, to: m.to })).join(t("review.receipt.sep"));
 
 /** What new data since the last confirmation means here, in one or two sentences: `accepted` moves (the data sent the item back; confirming lets the new data's numbers
- * count) and the others (the item stayed confirmed through the new data; the table shows only the change). `words` is review.impact or review.receipt. */
+ * count; `edited` too: it was also changed while it waited, and the table compares the definition as last confirmed with the new one, both on the new data) and the
+ * others (the item stayed confirmed through the new data; the table shows only the change). `words` is review.impact or review.receipt. */
 function movedSentences(moved, words) {
   const one = words === "review.impact" ? "review.impact.movedOne" : "review.receipt.movedOne";
-  const accepted = (moved ?? []).filter((m) => m.accepted);
+  const accepted = (moved ?? []).filter((m) => m.accepted && !m.edited);
+  const both = (moved ?? []).filter((m) => m.accepted && m.edited);
   const kept = (moved ?? []).filter((m) => !m.accepted);
   return [
+    ...(both.length ? [t(`${words}.dataAcceptedEdited`, { list: movedText(both, one) })] : []),
     ...(accepted.length ? [t(`${words}.dataAccepted`, { list: movedText(accepted, one) })] : []),
     ...(kept.length ? [t(`${words}.dataMoved`, { list: movedText(kept, one) })] : []),
   ].join(" ");
