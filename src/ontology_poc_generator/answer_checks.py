@@ -190,14 +190,21 @@ def _read_derived(query: dict, types: dict, uses: list, derived: dict | None) ->
     return {f: {**d, 'summed': f == measured and f not in elsewhere and measure.get('op') == 'sum'} for f, d in derived.items() if f in elsewhere or f == measured}   # summed: read only as the measure, added up
 
 
-def _same_rows(read: dict, source: str, conditions: set) -> dict | None:
+def _same_rows(read: dict, source: str, conditions: set, per_object: bool = False) -> dict | None:
     """The derived property through which the query reads `source` (a table) by exactly these conditions ({(column, op, label)}): every derived property it reads
     that counts rows of that table has them, no more and no fewer, so no row the conditions leave out is in its values. None when it reads none, or one that
-    differs (it would bring rows in that the conditions keep out, or leave out rows they keep)."""
+    differs (it would bring rows in that the conditions keep out, or leave out rows they keep). `per_object`: the query keeps to particular objects (_picks_objects),
+    so it reads those objects' own rows and every row of the table need not reach exactly one object."""
     about = [d for d in read.values() if d['source'] == source]
-    if about and all({(c['column'], c['op'], c['label']) for c in d['conditions']} == conditions and _adds_up(d) and d.get('exact') and not d.get('waiting') for d in about):
+    if about and all({(c['column'], c['op'], c['label']) for c in d['conditions']} == conditions and _adds_up(d) and (per_object or d.get('exact')) and not d.get('waiting') for d in about):
         return about[0]
     return None
+
+
+def _picks_objects(query: dict) -> bool:
+    """The query keeps to particular objects of its start type (an equals in its filter, no hop to another type): a per-object count then reads those objects' own
+    rows (客户 KH026 的已取消订单数), whether or not every row of the table reaches exactly one object. A total over every object does not."""
+    return not query.get('via') and any(isinstance(w, dict) and w.get('equals') not in (None, '', []) for w in query.get('where') or [])
 
 
 def _adds_up(d: dict) -> bool:
@@ -332,14 +339,18 @@ def definition_check(question: str, query: dict, ontology: dict, views: list[dic
                 left_out = {(column, 'is_not', x) for x in meaning['labels'].values() if x and (declared.get(meaning_id(field, x)) or (declared.get(x) if x in bare else None)) == 'exclude'}
                 asked_in = {x for x in meaning['labels'].values() if x and (declared.get(meaning_id(field, x)) or (declared.get(x) if x in bare else None)) == 'include'}   # (its own count: the filter-includes code above is not read here)
                 if direction == 'include' and any(d['source'] == field.partition('.')[0] for d in read_derived.values()):   # the question wants only these rows, and the query counts rows of their table through a derived property: one that keeps exactly this meaning
-                    d = _same_rows(read_derived, field.partition('.')[0], {(column, 'is', label)}) if len(asked_in) == 1 else None
+                    d = _same_rows(read_derived, field.partition('.')[0], {(column, 'is', label)}, _picks_objects(query)) if len(asked_in) == 1 else None
                     if d:
                         understood.append(_says(direction, label, tr(f'派生属性 {d["name"]} 只算 {column} = {codes}', f'The derived property {d["name"]} counts only {column} = {codes}')))
+                    elif len(asked_in) == 1 and (still := _not_through(read_derived, field.partition('.')[0], {(column, 'is', label)})):   # it reads one that counts only them, which cannot stand for them here
+                        unmet.append({'definition': label, 'kind': 'meaning', 'why': tr(f'{what}：问题只要这些行，这条查询没有读「{field.partition(".")[0]}」表里的对象，读的派生属性只算它们，但这里不能代替这些行',
+                                                                                       f'{what}: the question wants only these rows; the query reads no objects from the table "{field.partition(".")[0]}", and the derived property it reads counts only them but cannot stand for them here') + still})
+                        understood.append(_says(direction, label, tr('查询没有读它所在的列', 'The query does not read its column')))
                     else:
                         unmet.append({'definition': label, 'kind': 'meaning', 'why': tr(f'{what}：问题只要这些行，但这条查询没有读「{field.partition(".")[0]}」表里的对象，也没有读只算它的派生属性，没法只算它们',
                                                                                        f'{what}: the question wants only these rows, but the query reads no objects from the table "{field.partition(".")[0]}" and no derived property that counts only them, so it cannot keep to them')})
                         understood.append(_says(direction, label, tr('查询没有读它所在的列', 'The query does not read its column')))
-                if direction == 'exclude' and (d := _same_rows(read_derived, field.partition('.')[0], left_out)):   # a derived property the query reads leaves out exactly these
+                if direction == 'exclude' and (d := _same_rows(read_derived, field.partition('.')[0], left_out, _picks_objects(query))):   # a derived property the query reads leaves out exactly these
                     understood.append(_says(direction, label, tr(f'派生属性 {d["name"]} 不算 {column} = {codes}', f'The derived property {d["name"]} leaves out {column} = {codes}')))
                 elif direction == 'exclude':
                     unmet.append({'definition': label, 'kind': 'meaning', 'why': tr(f'{what}：这个问法要把它排除，但这条查询没有读「{field.partition(".")[0]}」表里的对象，排除没有地方可做',
