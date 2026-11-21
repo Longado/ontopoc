@@ -17,6 +17,13 @@ def current_actor() -> dict | None:
     return _actor.get()
 
 
+def token_mark() -> str | None:
+    """The label of the token this request carries ('' for a token without one), or None for a signed-in session and for work nobody asked for (an upload a
+    schedule runs). Kept with every log line the request writes, so the log says a token did it."""
+    user = _actor.get()
+    return None if user is None or user.get('token_id') is None else user.get('token_label') or ''
+
+
 def actor_id_for(name: str | None) -> int | None:
     """The actor's account id when `name` is the actor's own display name."""
     user = _actor.get()

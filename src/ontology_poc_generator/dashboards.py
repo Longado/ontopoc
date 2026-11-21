@@ -204,6 +204,12 @@ def normalize_spec(raw) -> dict:
     if not isinstance(bar, list) or len(bar) > MAX_BAR or not all(isinstance(f, dict) for f in bar):
         raise DashboardRefused(tr(f'筛选条最多 {MAX_BAR} 项', f'The filter bar can have at most {MAX_BAR} items'))
     filters = [{'field': _clean_name(f.get('field'), tr('筛选项的字段', 'The filter field'), 60), 'label': _clean_name(f.get('label') or f.get('field'), tr('筛选项的名字', 'The filter name'), MAX_TITLE)} for f in bar]
+    for raw_filter, normalized in zip(bar, filters):
+        op = raw_filter.get('op', 'eq')
+        if op not in ('eq', 'name_is'):
+            raise DashboardRefused(tr('筛选项只支持等于或名称匹配', 'A filter bar supports equality or name matching'))
+        if op == 'name_is':
+            normalized['op'] = op
     if len({f['field'] for f in filters}) != len(filters):
         raise DashboardRefused(tr('筛选条里一个字段只能出现一次', 'A field can appear only once in the filter bar'))
     params = _params(raw.get('params'))
@@ -344,12 +350,12 @@ def delete_dashboard(conn, user: dict | None, payload: dict) -> dict:
 
 # --- working a board out -------------------------------------------------------------------------------------------------------------------------------
 
-def _with_bar(conn, user: dict | None, component: dict, bar: dict) -> dict:
+def _with_bar(conn, user: dict | None, component: dict, filters: list[dict]) -> dict:
     """The component's query with the filter bar's picks added for the fields its type has (a pick for a field it does not have leaves it alone)."""
     query = component['query']
     row = _type_row(conn, query['type'], user)
     own = {p['column'] for p in _content(row)['properties']} - hidden_columns(conn, row['element_id'], user)
-    added = [{'field': f, 'op': 'eq', 'value': v} for f, v in bar.items() if f in own]
+    added = [f for f in filters if f['field'] in own]
     return {**query, 'filters': [*query['filters'], *added]}
 
 
@@ -395,8 +401,8 @@ def _failed(conn, user: dict | None, component: dict, exc: Exception) -> dict:
     return {**base, 'status': 'unavailable', 'message': message}
 
 
-def _work_out(conn, user: dict | None, component: dict, bar: dict) -> dict:
-    query = _with_bar(conn, user, component, bar)
+def _work_out(conn, user: dict | None, component: dict, filters: list[dict]) -> dict:
+    query = _with_bar(conn, user, component, filters)
     if component['chart']['kind'] == 'rows':
         table = explore_table(conn, user, query)
         result = {**table, 'rows': table['rows'][:ROW_LIMIT], 'numbers': table['numbers'][:ROW_LIMIT], 'shown': min(ROW_LIMIT, table['total'])}
@@ -448,13 +454,15 @@ def evaluate(conn, user: dict | None, spec: dict, bar: dict, values: dict | None
     """Every component worked out for this person: {'id', 'title', 'chart', 'status': 'ok', 'result'} or {..., 'status': 'unavailable', 'message'}. A component that
     cannot be read by this person (a type they may not see, a view or column that is gone) says why and the others still show. `values` are the parameters the query
     cards are worked out with; `author` is whether this person made the board (or may change it): only they are told what a query card that fails reads."""
+    filters = [{'field': f['field'], 'op': f.get('op', 'eq'), 'value': bar[f['field']]}
+               for f in spec['filters'] if f['field'] in bar]
     out = []
     for component in spec['components']:
         if 'text' in component:
             out.append(_work_out_text(conn, user, component, values if values is not None else _defaults(spec), author, _defaults(spec)))
             continue
         try:
-            out.append(_work_out(conn, user, component, bar))
+            out.append(_work_out(conn, user, component, filters))
         except TypeRefused as exc:
             out.append(_failed(conn, user, component, exc))
     return out
@@ -476,7 +484,7 @@ def _bar_options(conn, user: dict | None, spec: dict, picked: dict) -> list[dict
                 continue
             found = next((x for x in fields if x['key'] == f['field'] and not x['derived']), None)
             if found:
-                options = found['options']
+                options = None if f.get('op') == 'name_is' else found['options']
                 break
         out.append({**f, 'name': name, 'options': options, 'value': picked.get(f['field'], '')})
     return out

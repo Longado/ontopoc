@@ -354,6 +354,14 @@ def reset_reasons(old: dict, new: dict) -> list[str]:
     return reasons
 
 
+def token_edit(row: dict, user: dict | None, edited: bool) -> list[str]:
+    """[the reason] when a confirmed definition is edited with a token: whatever the edit, it is put forward again, as a change of what it means is, and a person
+    confirms it again (a token's words must not stand beside a person's confirmation). [] for a person signed in, for nothing edited, or for one not confirmed."""
+    if edited and row['state'] == 'confirmed' and user is not None and user.get('token_id') is not None:
+        return [tr('名称或说明（用令牌改的）', 'its name or description, with a token')]
+    return []
+
+
 def _meaning_columns(conn, english_name: str) -> list[str]:
     """The code columns of this type that have a meaning element."""
     prefix = f'{ENUM_PREFIX}{english_name}:'
@@ -386,7 +394,7 @@ def _meaning_reset_flags(conn, columns: list[str], english_name: str) -> None:
 def update_type(conn, payload: dict, who: str | None, user: dict | None = None) -> dict:
     """Save a changed definition ({id, version, ...the fields of create}). `version` is the one the person was looking at: 409 when it has moved. A change
     on the reset list (reset_reasons) makes it checked again with this person as its proposer, and so does saving a model's draft; a change to the names or
-    the description keeps its state and only goes to the log. Meanings in the payload are put forward like propose_meanings does; the meanings of a column
+    the description keeps its state and only goes to the log (made by a person signed in; made with a token, a confirmed one is put forward again: object_types.token_edit). Meanings in the payload are put forward like propose_meanings does; the meanings of a column
     that is no longer a code column, or of a dataset the type no longer reads, are taken away (post them again to keep them). Everything is written in one
     transaction, with what a confirmed element that stopped being confirmed moves. Returns {'id', 'state', 'reset', 'warnings'}."""
     row = whole_type_row(conn, payload.get('id'), user)
@@ -397,7 +405,7 @@ def update_type(conn, payload: dict, who: str | None, user: dict | None = None) 
     check_names_free(conn, content)
     dataset = current_dataset(conn, content['dataset'])
     cols = dataset_columns(conn, dataset['id'])
-    reset = reset_reasons(old, content)
+    reset = reset_reasons(old, content) or token_edit(row, user, (old['name'], old['description']) != (content['name'], content['description']))
     if mark := drafted_mark(conn, payload, who, user, 'type', content, old.get('drafted'), old['english_name']):   # applied from the assistant's draft: who, when (a later ordinary edit keeps it)
         content = {**content, 'drafted': mark}
     english = old['english_name']
@@ -1125,11 +1133,11 @@ def _action_line_readable(conn, element: str, after: dict, user: dict | None) ->
 
 def log_entries(conn, ids: list[str], user: dict | None = None) -> list[dict]:
     """The log lines about these elements, newest first (the caller has checked that this person may read them). A line of an action about a row a row rule keeps
-    from `user` is left out altogether."""
+    from `user` is left out altogether. `with_token` is the label of the token a line was written with ('' for one without a label), None when a person did it."""
     out, limited, kept_from, hidden_of = [], {}, {}, {}
     hidden = lambda element: hidden_of.setdefault(element, hidden_columns(conn, element, user))
-    for at, who, element, change, before, after in conn.execute(
-            f'SELECT time, who, element_id, change, before_json, after_json FROM log WHERE element_id IN ({",".join("?" * len(ids))}) ORDER BY time DESC, rowid DESC', ids):
+    for at, who, element, change, before, after, via_token in conn.execute(
+            f'SELECT time, who, element_id, change, before_json, after_json, via_token FROM log WHERE element_id IN ({",".join("?" * len(ids))}) ORDER BY time DESC, rowid DESC', ids):
         after = json.loads(after) if after else {}
         if element not in kept_from:   # a meaning, view, relation, derived property or action that reads a column kept from this person: none of its lines
             kept_from[element] = element.startswith((ENUM_PREFIX, VIEW_PREFIX, RELATION_PREFIX, DERIVED_PREFIX, ACTION_PREFIX)) and reads_hidden(conn, element, user)
@@ -1145,7 +1153,7 @@ def log_entries(conn, ids: list[str], user: dict | None = None) -> list[dict]:
             continue
         kind = ('dataset' if element.startswith('dataset:') else 'meaning' if element.startswith(ENUM_PREFIX) else 'relation' if element.startswith(RELATION_PREFIX)
                 else 'view' if element.startswith(VIEW_PREFIX) else 'derived' if element.startswith(DERIVED_PREFIX) else 'action' if element.startswith(ACTION_PREFIX) else 'pipeline' if element.startswith(PIPELINE_PREFIX) else 'type')
-        out.append({'at': at, 'who': who, 'element': kind, 'column': element.split(':', 2)[2] if kind == 'meaning' else None, 'change': change,
+        out.append({'at': at, 'who': who, 'with_token': via_token, 'element': kind, 'column': element.split(':', 2)[2] if kind == 'meaning' else None, 'change': change,
                     'record': after.get('record') if change.startswith('action_') else None,
                     'from': (json.loads(before) if before else {}).get('state'), 'to': after.get('state'), 'reason': after.get('reason'),
                     'caused_by': after.get('caused_by'), 'self_confirmed': bool(after.get('self_confirmed')),

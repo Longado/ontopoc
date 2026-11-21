@@ -21,6 +21,7 @@ import json
 import re
 
 from ontology_poc_generator.object_types import (
+    token_edit,
     RELATION_PREFIX, TYPE_PREFIX, TypeRefused, _content, _edit_names, _flag_readers, _state_view, _text, _visible, dataset_columns, element_row, log_entries, refuse_if_limited, type_id,
     write_confirmation, write_elements, MAX_DESCRIPTION, MAX_NAME, ENGLISH_NAME, kept_columns)
 from ontology_poc_generator.relation_checks import _side_numbers
@@ -304,7 +305,7 @@ def create_relation(conn, payload: dict, who: str | None, user: dict | None) -> 
 
 def update_relation(conn, payload: dict, who: str | None, user: dict | None) -> dict:
     """{id, version, ...the fields of create}: a change to the endpoints, cardinality or columns puts it forward again as this person's (and what reads it
-    moves to needs_look); so does saving a draft that was sent back; names and the description keep the state. 409 when the version has moved."""
+    moves to needs_look); so does saving a draft that was sent back; names and the description keep the state (made by a person signed in; made with a token, a confirmed one is put forward again: object_types.token_edit). 409 when the version has moved."""
     row = element_row(conn, relation_id(str(payload.get('id'))))
     if row is None or not _relation_visible(conn, row, user):
         raise TypeRefused(tr('没有这个关系', 'There is no such relation'), 404)
@@ -313,7 +314,7 @@ def update_relation(conn, payload: dict, who: str | None, user: dict | None) -> 
     old = _content(row)
     content = check_definition(conn, payload, user, old['english_name'])
     check_names_free(conn, content)
-    reset = reset_reasons(old, content)
+    reset = reset_reasons(old, content) or token_edit(row, user, (old['name'], old['description']) != (content['name'], content['description']))
     if reset or row['state'] in ('proposed', 'rejected'):
         result = check_relation(conn, content)
         after = (lambda c: _flag_readers(c, row['element_id'], tr(f'它用的“{old["name"]}”关系改了{tr("、", ", ").join(reset)}，要重新确认', f'The relation "{old["name"]}" it uses changed ({", ".join(reset)}) and needs confirming again'), [])) if reset and row['state'] == 'confirmed' else None

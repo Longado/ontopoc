@@ -181,6 +181,8 @@ export default {
   "log.retired": "Removed the meanings of these columns ({reason}): {text}",
   "log.edited": "Edited the name or description: {text}",
   "log.proposed": "Proposed {what}",
+  "log.withToken": " (with the token “{label}”)",
+  "log.withTokenNoLabel": " (with a token)",
   "dbt.open": "Import from dbt",
   "dbt.title": "Import from a dbt manifest",
   "dbt.intro": "Choose the manifest.json that dbt writes to target/ (dbt parse or dbt compile makes it).",

@@ -20,6 +20,7 @@ import sqlite3
 
 from ontology_poc_generator.caliber import grey_reasons, lines_of, root_reason
 from ontology_poc_generator.derived_properties import confirmed_columns
+from ontology_poc_generator.entity_names import matches_name
 from ontology_poc_generator.named_views import ORDERED_TEXT
 from ontology_poc_generator.object_relations import _relation_visible, relation_id
 from ontology_poc_generator.object_types import OBJECT_PAGE, RELATION_PREFIX, TypeRefused, _content, _state_view, _type_row, dataset_columns, element_row, enum_id, type_id
@@ -31,7 +32,7 @@ from ontology_poc_generator.row_rules import keeps, restriction
 from ontology_poc_generator.type_access import hidden_columns
 from ontology_poc_generator.workspace_store import fan_note, _canonical, current_dataset, dataset_records, fan_marks
 
-FILTER_OPS = TrMap({'eq': ('等于', 'equals'), 'ne': ('不等于', 'does not equal'), 'contains': ('包含', 'contains'), 'gt': ('大于', 'is greater than'), 'ge': ('不小于', 'is at least'), 'lt': ('小于', 'is less than'), 'le': ('不大于', 'is at most'), 'empty': ('为空', 'is empty'), 'filled': ('有值', 'has a value')})
+FILTER_OPS = TrMap({'eq': ('等于', 'equals'), 'ne': ('不等于', 'does not equal'), 'contains': ('包含', 'contains'), 'name_is': ('名称或别名等于', 'matches a name or alias'), 'gt': ('大于', 'is greater than'), 'ge': ('不小于', 'is at least'), 'lt': ('小于', 'is less than'), 'le': ('不大于', 'is at most'), 'empty': ('为空', 'is empty'), 'filled': ('有值', 'has a value')})
 NO_VALUE = ('empty', 'filled')
 ORDER_OPS = ('gt', 'ge', 'lt', 'le')
 CHARTS = TrMap({'number': ('单个数字', 'Single number'), 'bar': ('柱状图', 'Bar chart'), 'pie': ('饼图', 'Pie chart'), 'histogram': ('直方图', 'Histogram'), 'table': ('统计表', 'Statistics table')})
@@ -185,6 +186,8 @@ def _matches(row: dict, field: dict, flt: dict) -> bool:
         return v is not None and _canonical(v) == _canonical(wanted)
     if op == 'ne':
         return v is None or _canonical(v) != _canonical(wanted)
+    if op == 'name_is':
+        return v is not None and matches_name(v, wanted)
     if op == 'contains':
         return v is not None and (wanted.casefold() in v.casefold() or wanted.casefold() in (field['labels'].get(v) or '').casefold())
     if v is None:

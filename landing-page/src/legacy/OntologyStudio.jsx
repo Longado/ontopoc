@@ -36,7 +36,7 @@ import { earlierVersionOf, versionRows } from "./versionModel.js";
 import { answerTags, filterQuestions, stabilityRows, typeMix } from "./visualModel.js";
 import { objectsNav, opensAtTop, qaNav, sectionsFor, startSection } from "./workspaceModel.js";
 import { DomainReference } from "./DomainReference.jsx";
-import "./PublicRecallReview.css";
+import "./shared.css";
 import "./OntologyStudio.css";
 
 const START = "PYTHONPATH=src python -m ontology_poc_generator.ontology_server";

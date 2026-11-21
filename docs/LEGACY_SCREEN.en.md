@@ -91,8 +91,6 @@ Once installed (see [Quick start](../README.en.md#quick-start)), open `legacy.ht
 | Questions (智能问答) | Ask, acceptance questions, the model's questions (filter by answered) |
 | Data check (数据体检) | 7 checks, rules (规则), comparison with a reference ontology (对照标准) |
 
-Under "More examples" (更多示例) in the sidebar there are two more example uses of the same method: vehicle recall scope (NHTSA public data, no local service needed), and product and lot matching for food recall event 95876 (openFDA, which needs a separate local recall service started). See [docs/RECALL_EXAMPLE.md](RECALL_EXAMPLE.md). OntoPoc is not affiliated with NHTSA or any carmaker, and its candidates are not defect findings.
-
 ## What the model sees
 
 Moved from the README's Privacy section; what the team app sends is in the README.

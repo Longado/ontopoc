@@ -34,6 +34,8 @@ test("an object type's states and the line under its title read in English", () 
 
 test("the log reads as English sentences", () => {
   assert.deepEqual(logText({ who: "ann", element: "type", change: "confirmed" }), { who: "ann", text: "Confirmed the object type" });
+  assert.deepEqual(logText({ who: "ann", element: "type", change: "checked", with_token: "support agent" }), { who: "ann", text: "Proposed the object type (with the token “support agent”)" });
+  assert.equal(logText({ who: "ann", element: "type", change: "edited", text: "Customer", with_token: "" }).text.endsWith("(with a token)"), true);
   assert.deepEqual(logText({ who: "ann", element: "meaning", column: "status", change: "sent_back", reason: "wrong" }), { who: "ann", text: "Sent back the meanings of “status”: wrong" });
   assert.equal(logText({ who: "bob", element: "dataset", change: "import v3" }).text, "Uploaded v3");
   assert.equal(logText({ who: "x", element: "view", change: "weird" }).text, "The view: weird");

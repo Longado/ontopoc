@@ -4,7 +4,6 @@
 landing-page/dist
 output
 build
-experiments
 **/__pycache__
 .env
 .env.*

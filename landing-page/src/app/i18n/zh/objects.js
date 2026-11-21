@@ -2,6 +2,7 @@
 export default {
   "op.eq": "等于",
   "op.ne": "不等于",
+  "op.name_is": "名称或别名等于",
   "op.contains": "包含",
   "op.gt": "大于",
   "op.ge": "不小于",
@@ -72,6 +73,8 @@ export default {
   "bar.searchPlaceholder": "搜索主键或任意一列",
   "bar.viewLabel": "视图",
   "bar.allRows": "全部行",
+  "bar.rowSelection": "在选定的 {count} 行中查询。",
+  "bar.clearRowSelection": "取消行范围限制",
   "bar.unconfirmed": "（未确认）",
   "bar.addFilter": "加条件",
   "pivot.note": "这是{via}关联的{type}。",

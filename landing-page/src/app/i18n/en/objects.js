@@ -2,6 +2,7 @@
 export default {
   "op.eq": "equals",
   "op.ne": "does not equal",
+  "op.name_is": "matches a name or alias",
   "op.contains": "contains",
   "op.gt": "is greater than",
   "op.ge": "is at least",
@@ -72,6 +73,8 @@ export default {
   "bar.searchPlaceholder": "Search by key or any column",
   "bar.viewLabel": "View",
   "bar.allRows": "All rows",
+  "bar.rowSelection": "Searching within {count} selected rows.",
+  "bar.clearRowSelection": "Clear row selection",
   "bar.unconfirmed": " (not confirmed)",
   "bar.addFilter": "Add filter",
   "pivot.note": "These are the {type} related{via}.",

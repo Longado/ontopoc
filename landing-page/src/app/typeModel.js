@@ -48,8 +48,14 @@ const DATASET_LINE = [
 
 const WHAT = { pipeline: "pipeline", relation: "relation", view: "view", derived: "derived", action: "action" };
 
-/** One line of the log as a sentence: {who, text}. */
+/** One line of the log as a sentence: {who, text}; a line written with a token says so, with the token's label. */
 export function logText(e) {
+  const line = logSentence(e);
+  if (e.with_token == null) return line;
+  return { ...line, text: `${line.text ?? ""}${e.with_token ? t("types.log.withToken", { label: e.with_token }) : t("types.log.withTokenNoLabel")}` };
+}
+
+function logSentence(e) {
   const what = e.element === "meaning" ? t("types.what.meaning", { column: e.column }) : t(`types.what.${WHAT[e.element] ?? "type"}`);
   if (e.element === "dataset") {
     const hit = DATASET_LINE.map(([re, say]) => [re.exec(e.change), say]).find(([m]) => m);
