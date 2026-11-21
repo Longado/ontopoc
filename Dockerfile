@@ -11,7 +11,7 @@ FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 RUN useradd --create-home --uid 10001 ontopoc
 WORKDIR /app
-COPY pyproject.toml README.md LICENSE NOTICE.md ./
+COPY pyproject.toml README.en.md LICENSE NOTICE.md ./
 COPY src/ ./src/
 RUN pip install --no-cache-dir '.[sources]'
 COPY docs/pilot/ ./docs/pilot/

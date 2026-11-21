@@ -215,3 +215,5 @@ The design documents are in Chinese:
 ## License
 
 [AGPL-3.0](LICENSE) © Yutai Lin. v0.2.0 and earlier stay under MIT; for a commercial license, see [NOTICE.md](NOTICE.md).
+
+<!-- mcp-name: io.github.Longado/ontopoc -->
