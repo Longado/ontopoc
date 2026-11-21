@@ -30,6 +30,26 @@ export function answerView(record) {
   return { big: unit ? countText(a.total, unit) : count(a.total), note: record.status === "no_data" ? record.reason ?? "" : "", table: null };
 }
 
+/** The confirmed views beside an answer whose question names none (the service works each out the same way on that view's rows): {title, lines: [{key, name,
+ * text, of, by}], more, hint}, or null when there are none. A grouped or top-N answer has the names only (text ""). */
+export function besideView(record) {
+  const views = record.beside?.views ?? [];
+  if (!views.length) return null;
+  const unit = record.types?.[0]?.name ?? "";
+  const numbers = views.some((v) => v.answer);
+  const lines = views.map((v) => ({
+    key: v.id ?? v.name, name: v.name,
+    text: v.answer ? answerView({ ...record, status: "answered", answer: v.answer }).big : v.no_data ? t("ask.noData") : "",
+    of: v.answer?.total != null && record.answer?.total != null ? t("ask.beside.of", { n: count(v.answer.total), total: count(record.answer.total), unit }) : "",
+    by: v.confirmed_by ? t("ask.beside.by", { by: v.confirmed_by }) : "",
+  }));
+  const more = record.beside.more ?? [];
+  return { title: t(numbers ? "ask.beside.title" : "ask.beside.names"), lines, more: more.length ? t("ask.beside.more", { n: more.length, names: more.join(t("ask.sep")) }) : "", hint: numbers ? t("ask.beside.hint") : "" };
+}
+
+/** What the model wrote that code did not apply, because the question does not say it: one line each. */
+export const notAppliedLines = (record) => (record.not_applied ?? []).map((n) => `${n.name}${n.values?.length ? ` = ${n.values.join(t("ask.sep"))}` : ""}${t("ask.colon")}${n.why}`);
+
 /** The answer, or the refusal, in one word for the history list. */
 export const statusText = (status) => t(status === "answered" ? "ask.status.answered" : status === "no_data" ? "ask.status.noData" : "ask.status.refused");
 export const isAnswer = (record) => record.status === "answered" || record.status === "no_data";
