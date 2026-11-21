@@ -106,6 +106,29 @@ def read_token_allows(method: str, path: str) -> bool:
     return method == 'GET' or path in READ_TOKEN_POSTS
 
 
+# What only a person signed in on the page may do on the team workspace: confirm a definition, approve a submitted change, record a checked number. "A named person confirmed"
+# means a person pressed it, not an agent holding their token, so a request that carries a token is refused here whatever the token's scope or its owner's role.
+# Proposing, editing and sending back stay open to a token (sending back takes trust away, it grants none); the early screen (/api/ontology/...) is not in the list.
+# Take a line out to give that act back to tokens (tests/test_token_no_confirm.py, which finds every route that writes a person's name as the one who vouches, then says so).
+PERSON_ONLY_POSTS = (
+    '/api/workspace/types/confirm',           # an object type, or one column's code meanings (with `column`)
+    '/api/workspace/types/views/confirm',
+    '/api/workspace/types/derived/confirm',
+    '/api/workspace/relations/confirm',
+    '/api/workspace/pipelines/confirm',
+    '/api/workspace/actions/confirm',         # an action's definition
+    '/api/workspace/actions/decide',          # approve (or reject) a submitted change: one route, decided before the body is read
+    '/api/workspace/queue/confirm',           # any of the above from the review queue
+    '/api/workspace/queue/confirm-group',     # what one upload moved, confirmed together
+    '/api/workspace/checked',                 # "checked by <person>" on a board card or a saved answer: the mark carries a person's name
+)
+
+
+def token_allows(method: str, path: str) -> bool:
+    """Whether a request that carries a token (of any scope) may call this route at all: everything but the acts in PERSON_ONLY_POSTS."""
+    return not (method == 'POST' and path in PERSON_ONLY_POSTS)
+
+
 def required_role(method: str, path: str) -> str:
     """Role (or PUBLIC / SESSION) needed for a request; a route not in the table needs an admin."""
     return route_role(method, path) or 'admin'
