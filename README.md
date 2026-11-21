@@ -204,7 +204,7 @@ Ontology 先约定「有哪些对象、怎么识别、对象之间可以有什�
 ## 开发
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # 后端测试（2026-11-20 共 2,467 个；先 pip install -e ".[check,sources]"，否则 TTL 校验等会跳过）
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # 后端测试（2026-11-20 共 2,476 个；先 pip install -e ".[check,sources]"，否则 TTL 校验等会跳过）
 npm --prefix landing-page run test:unit                       # 前端测试（2026-11-20 共 833 个）
 PYTHONPATH=src:. python3 scripts/real_model_check.py --out /tmp/check   # 真实模型对照 SQL 的检查（要模型 key；只有错数才算失败）
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # 试跑用另一个数据目录

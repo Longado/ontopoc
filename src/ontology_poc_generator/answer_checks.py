@@ -52,9 +52,10 @@ import re
 from collections import Counter
 
 from ontology_poc_generator.code_meanings import codes_for_label
+from ontology_poc_generator.derived_measures import to_number
 from ontology_poc_generator.lang import tr
 from ontology_poc_generator.named_views import query_tables, query_types
-from ontology_poc_generator.ontology_questions import RANGES, _fields, _matcher, _resolve_field, _shape_limit, _types, clean_used
+from ontology_poc_generator.ontology_questions import RANGES, _conditions, _fields, _matcher, _resolve_field, _shape_limit, _types, clean_used
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal, normalize_value
 from ontology_poc_generator.repeated_keys import rule_key
 from ontology_poc_generator.workspace_store import describes_rows
@@ -193,7 +194,7 @@ def _read_derived(query: dict, types: dict, uses: list, derived: dict | None) ->
 def _same_rows(read: dict, source: str, conditions: set, per_object: bool = False) -> dict | None:
     """The derived property through which the query reads `source` (a table) by exactly these conditions ({(column, op, label)}): every derived property it reads
     that counts rows of that table has them, no more and no fewer, so no row the conditions leave out is in its values. None when it reads none, or one that
-    differs (it would bring rows in that the conditions keep out, or leave out rows they keep). `per_object`: the query keeps to particular objects (_picks_objects),
+    differs (it would bring rows in that the conditions keep out, or leave out rows they keep). `per_object`: the query keeps to particular objects (picks_objects),
     so it reads those objects' own rows: every row of the table need not reach an object, but none may be counted for more than one."""
     about = [d for d in read.values() if d['source'] == source]
     if about and all({(c['column'], c['op'], c['label']) for c in d['conditions']} == conditions and _adds_up(d) and d.get('exact' if not per_object else 'once') and not d.get('waiting') for d in about):
@@ -205,6 +206,27 @@ def _picks_objects(query: dict) -> bool:
     """The query keeps to particular objects of its start type (an equals in its filter, no hop to another type): a per-object count then reads those objects' own
     rows (客户 KH026 的已取消订单数), whether or not every row of the table reaches exactly one object. A total over every object does not."""
     return not query.get('via') and any(isinstance(w, dict) and w.get('equals') not in (None, '', []) for w in query.get('where') or [])
+
+
+def picks_objects(query: dict, ontology: dict, bundle: dict, graph: dict) -> bool:
+    """_picks_objects, and what its filter leaves out changes the number: the measured property's values of the objects it leaves out (as run_query reads the
+    filter over these rows) do not add up to 0. A filter that leaves out nothing counted, every customer's 国家 = CN, only customers with no orders, or customers
+    whose amounts cancel out, is a total over all of them, and the rows that reach no object would be left out without a word. A query the language cannot read is not one (_shape_limit says so)."""
+    if not _picks_objects(query) or _shape_limit(query) or not isinstance(query.get('where'), list) or not all(isinstance(w, dict) for w in query['where']):
+        return False
+    types = _types(normalize_proposal(ontology))
+    start, measure = query.get('start'), query.get('measure')
+    if not isinstance(start, str) or start not in types or not isinstance(measure, dict):
+        return False
+    named = measure.get('field') if isinstance(measure.get('field'), str) else measure.get('derived') if isinstance(measure.get('derived'), str) else None
+    measured = _resolve_field(types[start], named) if named else None
+    where, why = _conditions(types, start, query['where'], bundle.get('meanings'), lambda k: k)
+    if measured is None or why:
+        return False
+    values, has, _ = _matcher(types, bundle, graph)
+    left_out = [i for i in graph['sources_of'] if i[0] == start and not all(has(i, w) != w.get('not', False) for w in where)]
+    read = [to_number(v) for i in left_out for v in values(i, measured) if str(v).strip()]
+    return any(x is None for x in read) or abs(sum(read)) > 1e-9   # what it leaves out changes the number: their values do not add up to 0
 
 
 def _adds_up(d: dict) -> bool:
@@ -237,7 +259,8 @@ def _says(direction: str, definition: str, how: str) -> dict:
 
 
 def definition_check(question: str, query: dict, ontology: dict, views: list[dict], meanings: dict | None, used: list | None,
-                     told: list | None = None, waiting: dict | None = None, values: dict | None = None, derived: dict | None = None) -> dict:
+                     told: list | None = None, waiting: dict | None = None, values: dict | None = None, derived: dict | None = None,
+                     picks: bool = False) -> dict:
     """{'unmet': [{'definition', 'kind', 'why'}], 'apply': [views to choose rows by], 'understood': [{'definition', 'direction',
     'how'}]}: the model's `definitions_used` (see the top of the file) checked against `query`; `understood` is how the model's
     word was carried out (or that it said nothing), said beside every answer, a refusal too, so that a wrong direction can be
@@ -253,7 +276,8 @@ def definition_check(question: str, query: dict, ontology: dict, views: list[dic
     with its conditions that are being redefined}} for the confirmed derived properties: a query that reads one whose conditions are exactly a view's
     (or exactly the meanings the model says the question leaves out) on that table uses that definition through it, though it does not read the table itself. A meaning the question says that the model
     did not list is refused when the query reads such a property, as for a view, even when it is said only inside the property's name: no list of words can tell
-    "已取消订单金额" from "减去已取消订单金额", so the model has to say the meaning is included."""
+    "已取消订单金额" from "减去已取消订单金额", so the model has to say the meaning is included. `picks` is picks_objects(): the query keeps
+    to particular objects, so such a property need not have every row reach an object, only none reach more than one."""
     if _shape_limit(query):   # a query the language cannot read is said so by the query itself, not refused for a definition
         return {'unmet': [], 'apply': [], 'understood': []}
     rank = {'mention': 0, 'include': 1, 'exclude': 2}
@@ -339,7 +363,7 @@ def definition_check(question: str, query: dict, ontology: dict, views: list[dic
                 left_out = {(column, 'is_not', x) for x in meaning['labels'].values() if x and (declared.get(meaning_id(field, x)) or (declared.get(x) if x in bare else None)) == 'exclude'}
                 asked_in = {x for x in meaning['labels'].values() if x and (declared.get(meaning_id(field, x)) or (declared.get(x) if x in bare else None)) == 'include'}   # (its own count: the filter-includes code above is not read here)
                 if direction == 'include' and any(d['source'] == field.partition('.')[0] for d in read_derived.values()):   # the question wants only these rows, and the query counts rows of their table through a derived property: one that keeps exactly this meaning
-                    d = _same_rows(read_derived, field.partition('.')[0], {(column, 'is', label)}, _picks_objects(query)) if len(asked_in) == 1 else None
+                    d = _same_rows(read_derived, field.partition('.')[0], {(column, 'is', label)}, picks) if len(asked_in) == 1 else None
                     if d:
                         understood.append(_says(direction, label, tr(f'派生属性 {d["name"]} 只算 {column} = {codes}', f'The derived property {d["name"]} counts only {column} = {codes}')))
                     elif len(asked_in) == 1 and (still := _not_through(read_derived, field.partition('.')[0], {(column, 'is', label)})):   # it reads one that counts only them, which cannot stand for them here
@@ -350,7 +374,7 @@ def definition_check(question: str, query: dict, ontology: dict, views: list[dic
                         unmet.append({'definition': label, 'kind': 'meaning', 'why': tr(f'{what}：问题只要这些行，但这条查询没有读「{field.partition(".")[0]}」表里的对象，也没有读只算它的派生属性，没法只算它们',
                                                                                        f'{what}: the question wants only these rows, but the query reads no objects from the table "{field.partition(".")[0]}" and no derived property that counts only them, so it cannot keep to them')})
                         understood.append(_says(direction, label, tr('查询没有读它所在的列', 'The query does not read its column')))
-                if direction == 'exclude' and (d := _same_rows(read_derived, field.partition('.')[0], left_out, _picks_objects(query))):   # a derived property the query reads leaves out exactly these
+                if direction == 'exclude' and (d := _same_rows(read_derived, field.partition('.')[0], left_out, picks)):   # a derived property the query reads leaves out exactly these
                     understood.append(_says(direction, label, tr(f'派生属性 {d["name"]} 不算 {column} = {codes}', f'The derived property {d["name"]} leaves out {column} = {codes}')))
                 elif direction == 'exclude':
                     unmet.append({'definition': label, 'kind': 'meaning', 'why': tr(f'{what}：这个问法要把它排除，但这条查询没有读「{field.partition(".")[0]}」表里的对象，排除没有地方可做',
