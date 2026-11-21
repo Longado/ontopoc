@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 import json
 import re
 
-from ontology_poc_generator.answer_checks import _use, _uses, choose_rows, column_values, definition_catalog, definition_check, refusal
+from ontology_poc_generator.answer_checks import _use, _uses, choose_rows, column_values, definition_catalog, definition_check, picks_objects, refusal
 from ontology_poc_generator.derived_properties import derived_visible, describe as describe_derived, evaluate as evaluate_derived, text_of
 from ontology_poc_generator.named_views import name_views
 from ontology_poc_generator.object_relations import CARDINALITY, _relation_visible, cardinality_false, check_relation, relation_id
@@ -557,7 +557,8 @@ def _engine(sc: dict, parts: dict, relations: list[dict]):
     held = column_values(bundle, bundle['meanings'], ontology, graph)   # what a filter that leaves codes out lets through
 
     def answer(query, asked, used=None, check=True, told=None):
-        checked = definition_check(asked, query, ontology, parts['views'], bundle['meanings'], used, told, values=held, derived=parts['derived'])
+        checked = definition_check(asked, query, ontology, parts['views'], bundle['meanings'], used, told, values=held, derived=parts['derived'],
+                                   picks=isinstance(query, dict) and picks_objects(query, ontology, bundle, graph))
         if checked['unmet']:
             return {**refusal(checked['unmet']), 'understood': checked['understood']}
         reading, reading_graph = bundle, graph
