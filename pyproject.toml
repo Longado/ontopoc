@@ -16,7 +16,6 @@ sources = ["pg8000>=1.30", "PyMySQL[rsa]>=1.1"]   # live PostgreSQL and MySQL so
 check = ["rdflib>=7", "pyshacl>=0.26"]   # tests read the Turtle export back; the service does not need them
 
 [project.scripts]
-ontopoc-recall = "ontology_poc_generator.recall_cli:main"
 ontopoc-mcp = "ontology_poc_generator.mcp_server:main"
 
 [tool.setuptools.packages.find]

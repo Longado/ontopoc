@@ -17,7 +17,6 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      "/api/recall": { target: "http://127.0.0.1:8766", changeOrigin: true },
       "/api/ontology": { target: service, changeOrigin: true },
       "/api/workspace": { target: service, changeOrigin: true },
       "/api/auth": { target: service, changeOrigin: true },
