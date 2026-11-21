@@ -911,7 +911,7 @@ def _named_ids(result: dict, sc: dict) -> list[str]:
     if refusal.get('kind') == 'unsettled':
         ids += [d['id'] for d in refusal['definitions'] if 'id' in d]   # a viewer's line that says only that something waits names nothing
     elif refusal.get('kind') in ('not_in_scope', 'definition_unmet'):   # these say what is in scope (and for a builder what is left out)
-        ids += [type_id(k) for k in sc['types']] + [v['row']['element_id'] for v in sc['views'].values()] + [d['id'] for d in refusal.get('left_out', [])]
+        ids += [type_id(k) for k in sc['types']] + [v['row']['element_id'] for v in sc['views'].values()] + [d['id'] for d in refusal.get('left_out', []) if 'id' in d]
     return list(dict.fromkeys(ids))
 
 
@@ -941,10 +941,15 @@ def ask(conn, gateway, user: dict | None, question, writes='json') -> dict:
     if blockers:
         result = {**_refused_unsettled(blockers), 'definitions': [], 'types': [], 'datasets': {}, 'steps': [{'name': tr('核对定义', 'Check definitions'), 'text': tr('问题里提到的定义还没有确认，没有去问模型', 'A definition the question mentions is not confirmed, so the model was not asked'), 'failed': True}]}
     elif not sc['types']:
-        waiting = _waiting_lines(conn, user) if user is not None and user['role'] == 'viewer' else []   # a viewer's scope emptied by definitions that wait: which, and for whom
-        said = tr('；', '; ').join(_waiting_text(d) for d in waiting)
-        result = {'status': 'refused', 'reason': tr('范围里还没有已确认的对象类型，没有东西可以回答。', 'There is no confirmed object type in scope yet, so there is nothing to answer from.') + (tr(f'在等再确认的：{said}。', f' Waiting to be confirmed again: {said}.') if waiting else ''),
-                  'refusal': {'kind': 'not_in_scope', 'in_scope': [], 'left_out': [*_unsettled(conn, user), *({**d, 'text': _waiting_text(d)} for d in waiting)]},
+        waiting = _waiting_lines(conn, user) if user is not None and user['role'] == 'viewer' else []   # a viewer's scope emptied by definitions that wait
+        if VIEWERS_TOLD_WHAT_WAITS:   # which, and for whom
+            said = tr(f'在等再确认的：{tr("；", "; ").join(_waiting_text(d) for d in waiting)}。', f' Waiting to be confirmed again: {"; ".join(_waiting_text(d) for d in waiting)}.')
+            lines = [{**d, 'text': _waiting_text(d)} for d in waiting]
+        else:   # only that some wait: no name, nobody it waits for
+            said = tr('用到的定义在等再确认，确认之后再问。', ' The definitions it would use are waiting to be confirmed again; ask once they are.')
+            lines = [{'kind': d['kind'], 'state': d['state'], 'waiting': True, 'text': said.strip()} for d in waiting[:1]]
+        result = {'status': 'refused', 'reason': tr('范围里还没有已确认的对象类型，没有东西可以回答。', 'There is no confirmed object type in scope yet, so there is nothing to answer from.') + (said if waiting else ''),
+                  'refusal': {'kind': 'not_in_scope', 'in_scope': [], 'left_out': [*_unsettled(conn, user), *lines]},
                   'definitions': [], 'types': [], 'datasets': {}, 'steps': []}
     else:
         if gateway is None:
