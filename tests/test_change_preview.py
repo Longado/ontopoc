@@ -14,7 +14,8 @@ from tests import test_batch_confirm
 from tests.test_dashboards import BoardCase
 from tests.test_derived_properties import CANCELLED, GROSS
 from tests.test_explorer import LIVE, ORDERS
-from tests.test_object_types import MEANINGS, VALID, orders_upload, shifted_orders_csv
+from tests.test_object_types import MEANINGS, SHIFTED, VALID, orders_upload, shifted_orders_csv
+from tests.test_object_types import ORDERS as PLANTED_ORDERS
 
 VALID_COUNT = {'id': 'valid', 'title': '有效订单数', 'query': {'type': 'order', 'view': '有效订单'}, 'chart': {'kind': 'number'}}
 VALID_AMOUNT = {'id': 'amount', 'title': '有效订单金额', 'query': {'type': 'order', 'view': '有效订单'}, 'chart': {'kind': 'number', 'measure': '金额', 'fn': 'sum'}}
@@ -341,6 +342,34 @@ class GroupTests(ImpactCase):
             self.assertEqual(self.by_card(receipt)['valid']['change'], {'kind': 'confirmed'})
             view = next(i for i in receipt['items'] if i['element'] == 'objview:有效订单')
             self.assertEqual(view['data_moved'], [{'name': '订单', 'from': 1, 'to': 2, 'accepted': True}])
+
+    def test_a_definition_the_data_sent_back_and_then_edited_shows_the_edit_on_the_new_data(self):
+        """The data sends 有效订单 back, then Ann edits it to leave out 已交付 too. "Now" is the view as last confirmed, on the new data; "after" is the edited one: the
+        96 orders the edit takes out are on the table, and the data line says both that the new data is accepted and that the definition changed."""
+        with self.service() as (base, out):
+            team = self.ops_overwrite(base)
+            ann, bob = team['ann'], team['bob']
+            board = self.make(ann, spec={'components': [VALID_COUNT], 'filters': []}, scope='everyone')
+            for element in ('enum:order:状态码', 'objtype:order'):   # one by one: the group asks for all that is ready, the view too
+                self.assertEqual(bob.post('/api/workspace/queue/confirm', self.ask(bob, element))[0], 200, element)
+            view = self.view_of(bob, 'order', '有效订单')
+            edited = [*VALID['filters'], {'column': '状态码', 'op': 'is_not', 'label': '已交付'}]
+            self.assertEqual(ann.post('/api/workspace/types/views/update', {**VALID, 'id': '有效订单', 'version': view['version'], 'filters': edited})[0], 200)
+            shifted = [SHIFTED[r['状态码']] for r in PLANTED_ORDERS]
+            was, becomes = sum(c != '2' for c in shifted), sum(c not in ('1', '2') for c in shifted)   # last confirmed: all but 已取消; edited: all but 已取消 and 已交付
+            self.assertNotEqual(was, becomes)
+            payload = self.ask(bob, 'objview:有效订单')
+            preview = self.impact(bob, payload)
+            card = self.by_card(preview)['valid']
+            self.assertEqual((card['now']['value'], card['after']['value']), (was, becomes))
+            self.assertEqual(card['change'], {'kind': 'number', 'delta': becomes - was})
+            self.assertEqual(preview['data_moved'], [{'name': '订单', 'from': 1, 'to': 2, 'accepted': True, 'edited': True}])
+            self.assertEqual(bob.post('/api/workspace/queue/confirm', payload)[0], 200)
+            self.preview_is_reality(bob, board['id'], preview)
+            status, receipt = bob.post('/api/workspace/receipt', {'elements': ['objview:有效订单']})
+            self.assertEqual(status, 200, receipt)
+            self.assertEqual({k: (c['now'], c['after'], c['change']) for k, c in self.by_card(receipt).items()}, {'valid': (card['now'], card['after'], card['change'])})
+            self.assertEqual(receipt['items'][0]['data_moved'], [{'name': '订单', 'from': 1, 'to': 2, 'accepted': True, 'edited': True}])
 
 
 class HiddenColumnTests(ImpactCase):
