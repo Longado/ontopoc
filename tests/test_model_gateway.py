@@ -96,5 +96,24 @@ class OpenAICompatibleGatewayTest(unittest.TestCase):
         self.assertIs(type(raised.exception), RecognitionError)
 
 
+class GatewayTemperatureTest(unittest.TestCase):
+    """The service builds its gateway with temperature=0 (ontology_server); a gateway built without one leaves the field out."""
+    def body(self, **kw) -> dict:
+        sent: dict = {}
+
+        def opener(request: object, timeout: float) -> FakeResponse:
+            sent.update(json.loads(request.data.decode("utf-8")))
+            return FakeResponse({"model": "m", "choices": [{"message": {"content": "{}"}}]})
+
+        OpenAICompatibleGateway(api_base="https://models.example/v1", api_key="k", model="m", opener=opener, **kw) \
+            .complete_json(system_prompt="s", user_prompt="u")
+        return sent
+
+    def test_temperature_is_sent_only_when_set(self) -> None:
+        self.assertNotIn("temperature", self.body())
+        self.assertEqual(self.body(temperature=0)["temperature"], 0)
+        self.assertEqual(self.body(temperature=0.3)["temperature"], 0.3)
+
+
 if __name__ == "__main__":
     unittest.main()

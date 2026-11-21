@@ -12,7 +12,7 @@ from pathlib import Path
 SRC = Path(__file__).resolve().parent.parent / 'src' / 'ontology_poc_generator'
 FILES = ['derived_properties', 'derived_measures', 'ontopoc_query', 'ontology_questions', 'workspace_questions', 'answer_checks', 'caliber',
          'pipeline_ops', 'pipeline_llm', 'pipeline_llm_review', 'pipeline_spec', 'pipeline_assist', 'pipeline_expr', 'pipeline_funcs', 'pipelines',
-         'workspace_pipelines', 'workspace_schedules', 'workspace_ai', 'workspace_llm', 'object_type_suggest', 'field_descriptions', 'ask_budget', 'recall_scope']
+         'workspace_pipelines', 'workspace_schedules', 'workspace_ai', 'workspace_llm', 'object_type_suggest', 'field_descriptions', 'ask_budget']
 KEYS = {'error', 'reason', 'why', 'message', 'line', 'summary', 'explain', 'explanation', 'note', 'warning', 'problem', 'detail', 'refusal'}
 CJK = re.compile('[一-龥]')
 # (file, text fragment): Chinese on purpose, and why

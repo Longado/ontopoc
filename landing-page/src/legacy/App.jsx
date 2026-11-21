@@ -3,7 +3,7 @@ import "./Landing.css";
 
 const copy = {
   zh: {
-    nav: [["#problem", "问题"], ["#method", "做法"], ["#proof", "示例公司"], ["#example", "示例场景"], ["#limits", "边界"]],
+    nav: [["#problem", "问题"], ["#method", "做法"], ["#proof", "示例公司"], ["#limits", "边界"]],
     open: "打开工作台",
     kicker: "开发中的方向",
     title: ["上传一份业务文件，", "起草本体，并对照数据检查"],
@@ -28,9 +28,6 @@ const copy = {
     proofTitle: "示例公司：一份四张表的 Excel",
     proofNote: "demo_company.xlsx 是为演示合成的数据：客户 31 行、产品 12 行、订单 160 行、售后工单 45 行，里面故意埋了两个问题。工作台里可以直接打开这次的结果，也可以下载文件自己上传重跑。",
     facts: [["4 · 3", "个对象、条关系。这次示例中，三次建模都含有这 4 个对象和 3 条关系"], ["2", "处故意埋下的问题，这次数据体检都报了出来：客户 KH012 在两行里城市不同，订单引用的 KH099 不在客户表里"], ["6 / 6", "道模型写的业务问题，这次示例中代码都在数据上算出了答案，其中一道同时按客户和产品分组"], ["4 / 5", "个对象和人写的参考本体对上；少了“售后工程师”，因为数据里工程师只是一列姓名"]],
-    exampleKicker: "示例场景",
-    exampleTitle: "召回范围研判：用公开数据做的示例",
-    exampleNote: "工作台里保留了一个完整的行业示例：从 NHTSA 取召回公告和车主投诉，自动搭本体、算出每个召回范围内外的同类投诉，模型读原文给出初判，由质量工程师逐条复核。雪佛兰 Bolt EV / EUV 2017–2023：13 个召回、679 条投诉；现代 Kona Electric 2019–2021：4 个召回、112 条投诉。",
     limitsKicker: "边界",
     limits: [
       "本体是模型的提议。通过代码检查只说明没查出那些错误，不说明它和数据完全对得上，也不说明它是业务上最好的划分；拿不准时上传参考本体比一比。",
@@ -42,10 +39,10 @@ const copy = {
     ],
     cta: "打开工作台，上传文件或先看示例公司",
     footer: "Draft the ontology. Check it against the data.",
-    source: "召回示例的数据来自 NHTSA 公开接口，2026-09-13 与 09-14 取数。OntoPoc 与 NHTSA、通用汽车、现代汽车无关联，页面内容不是官方结论，也不构成缺陷认定。示例公司是合成数据。",
+    source: "示例公司是合成数据。",
   },
   en: {
-    nav: [["#problem", "PROBLEM"], ["#method", "METHOD"], ["#proof", "DEMO"], ["#example", "EXAMPLE"], ["#limits", "LIMITS"]],
+    nav: [["#problem", "PROBLEM"], ["#method", "METHOD"], ["#proof", "DEMO"], ["#limits", "LIMITS"]],
     open: "OPEN WORKBENCH",
     kicker: "A DIRECTION IN DEVELOPMENT",
     title: ["Upload one business file,", "draft an ontology and check it against the data"],
@@ -70,9 +67,6 @@ const copy = {
     proofTitle: "The demo company: one Excel file, four sheets",
     proofNote: "demo_company.xlsx is synthetic: 31 customers, 12 products, 160 orders, 45 after-sales tickets, with two problems planted on purpose. Open this run in the workbench, or download the file and upload it yourself.",
     facts: [["4 · 3", "objects and relations. In this demo, all three runs contain these 4 objects and 3 relations"], ["2", "problems planted on purpose, both reported by the data check in this demo: customer KH012 has two cities, and orders reference KH099, which is not in the customer table"], ["6 / 6", "model-written questions, all answered by code on the data in this demo, including one grouped by customer and product at once"], ["4 / 5", "objects match the hand-written reference; the missing one is “after-sales engineer”, which the data holds only as a name column"]],
-    exampleKicker: "EXAMPLE",
-    exampleTitle: "Recall scope review: an example on public data",
-    exampleNote: "The workbench keeps a full industry example: recall notices and owner complaints from NHTSA, an auto-built ontology, same-part complaints inside and outside each recall, a model's first call quoting the complaint, and a quality engineer's review. Chevrolet Bolt EV / EUV 2017–2023: 13 recalls, 679 complaints; Hyundai Kona Electric 2019–2021: 4 recalls, 112 complaints.",
     limitsKicker: "LIMITS",
     limits: [
       "The ontology is the model's proposal. Passing the code check only means those errors were not found, not that it fits the data completely or that it is the best business model; compare it with a reference when unsure.",
@@ -84,7 +78,7 @@ const copy = {
     ],
     cta: "Open the workbench: upload a file or start with the demo company",
     footer: "Draft the ontology. Check it against the data.",
-    source: "Recall example data from the NHTSA public API, fetched 2026-09-13 and 09-14. OntoPoc is not affiliated with NHTSA, General Motors or Hyundai; nothing here is an official finding or a defect determination. The demo company is synthetic.",
+    source: "The demo company is synthetic.",
   },
 };
 
@@ -131,12 +125,6 @@ export function App() {
       <h2>{t.proofTitle}</h2>
       <p className="landing-note">{t.proofNote}</p>
       <div className="landing-facts">{t.facts.map(([n, label]) => <div key={label}><strong>{n}</strong><span>{label}</span></div>)}</div>
-    </section>
-
-    <section className="landing-section" id="example">
-      <p className="landing-kicker">{t.exampleKicker}</p>
-      <h2>{t.exampleTitle}</h2>
-      <p className="landing-note">{t.exampleNote}</p>
     </section>
 
     <section className="landing-section landing-limits" id="limits">
