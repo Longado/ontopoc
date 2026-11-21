@@ -26,6 +26,7 @@ from ontology_poc_generator.assistant_checks import drafted_mark
 from ontology_poc_generator.draft_receipts import spend as spend_receipt
 from ontology_poc_generator.actor import actor_id_for
 from ontology_poc_generator.object_types import (
+    token_edit,
     MAX_DESCRIPTION, MAX_NAME, PIPELINE_PREFIX, stale_note, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _content, _edit_names, _flag, _flag_readers, _state_view, _text, dataset_columns,
     element_row, log_entries, one_telling, recheck_after_write, unconfirmed_producers, write_confirmation)
 from ontology_poc_generator.pipeline_expr import COLUMN_TYPE, FUNCTION_DOCS, compile_expression, error_condition
@@ -311,7 +312,7 @@ def create_pipeline(conn, payload: dict, who: str | None, user: dict | None, eng
 def update_pipeline(conn, payload: dict, who: str | None, user: dict | None, engine=None) -> dict:
     """{id, version, description?, spec?}: save a changed definition. A changed spec is a new definition version: the pipeline is put forward again as this person's,
     and what read it (the datasets it writes, the types on them, their views, saved answers) goes to needs_look, cause 定义改了. A pipeline that was sent back, or a
-    model's draft, is put forward again by saving it. A change of the description alone keeps the state. 409 when the version has moved. The name is the id."""
+    model's draft, is put forward again by saving it. A change of the description alone keeps the state (made by a person signed in; made with a token, a confirmed one is put forward again: object_types.token_edit). 409 when the version has moved. The name is the id."""
     engine = engine or conn
     row = _pipeline_row(conn, payload.get('id'), user)
     if payload.get('version') != row['version']:
@@ -323,7 +324,7 @@ def update_pipeline(conn, payload: dict, who: str | None, user: dict | None, eng
         if mark := drafted_mark(conn, payload, who, user, 'pipeline', _saved_steps(payload), old.get('drafted'), old['name']):   # saved from the assistant's draft: who, when (an ordinary save keeps it)
             new = {**new, 'drafted': mark}
         changed = _canonical(new['spec']) != _canonical(old['spec'])
-        if changed or row['state'] in ('proposed', 'rejected'):
+        if changed or row['state'] in ('proposed', 'rejected') or token_edit(row, user, new['description'] != old['description']):
             version = old['definition_version'] + (1 if changed else 0)
             after = (lambda c: _flag_readers(c, element_id, tr(f'管道“{old["name"]}”的定义改了（第 {version} 版）', f'The definition of the pipeline "{old["name"]}" changed (version {version})'), [], 'definition')) if changed else None
             _write(conn, _change(new, version, found['versions'], who), found['reads'], found['outputs'], _version_row(element_id, version, new, who) if changed else None,

@@ -624,17 +624,17 @@ def revoke_any_token(conn, admin: dict, token_id) -> None:
 
 def token_user(conn, token: str | None, now: datetime | None = None) -> dict | None:
     """The owner of an API token, if it is not revoked, has not ended and the owner is not disabled. The token has the owner's role, whatever it is now; the person
-    comes back with the token's own `token_scope` and `token_id`, which the service's gate reads."""
+    comes back with the token's own `token_scope`, `token_id` and `token_label`: the gate reads the first two, the log the label (a write made with a token says so)."""
     if not token or not token.startswith(TOKEN_PREFIX):
         return None
     now = now or _now()
-    row = conn.execute(f'SELECT t.id, t.last_used_at, t.scope, t.expires_at, {_JOINED} FROM api_token t JOIN user u ON u.id = t.user_id '
+    row = conn.execute(f'SELECT t.id, t.last_used_at, t.scope, t.expires_at, t.label, {_JOINED} FROM api_token t JOIN user u ON u.id = t.user_id '
                        'WHERE t.token_hash = ? AND t.revoked_at IS NULL AND u.disabled = 0', (_digest(token),)).fetchone()
     if row is None or (row[3] and now >= datetime.fromisoformat(row[3])):
         return None
     if row[1] is None or now - datetime.fromisoformat(row[1]) >= TOUCH_EVERY:
         conn.execute('UPDATE api_token SET last_used_at = ? WHERE id = ?', (_stamp(now), row[0]))
-    return {**_public(row[4:]), 'token_id': row[0], 'token_scope': row[2] or 'all'}
+    return {**_public(row[5:]), 'token_id': row[0], 'token_scope': row[2] or 'all', 'token_label': row[4] or ''}
 
 
 def list_tokens(conn, user_id: int) -> list[dict]:
