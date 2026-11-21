@@ -230,7 +230,7 @@ test("a fresh sign-in lands on the home page; an expired session returns to wher
   assert.equal(afterSignIn("", true), "#/home");
 });
 
-test("a viewer cannot open the pages that make or change definitions, nor the task list: refused at the address, not after filling a form (C9)", () => {
+test("a viewer cannot open the pages that make or change definitions, nor the task list: refused at the address, not after filling a form", () => {
   const viewer = { role: "viewer" }, builder = { role: "builder" };
   for (const page of ["typenew", "typeedit", "relationnew", "relationedit", "tasks"]) {
     assert.equal(mayOpen(page, viewer), false, page);
@@ -238,7 +238,7 @@ test("a viewer cannot open the pages that make or change definitions, nor the ta
   }
 });
 
-test("the words for a page one may not open do not say builders may open an admin's page (P1); the guest banner says what really happens (P4)", () => {
+test("the words for a page one may not open do not say builders may open an admin's page; the guest banner says what really happens", () => {
   for (const locale of ["zh", "en"]) {
     setLocale(locale);
     try {

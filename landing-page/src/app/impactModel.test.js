@@ -14,7 +14,7 @@ const still = { board: { id: 1, name: "订单概览" }, card: { id: "by_status",
   now: { status: "ok", value: 107, text: "Paid 46、Shipped 30", grey: false, why: null }, after: { status: "ok", value: 107, text: "Paid 46、Shipped 30", grey: false, why: null }, change: { kind: "same" } };
 const impact = { refused: null, cards: [valid, amount, gone, still], answers: { mine: [{ id: 4, question: "有效订单有多少" }], others: 2 }, checked: { boards: 2, cards: 9, capped: false, left: 0 } };
 
-test("a card's two sides and its change, as the table shows them (WP-B)", () => {
+test("a card's two sides and its change, as the table shows them", () => {
   setLocale("zh");
   assert.deepEqual(figureCell(valid.now), { text: "107", note: "", grey: false, refused: false });
   assert.deepEqual(figureCell(gone.after), { text: "拒答", note: "没有“金额”这个字段", grey: false, refused: true });
@@ -132,14 +132,14 @@ test("when the data sent the item back and it was then edited, both are said: th
   setLocale("zh");
   const both = [{ name: "订单", from: 1, to: 2, accepted: true, edited: true }];
   assert.equal(impactView({ ...impact, data_moved: both }).dataMoved,
-    "上次确认之后，订单 从第 1 版换成了第 2 版，这一项因此在等确认；等确认时定义也改了。确认它，既接受新数据，也接受改过的定义：“现在”是上次确认的定义按新数据算出的数，表里是这次改动带来的变化。");
+    "上次确认之后，订单 从第 1 版换成了第 2 版，这一项因此在等确认；等确认时有定义也改了。确认它，既接受新数据，也接受改过的定义：“现在”是上次确认的定义按新数据算出的数，表里是这次改动带来的变化。");
   const receipt = { at: "2026-11-20T10:00:00+00:00", cards: [], answers: { mine: [], others: 0 }, checked: { boards: 1, cards: 1, capped: false, left: 0 },
     items: [{ element: "objview:有效订单", kind: "view", title: "有效订单", before: "a", after: "b", proposed_by: "Ann", confirmed_by: "Bob", confirmed_at: "2026-11-20T09:59:00+00:00",
       on: { 订单: 2 }, on_before: { 订单: 1 }, evidence: null, data_moved: both }] };
   assert.match(receiptMarkdown(receipt), /  - 两次确认之间数据有了新版本：订单 第 1 版 → 第 2 版。这次确认接受了新数据，也接受了改过的定义：下面把上次确认的定义和新定义都按现在的数据算\n/);
   setLocale("en");
   assert.equal(impactView({ ...impact, data_moved: both }).dataMoved,
-    "Since the last confirmation, 订单 went from version 1 to version 2, which is why this waits; the definition was also changed while it waited. Confirming it accepts both the new data and the changed definition: \"now\" is the definition as last confirmed, on the new data, so the table shows what the change does.");
+    "Since the last confirmation, 订单 went from version 1 to version 2, which is why this waits; a definition was also changed while it waited. Confirming it accepts both the new data and the changed definition: \"now\" is the definition as last confirmed, on the new data, so the table shows what the change does.");
   assert.match(receiptMarkdown(receipt), /This confirmation accepts the new data and the changed definition: the numbers below put the definition as last confirmed and the new one both on the current data/);
   setLocale("zh");
 });
