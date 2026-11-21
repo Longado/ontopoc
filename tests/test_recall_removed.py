@@ -52,7 +52,7 @@ class RecallLineRemovedTests(unittest.TestCase):
 
     def test_the_package_installs_only_the_mcp_command(self):
         project = tomllib.loads((ROOT / 'pyproject.toml').read_text(encoding='utf-8'))['project']
-        self.assertEqual(project['scripts'], {'ontopoc-mcp': 'ontology_poc_generator.mcp_server:main'})
+        self.assertEqual(project['scripts'], {'ontopoc': 'ontology_poc_generator.cli:main', 'ontopoc-mcp': 'ontology_poc_generator.mcp_server:main'})   # both start the MCP server; no recall command
 
     def test_no_service_route_and_no_mcp_tool_is_about_recalls(self):
         from ontology_poc_generator import mcp_server
