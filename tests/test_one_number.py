@@ -277,6 +277,22 @@ class PilotTests(pilot.PilotFoundation):
         self.assertNotEqual((body.get('answer') or {}).get('measure', {}).get('value'), 119810)
         self.assertEqual(body['status'], 'definition_unmet', body)
 
+    def test_a_total_whose_model_made_up_filter_drops_one_small_customer_is_the_rows_total_or_refused_never_the_filters_rows(self):
+        """The review case: the model reads the property over every customer but C009, which the question never says. 119,310 would be the rows of the customers
+        it keeps, with the orphan order (no customer) quietly outside too; the question's total is 169,810."""
+        orders = with_orphan()
+        rows = sql(f'SELECT SUM(CAST(amount AS INTEGER)) FROM orders WHERE {VALID_SQL}', orders)
+        kept = rows - 50000 - sql(f"SELECT SUM(CAST(amount AS INTEGER)) FROM orders WHERE {VALID_SQL} AND customer_id = 'C009'", orders)
+        self.assertEqual((rows, kept), (169810, 119310))
+        view = [{'id': '有效订单', 'direction': 'include', 'basis': '有效订单'}]
+        for where in ([{'field': 'customer_id', 'not_equals': ['C009']}], [{'field': 'customer_id', 'not_equals': 'C009'}]):
+            made_up = {'start': 'customer', 'where': where, 'via': [], 'group_by': None, 'share': None, 'measure': {'field': '有效订单金额', 'op': 'sum'}}
+            with self.subTest(where=where):
+                body = self.ask('有效订单的总金额是多少？', item(made_up, view), orders=orders)
+                value = (body.get('answer') or {}).get('measure', {}).get('value')
+                self.assertNotEqual(value, kept, body)
+                self.assertTrue(body['status'] == 'definition_unmet' or value == rows, body)
+
     def test_a_value_the_question_says_is_kept_and_one_the_model_adds_is_dropped(self):
         city = {'start': 'customer', 'where': [{'field': 'city', 'equals': 'Shenzhen'}], 'via': [], 'group_by': None, 'share': None, 'measure': None}
         body = self.ask('Shenzhen 的客户有多少？', item(city))
