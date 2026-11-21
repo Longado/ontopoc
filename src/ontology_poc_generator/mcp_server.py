@@ -742,7 +742,8 @@ LOOK_ALIKE = {
     'data_check': '看的是数据有没有问题（七项检查）；表的结构用 data_layout，服务在不在跑、有没有模型凭据用 health。',
 }
 # MCP tool annotations (spec 2025-03-26 and later): hints a client may show, or use to decide whether to ask the person first; never a guarantee. Every tool works on
-# this machine's service or this machine's files, so none reaches an open world (the service may ask a model for some, which does not change what the tool touches).
+# this machine's service or this machine's files; the ones in MODEL_TOOLS also have the service send the person's data to a language model outside this machine, so
+# they say they reach an open world.
 _READS = {'readOnlyHint': True, 'destructiveHint': False, 'idempotentHint': True, 'openWorldHint': False}
 _ADDS = {'readOnlyHint': False, 'destructiveHint': False, 'idempotentHint': False, 'openWorldHint': False}   # adds a record (a run, an asked question, a new answer) and takes nothing away
 _REPLACES = {'readOnlyHint': False, 'destructiveHint': True, 'idempotentHint': True, 'openWorldHint': False}   # writes over what was kept (a list, a form, a card, files it exported before); the same call again changes nothing more
@@ -767,11 +768,12 @@ ANNOTATIONS = {
     'list_unconfirmed': ('Definitions not confirmed now', _READS), 'definition_standing': ("A definition's standing", _READS),
     'read_derived_property': ('Read a confirmed derived property', _READS),
 }
+MODEL_TOOLS = ('ask', 'build_ontology', 'ask_question', 'draft_form', 'find_name_variants')   # a call sends data to the service's model
 for _t in TOOLS:
     _scope = SCOPE_TEAM if _t['name'] in READ_TOOLS else SCOPE_SERVICE if _t['name'] in ('health', 'list_runs') else SCOPE_RUN
     _t['description'] = _scope + _t['description'] + LOOK_ALIKE.get(_t['name'], '')
     _title, _hints = ANNOTATIONS[_t['name']]   # a tool without a line here fails at import
-    _t['annotations'] = {'title': _title, **_hints}
+    _t['annotations'] = {'title': _title, **_hints, 'openWorldHint': _t['name'] in MODEL_TOOLS}
 BY_NAME = {t['name']: t for t in TOOLS}
 
 
