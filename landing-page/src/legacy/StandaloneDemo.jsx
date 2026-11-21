@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import "./shared.css";   // first, where the recall pages used to bring it in: the component styles after it must keep winning ties
 import { OntologyStudio } from "./OntologyStudio.jsx";
 import { OntologyLibrary } from "./OntologyLibrary.jsx";
 import { folderLabel, groupRuns, runLabel } from "./runLibraryModel.js";
