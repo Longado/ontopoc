@@ -9,8 +9,9 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from unittest import mock
 
-from ontology_poc_generator import accounts, demo
+from ontology_poc_generator import accounts, demo, workspace_questions
 from ontology_poc_generator.ontology_server import make_server
 from ontology_poc_generator.workspace_store import open_workspace
 from tests.test_demo_mode import a_guest, signed_in
@@ -90,7 +91,7 @@ class ChangedViewTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.demo.__exit__(None, None, None)
 
-    def test_a_guests_question_naming_the_waiting_view_is_refused_before_the_model_with_its_name_and_whom_it_waits_for(self):
+    def test_a_guests_question_naming_the_waiting_view_is_refused_before_the_model_told_only_that_it_waits(self):
         for lang in ('en', 'zh-CN'):
             guest = a_guest(self.demo.base, lang)
             asked = len(self.demo.model.requests)
@@ -99,12 +100,22 @@ class ChangedViewTests(unittest.TestCase):
             self.assertEqual(len(self.demo.model.requests), asked, 'the model was asked')
             self.assertEqual((body['status'], body['refusal']['kind']), ('refused', 'unsettled'), body)
             [line] = body['refusal']['definitions']
-            self.assertEqual((line['kind'], line['name'], line['who_can_confirm']), ('view', 'Valid orders', ['Demo builder']))
-            self.assertLessEqual(set(line), {'id', 'kind', 'name', 'state', 'waiting', 'who_can_confirm', 'because', 'text', 'type'})
-            self.assertIn('Demo builder', body['reason'])
-            for secret in ('Paid', 'Cancelled', 'status_code', 'demo-admin'):   # what changed and who changed it is not the guest's
+            self.assertEqual((line['kind'], line['waiting']), ('view', True))
+            self.assertLessEqual(set(line), {'kind', 'state', 'waiting', 'text'})   # a viewer is not told names: no id, no name, nobody it waits for
+            for secret in ('Valid orders', 'Demo builder', 'Paid', 'Cancelled', 'status_code', 'demo-admin'):
                 self.assertNotIn(secret, said(body), lang)
             self.assertNotRegex(said(body), r'\d')
+
+    def test_with_viewers_told_what_waits_the_guest_hears_the_view_and_whom_it_waits_for(self):
+        with mock.patch.object(workspace_questions, 'VIEWERS_TOLD_WHAT_WAITS', True):
+            status, body = a_guest(self.demo.base, 'en').call('POST', '/api/workspace/ask', {'question': 'What is the total amount of valid orders?'})
+        self.assertEqual(status, 200, body)
+        [line] = body['refusal']['definitions']
+        self.assertEqual((line['kind'], line['name'], line['who_can_confirm']), ('view', 'Valid orders', ['Demo builder']))
+        self.assertLessEqual(set(line), {'id', 'kind', 'name', 'state', 'waiting', 'who_can_confirm', 'because', 'text', 'type'})
+        self.assertIn('Demo builder', body['reason'])
+        for secret in ('Paid', 'Cancelled', 'status_code', 'demo-admin'):   # what changed and who changed it is not the guest's
+            self.assertNotIn(secret, said(body))
 
     def test_a_builders_question_naming_the_view_is_refused_naming_it_and_who_can_confirm(self):
         asked = len(self.demo.model.requests)
@@ -147,7 +158,8 @@ class ChangedViewTests(unittest.TestCase):
         self.assertEqual((status, body.get('state')), (200, 'checked'), body)
         for question in ('VIP大单的总金额？', 'vip大单的总金额？', 'Vip大单的总金额？'):
             asked = len(self.demo.model.requests)
-            status, body = a_guest(self.demo.base).call('POST', '/api/workspace/ask', {'question': question})
+            with mock.patch.object(workspace_questions, 'VIEWERS_TOLD_WHAT_WAITS', True):   # so the refusal says which view it matched
+                status, body = a_guest(self.demo.base).call('POST', '/api/workspace/ask', {'question': question})
             self.assertEqual(status, 200, body)
             self.assertEqual(len(self.demo.model.requests), asked, question)
             self.assertEqual([(d['kind'], d['name']) for d in body['refusal']['definitions']], [('view', 'VIP大单')], question)
@@ -205,10 +217,22 @@ class UploadedOrdersTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.demo.__exit__(None, None, None)
 
-    def test_a_guest_with_nothing_confirmed_in_scope_is_told_what_waits_and_for_whom(self):
+    def test_a_guest_with_nothing_confirmed_in_scope_is_told_only_that_definitions_wait(self):
         guest = a_guest(self.demo.base)
         self.assertEqual(guest.call('GET', '/api/workspace/types')[1]['types'][1]['state'], 'needs_look')
         status, body = guest.call('POST', '/api/workspace/ask', {'question': '有效订单的总金额是多少？'})
+        self.assertEqual(status, 200, body)
+        self.assertEqual(body['status'], 'refused', body)
+        self.assertIn('在等再确认', body['reason'])
+        for secret in ('Demo builder', 'Order', 'Valid orders'):
+            self.assertNotIn(secret, said(body))
+        self.assertTrue(all(set(d) <= {'kind', 'state', 'waiting', 'text'} for d in body['refusal']['left_out']), body['refusal']['left_out'])
+        self.assertNotRegex(said(body), r'\d')
+
+    def test_with_viewers_told_what_waits_a_guest_with_nothing_in_scope_hears_what_waits_and_for_whom(self):
+        guest = a_guest(self.demo.base)
+        with mock.patch.object(workspace_questions, 'VIEWERS_TOLD_WHAT_WAITS', True):
+            status, body = guest.call('POST', '/api/workspace/ask', {'question': '有效订单的总金额是多少？'})
         self.assertEqual(status, 200, body)
         self.assertEqual(body['status'], 'refused', body)
         self.assertIn('Demo builder', body['reason'])
