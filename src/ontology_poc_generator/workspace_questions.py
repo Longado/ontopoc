@@ -341,7 +341,7 @@ def _inputs(conn, sc: dict) -> dict:
         extra[content['type']] = [*extra.get(content['type'], []), {'source': source, 'path': content['name']}]
         derived_attrs[f'{source}.{content["name"]}'] = {'element': element_id, 'type': result['output_type'], 'says': describe_derived(conn, content), 'name': content['name'],
                                                         'source': alias[sc['types'][content['types'][-1]]['dataset']['name']], 'conditions': content['conditions']}   # the table its rows are counted from, and by which conditions (answer_checks)
-        derived_attrs[f'{source}.{content["name"]}'].update(exact=_each_row_once(conn, sc, content), waiting=_waiting_views(conn, sc, content), fn=content['fn'])   # whether it can stand for a view's rows (answer_checks)
+        derived_attrs[f'{source}.{content["name"]}'].update(**_each_row_once(conn, sc, content), waiting=_waiting_views(conn, sc, content), fn=content['fn'])   # whether it can stand for a view's rows (answer_checks)
     object_types = [{'key': k, 'label': t['content']['name'], 'populated_from': [{'source': alias[t['dataset']['name']], 'identity': {c: c for c in t['content']['key']}}],
                      'attributes': [*({'source': alias[t['dataset']['name']], 'path': p['column']} for p in t['content']['properties']), *extra.get(k, [])]} for k, t in sc['types'].items()]
     relations, unusable = [], []
@@ -360,28 +360,30 @@ def _inputs(conn, sc: dict) -> dict:
             'bundle': {'decision': '', 'sources': sources, 'meanings': meanings}, 'views': _engine_views(conn, sc, alias, sources)}
 
 
-def _each_row_once(conn, sc: dict, content: dict) -> bool:
-    """Whether every row of the type a derived statistic counts reaches exactly one object of its own type, by the relations' checks now (over the rows this
-    person may read): each hop goes from the one side to the many side, every row of the many side is matched (no empty or missing key) and the one side's key
-    does not repeat. Only then do its values, added up over the objects, add up to the rows themselves; a row whose key names nothing would be dropped, a key
-    that repeats would count a row twice, and a hop toward the one side (or a many-to-many one) repeats what it reaches."""
+def _each_row_once(conn, sc: dict, content: dict) -> dict:
+    """{'once', 'exact'} for the rows of the type a derived statistic counts, by the relations' checks now (over the rows this person may read). 'once': no row
+    is counted for more than one object: each hop goes from the one side to the many side and the one side's key does not repeat (a hop toward the one side, or
+    a many-to-many one, repeats what it reaches; a key that repeats counts a row twice). 'exact': also every row of the many side is matched (no empty or missing
+    key), so every row reaches exactly one object. Only then do its values, added up over all the objects, add up to the rows themselves; added up over
+    particular objects they are those objects' own rows as soon as 'once' holds."""
     if content['kind'] != 'statistic':
-        return False
-    here = content['type']
+        return {'once': False, 'exact': False}
+    here, reaches_all = content['type'], True
     for key in content['path']:
         relation = sc['relations'].get(key)
         if relation is None:
-            return False
+            return {'once': False, 'exact': False}
         c = relation['content']
         many = {'many_to_one': 'from', 'one_to_many': 'to'}.get(c['cardinality'])
         if many is None or c['from'] == c['to'] or c[many] == here:
-            return False
+            return {'once': False, 'exact': False}
         result = check_relation(conn, c, record=False, user=sc['user'], examples=False)
         n = result.get('numbers')
-        if result['problems'] or not n or n['matched'] != n['rows'] or n['fan_keys'] or n['extra_rows']:
-            return False
+        if result['problems'] or not n or n['fan_keys'] or n['extra_rows']:
+            return {'once': False, 'exact': False}
+        reaches_all = reaches_all and n['matched'] == n['rows']
         here = c[many]
-    return True
+    return {'once': True, 'exact': reaches_all}
 
 
 def _waiting_views(conn, sc: dict, content: dict) -> list[str]:

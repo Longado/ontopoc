@@ -194,9 +194,9 @@ def _same_rows(read: dict, source: str, conditions: set, per_object: bool = Fals
     """The derived property through which the query reads `source` (a table) by exactly these conditions ({(column, op, label)}): every derived property it reads
     that counts rows of that table has them, no more and no fewer, so no row the conditions leave out is in its values. None when it reads none, or one that
     differs (it would bring rows in that the conditions keep out, or leave out rows they keep). `per_object`: the query keeps to particular objects (_picks_objects),
-    so it reads those objects' own rows and every row of the table need not reach exactly one object."""
+    so it reads those objects' own rows: every row of the table need not reach an object, but none may be counted for more than one."""
     about = [d for d in read.values() if d['source'] == source]
-    if about and all({(c['column'], c['op'], c['label']) for c in d['conditions']} == conditions and _adds_up(d) and (per_object or d.get('exact')) and not d.get('waiting') for d in about):
+    if about and all({(c['column'], c['op'], c['label']) for c in d['conditions']} == conditions and _adds_up(d) and d.get('exact' if not per_object else 'once') and not d.get('waiting') for d in about):
         return about[0]
     return None
 
@@ -249,7 +249,7 @@ def definition_check(question: str, query: dict, ontology: dict, views: list[dic
     names a meaning by its label alone; that reads as every meaning with that label. `waiting` is {field: {'labels': {code: label},
     'changes': [what changed]}} for the meanings that wait for a second look. `values` is column_values() of the rows the query reads (the team app only): without
     it a filter that leaves codes out is never read as including the codes it keeps. `derived` is {"table.path" of the property: {'name', 'source' (the table its rows
-    are counted from), 'conditions': [{column, op, label}], 'exact': every row of that table reaches exactly one object along its path, 'waiting': views confirmed
+    are counted from), 'conditions': [{column, op, label}], 'exact': every row of that table reaches exactly one object along its path, 'once': none reaches more than one, 'waiting': views confirmed
     with its conditions that are being redefined}} for the confirmed derived properties: a query that reads one whose conditions are exactly a view's
     (or exactly the meanings the model says the question leaves out) on that table uses that definition through it, though it does not read the table itself. A meaning the question says that the model
     did not list is refused when the query reads such a property, as for a view, even when it is said only inside the property's name: no list of words can tell
