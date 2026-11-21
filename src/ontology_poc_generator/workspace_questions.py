@@ -24,7 +24,7 @@ from ontology_poc_generator.object_types import (
     CAUSE_WORDS, DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, _confirmers, _content, _visible, _waiting_line, dataset_columns, element_row, enum_id, reason_for,
     stale_word, type_id, waiting_for_viewer)
 from ontology_poc_generator.ontopoc_query import QueryError, canonical as canonical_query, compile_query, is_graph, parse as parse_query, to_text
-from ontology_poc_generator.object_views import describe, kept_positions, view_visible, view_waiting_for_viewer
+from ontology_poc_generator.object_views import describe, kept_positions, view_id, view_visible, view_waiting_for_viewer
 from ontology_poc_generator.agent_harness import ask_model
 from ontology_poc_generator.ontology_questions import _catalog, _resolve_field, answer_query, ask_questions, graph_objects
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal
@@ -1140,7 +1140,9 @@ def reopen(conn, user: dict | None, question_id: int) -> dict:
         if row is None or row['state'] != 'confirmed' or row['version'] != d['version']:
             changed.append({'id': d['id'], 'name': d['name'], 'state': row['state'] if row else None,
                             **({'reason': reason_for(conn, row, user)[0], 'reason_hidden': reason_for(conn, row, user)[1], 'cause': row['cause'], 'cause_word': CAUSE_WORDS.get(row['cause']), 'stale_word': stale_word(row['cause'], row['via'])} if row and row['state'] == 'needs_look' else {})})
-    if isinstance(record.get('beside'), dict):   # what was beside it: only the views this person may still see, and which are not as they were then
-        record['beside'] = {**record['beside'], 'views': [v for v in record['beside']['views'] if v.get('all_rows') or _may_see(conn, user, v['id'])]}
-        record['beside_changed'] = [v['name'] for v in record['beside']['views'] if not v.get('all_rows') and ((row := element_row(conn, v['id'])) is None or row['state'] != 'confirmed' or row['version'] != v.get('version'))]
+    if isinstance(record.get('beside'), dict):   # what was beside it, as a fresh answer would name it: only views still confirmed and still this person's to see
+        standing = lambda element_id: (row := element_row(conn, element_id)) is not None and row['state'] == 'confirmed' and _may_see(conn, user, element_id)
+        views = [v for v in record['beside']['views'] if v.get('all_rows') or standing(v['id'])]
+        record['beside'] = {**record['beside'], 'views': views, 'more': [n for n in record['beside'].get('more', []) if standing(view_id(n))]}
+        record['beside_changed'] = [v['name'] for v in views if not v.get('all_rows') and element_row(conn, v['id'])['version'] != v.get('version')]   # confirmed again since
     return {'id': i, 'question': question, 'asked_at': at, **record, 'stale': stale, 'changed': changed}
