@@ -124,6 +124,7 @@ export function Explorer({ id, route }) {
   const [meta] = useLoad(() => getExploreMeta(id), [id]);
   const [view, setView] = useState(first?.view ?? "");
   const [filters, setFilters] = useState(first?.filters ?? []);
+  const [selectedRows, setSelectedRows] = useState(first?.rows ?? null);
   const [pivot, setPivot] = useState(first?.pivot ?? null);
   const [typed, setTyped] = useState(searchWord(first));   // what is in the box; `search` follows it a moment after the last key
   const [search, setSearch] = useState(searchWord(first));
@@ -139,7 +140,7 @@ export function Explorer({ id, route }) {
     }, 300);
     return () => clearTimeout(wait);
   }, [typed, search]);
-  const query = queryOf({ type: id, view, filters, pivot, search });
+  const query = queryOf({ type: id, view, filters, rows: selectedRows, pivot, search });
   const missing = chartMissing(chart);
   const table = useSettled(() => exploreTable(query, page), JSON.stringify([query, page, mode === "table"]));
   const drawn = useSettled(() => (mode === "chart" && !missing ? exploreChart(query, chartSpec(chart)) : Promise.resolve(null)), JSON.stringify([query, chart, mode, missing]));
@@ -165,6 +166,12 @@ export function Explorer({ id, route }) {
         </Select>
         <button className="secondary" disabled={filters.length >= 8} onClick={() => change(() => setFilters([...filters, emptyFilter(m.fields)]))}>{t("objects.bar.addFilter")}</button>
       </div>
+      {Array.isArray(selectedRows) && (
+        <p className="pivot-note">
+          {t("objects.bar.rowSelection", { count: selectedRows.length })}{" "}
+          <button className="plain" onClick={() => change(() => setSelectedRows(null))}>{t("objects.bar.clearRowSelection")}</button>
+        </p>
+      )}
       {pivot && (
         <p className="pivot-note">
           {t("objects.pivot.note", { type: m.type.name, via: via ? t("objects.pivot.via", { name: via.name, other: via.other_name }) : "" })}{" "}

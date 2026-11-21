@@ -1,6 +1,6 @@
 import React from "react";
 import { SourceValue } from "./SourceValue.jsx";
-import { GROUP_ORDERS, GROUP_TOPS, barRows, formatNumber, greyText, histogramBars, leftOutLines, notOfficial, pieSlices, sliceColor } from "./explorerModel.js";
+import { GROUP_ORDERS, GROUP_TOPS, barRows, formatNumber, greyText, histogramBars, leftOutLines, notOfficial, pieSlices, queryToParam, sliceColor } from "./explorerModel.js";
 import { useT } from "./i18n/index.js";
 import { hrefFor } from "./routeModel.js";
 import { objectNameIndex, sourceHref } from "./objectModel.js";
@@ -176,7 +176,10 @@ function Rows({ result }) {
           })}
         </tbody>
       </table>
-      <p className="muted small table-note">{t("boards.chart.rowsShown", { total: result.total, shown: result.rows.length })}</p>
+      <p className="muted small table-note">
+        {t("boards.chart.rowsShown", { total: result.total, shown: result.rows.length })}
+        {result.total > result.rows.length && <>{" "}<a href={hrefFor({ page: "type", id: type, tab: "objects", q: queryToParam(result.query) })}>{t("boards.chart.openAllRows")}</a></>}
+      </p>
     </div>
   );
 }
