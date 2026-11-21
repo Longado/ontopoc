@@ -195,6 +195,22 @@ class AcceptanceTests(DerivedTestCase):
             self.assertNotIn('values', attribute)
             self.assertEqual(self.line(ann, 'customer', 'cancelled_orders')['used_by']['answers'], 1)
 
+    def test_one_customer_s_count_answers_but_a_total_over_all_customers_is_refused_saying_why_when_some_orders_reach_no_customer(self):
+        """The planted orders do not all reach exactly one customer. One customer's own count (a filter by its key) is that customer's rows and answers; a total over
+        every customer is not the total of the cancelled orders, and the refusal says so (not that the query reads no property that counts only them)."""
+        total = {'start': 'customer', 'where': [], 'via': [], 'group_by': None, 'share': None, 'measure': {'field': '已取消订单数', 'op': 'sum'}}
+        model = AskModel({'reasoning': '已取消订单数加起来', 'query': total, 'definitions_used': INCLUDES_CANCELLED})
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            self.foundation(team)
+            ann, bob = team['ann'], team['bob']
+            self.assertEqual(ann.post('/api/workspace/types/derived', CANCELLED)[0], 200)
+            self.assertEqual(self.confirm(bob, CANCELLED)[0], 200)
+            status, answer = ann.post('/api/workspace/ask', {'question': '已取消订单一共有多少？'})
+            self.assertEqual((status, answer['status']), (200, 'definition_unmet'), answer)
+            self.assertIn('不是每一行都正好连上一个对象', answer['reason'])
+            self.assertNotIn('也没有读只算它的派生属性', answer['reason'])
+
     def test_a_confirmed_property_the_model_writes_as_a_derived_measure_is_still_cited(self):
         query = {'start': 'customer', 'where': [{'field': '客户编号', 'equals': 'KH026'}], 'via': [], 'group_by': None, 'share': None,
                  'measure': {'derived': '已取消订单数', 'op': 'sum'}}   # how DeepSeek V4.1 Flash wrote it in a real run
