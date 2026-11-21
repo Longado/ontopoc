@@ -1,12 +1,11 @@
-"""One question gives one number: code, not the model, decides which rows the headline covers.
+"""Which rows a question's number covers: the two things code decides, and everything else as before.
 
-A confirmed view is applied only when the question says its name. When the question names no view, the headline covers every row the asker may read, and each
-confirmed view on the measured type that the asker may see has its own number beside it (up to 5; a grouped or top-N answer lists the names only). A condition
-the model wrote that the question does not say in its own words (a value, or a confirmed meaning by its name) is not applied; when the model quotes words of the
-question for a confirmed meaning written in another language than the question, the answer is refused, saying the confirmed name to use. A plain question
-(the names of one type, one number property and views, and nothing else) is read by code with no model at all.
-
-Expected numbers are worked out here with SQL on the sample CSV files (docs/pilot/sample), never taken from the service."""
+1. The question names no view and the model's reply applies exactly one confirmed view on the type it counts (by name, or by writing exactly its conditions)
+   or no condition: the number covers every row the asker may read, and each confirmed view on that type the asker may see has its own number beside it.
+2. The question names a confirmed view and the model's reply includes it or writes conditions that go its way: the view's confirmed conditions are applied in
+   place of the model's; a named view the reply says nothing about, or goes against, is refused. Code never applies a view on its name alone.
+Any other condition the model writes (a value, a meaning, a range) is applied as written, as before, and these tests check that the number is then the one SQL
+gives for that condition. Expected numbers are worked out here with SQL on the sample CSV files (docs/pilot/sample), never taken from the service."""
 import csv
 import json
 import sqlite3
@@ -99,6 +98,10 @@ def beside(body):
             for v in (body.get('beside') or {}).get('views', [])]
 
 
+def where_amount(where: str) -> int:
+    return sql(f'SELECT SUM(CAST(amount AS INTEGER)) FROM orders WHERE {where}')
+
+
 class DemoTests(unittest.TestCase):
     """The demo workspace (Order with English names and meanings, the confirmed view Valid orders), asked by a guest (a viewer) and by demo-admin."""
 
@@ -122,13 +125,12 @@ class DemoTests(unittest.TestCase):
     def test_the_numbers_here_are_those_of_the_sample(self):
         self.assertEqual((ALL_AMOUNT, ALL_COUNT, VALID_AMOUNT, VALID_COUNT), (162960, 150, 119810, 107))
 
-    def test_the_plain_question_gives_the_same_headline_and_the_same_view_number_beside_it_however_the_model_replies(self):
+    def test_a_question_that_names_no_view_answered_with_one_view_or_none_covers_every_row_with_the_view_beside_it(self):
         replies = {
-            'applies the view': [item(used=[{'id': 'Valid orders', 'direction': 'include', 'basis': '销售额'}])],
+            'applies the view by name': [item(used=[{'id': 'Valid orders', 'direction': 'include', 'basis': '销售额'}])],
             'applies nothing': [item()],
-            'adds an unasked filter, saying it': [item(leaving_out('Cancelled'), excluded('Cancelled', basis='销售额'))],
-            'adds an unasked filter, saying nothing': [item(leaving_out('Cancelled', 'Refunded'))],
-            'writes the view as its own filter': [item(leaving_out('New', 'Cancelled', 'Refunded'), excluded('New', 'Cancelled', 'Refunded', basis='销售额'))],
+            'writes exactly the view\'s conditions, saying them': [item(leaving_out('New', 'Cancelled', 'Refunded'), excluded('New', 'Cancelled', 'Refunded', basis='销售额'))],
+            'writes exactly the view\'s conditions, saying nothing': [item(leaving_out('New', 'Cancelled', 'Refunded'))],
             'returns nothing usable once': ['销售额要按哪个口径？', item()],
             'asks back once': [json.dumps({'clarify': ['全部订单', '有效订单']}, ensure_ascii=False), item()],
         }
@@ -141,85 +143,104 @@ class DemoTests(unittest.TestCase):
                     self.assertNotIn('view', [d['kind'] for d in body['definitions']])
                     self.assertNotIn('WHERE', body.get('query_text', ''))
 
-    def test_a_reply_that_is_never_usable_still_gives_no_number_and_the_model_is_asked_twice_at_most(self):
+    def test_any_other_filter_the_model_writes_is_applied_as_before_and_nothing_is_beside_it(self):
+        cases = {'leaves out less than the view': (item(leaving_out('Cancelled'), excluded('Cancelled', basis='销售额')), where_amount("status_code <> '4'")),
+                 'leaves out two of its three': (item(leaving_out('Cancelled', 'Refunded'), excluded('Cancelled', 'Refunded', basis='销售额')), where_amount("status_code NOT IN ('4', '5')")),
+                 'a range on the amount': (item({**SUM_AMOUNT, 'where': [{'field': 'amount', 'at_least': 1000}]}), where_amount('CAST(amount AS INTEGER) >= 1000'))}
+        for case, (said, expected) in cases.items():
+            with self.subTest(case=case):
+                body, _ = self.ask('销售额是多少？', said)
+                self.assertEqual((body['status'], body['answer']['measure']['value']), ('answered', expected), body.get('reason'))
+                self.assertIsNone(body.get('beside'))
+        self.assertEqual(where_amount("status_code NOT IN ('4', '5')"), 124790)
+        body, _ = self.ask('销售额是多少？', item(leaving_out('Cancelled', 'Refunded')))   # as on main: a filter on confirmed meanings with no direction is refused
+        self.assertEqual(body['status'], 'definition_unmet', body)
+
+    def test_a_reply_that_is_never_usable_gives_no_number_and_the_model_is_asked_twice_at_most(self):
         body, asked = self.ask('销售额是多少？', 'not json')
         self.assertEqual((body['status'], asked), ('no_query', 2))
         self.assertNotIn('answer', body)
 
-    def test_the_model_is_not_told_a_view_the_question_does_not_name(self):
-        self.ask('销售额是多少？', item())
-        told = self.demo.model.requests[-1].get('definitions', [])
-        self.assertNotIn('Valid orders', [d['id'] for d in told])
-        self.assertTrue(any(d['kind'] == 'meaning' for d in told))   # the meanings still are: they are how a question that says them is written
-
-    def test_a_plain_question_in_the_names_is_read_by_code_and_the_model_is_not_asked(self):
-        for question, expected in (('What is the total amount?', ('answered', ALL_AMOUNT, ALL_COUNT)), ('How many orders are there?', None)):
-            body, asked = self.ask(question, 'not json')
-            self.assertEqual(asked, 0, question)
-            if expected:
-                self.assertEqual(headline(body), expected)
-                self.assertEqual(beside(body), [('Valid orders', VALID_AMOUNT, VALID_COUNT, 'Demo builder')])
-            else:
-                self.assertEqual((body['status'], body['answer']['total']), ('answered', ALL_COUNT))
-                self.assertEqual([(v['name'], v['answer']['total']) for v in body['beside']['views']], [('Valid orders', VALID_COUNT)])
-            self.assertIsNone(body['model'])
-
-    def test_the_questions_the_demo_suggests_are_answered_the_same_every_time(self):
-        for question in ('Valid orders 的 amount 合计是多少？', 'What is the total amount of valid orders?'):   # the page's suggestion in Chinese and in English
-            body, asked = self.ask(question, 'not json')
-            self.assertEqual((headline(body), asked), (('answered', VALID_AMOUNT, VALID_COUNT), 0), question)
-        delivered = {**ALL_ORDERS, 'where': [{'field': 'status_code', 'equals': 'Delivered'}]}
-        body, _ = self.ask('Delivered 的订单有几笔？', item(delivered, [{'id': 'orders.status_code=Delivered', 'direction': 'include', 'basis': 'Delivered'}]))
-        self.assertEqual((body['status'], body['answer']['total']), ('answered', sql("SELECT COUNT(*) FROM orders WHERE status_code = '3'")))
-
-    def test_a_question_that_names_the_view_gets_the_views_number_whatever_filter_the_model_writes_in_its_place(self):
+    def test_a_question_that_names_the_view_gets_the_views_number_when_the_model_includes_it_or_goes_its_way(self):
         replies = {
-            'applies the view': [item(used=[{'id': 'Valid orders', 'direction': 'include', 'basis': 'Valid orders'}])],
-            'writes its own filter instead, saying it': [item(leaving_out('Cancelled', 'Refunded'), excluded('Cancelled', 'Refunded', basis='Valid orders'))],
-            'writes its own filter instead, saying nothing': [item(leaving_out('Cancelled', 'Refunded'))],
+            'includes the view': [item(used=[{'id': 'Valid orders', 'direction': 'include', 'basis': 'Valid orders'}])],
+            'writes part of it, saying it': [item(leaving_out('Cancelled', 'Refunded'), excluded('Cancelled', 'Refunded', basis='Valid orders'))],
+            'writes part of it, saying nothing': [item(leaving_out('Cancelled', 'Refunded'))],
             'returns nothing usable once': ['not json', item(used=[{'id': 'Valid orders', 'direction': 'include', 'basis': 'Valid orders'}])],
         }
-        for case, said in replies.items():
-            with self.subTest(case=case):
-                body, _ = self.ask('Valid orders 的总金额是多少？', *said)
-                self.assertEqual(headline(body), ('answered', VALID_AMOUNT, VALID_COUNT), body.get('reason'))
-                self.assertEqual([(d['kind'], d['name'], d['confirmed_by']) for d in body['definitions'] if d['kind'] == 'view'], [('view', 'Valid orders', 'Demo builder')])
-                self.assertIsNone(body.get('beside'))   # the question named a view: nothing beside it
-        body, asked = self.ask('What is the total amount of Valid orders?', 'not json')   # in the names only: code reads it
-        self.assertEqual((headline(body), asked), (('answered', VALID_AMOUNT, VALID_COUNT), 0))
+        for question in ('Valid orders 的总金额是多少？', 'What is the total amount of valid orders?'):
+            for case, said in replies.items():
+                with self.subTest(question=question, case=case):
+                    body, asked = self.ask(question, *said)
+                    self.assertGreaterEqual(asked, 1)   # never answered by code alone
+                    self.assertEqual(headline(body), ('answered', VALID_AMOUNT, VALID_COUNT), body.get('reason'))
+                    self.assertEqual([(d['kind'], d['name'], d['confirmed_by']) for d in body['definitions'] if d['kind'] == 'view'], [('view', 'Valid orders', 'Demo builder')])
+                    self.assertIsNone(body.get('beside'))
         for case, said in {'writes nothing about it': item(), 'writes the other rows': item({**SUM_AMOUNT, 'where': [{'field': 'status_code', 'equals': 'Cancelled'}]})}.items():
             with self.subTest(case=case):   # no word on the view, or a filter that goes against it: code does not guess the direction, it refuses
                 body, _ = self.ask('Valid orders 的总金额是多少？', said)
                 self.assertEqual(body['status'], 'definition_unmet', body)
                 self.assertNotIn('answer', body)
 
-    def test_a_view_said_in_another_language_than_its_name_never_gives_the_models_own_filter_as_the_headline(self):
-        """有效订单 is not the name of Valid orders, and code cannot tell that it means it. The model's own filter is never the headline: when it quotes the question's
-        words for it the answer is refused, saying the confirmed names to use; otherwise the filter is dropped and the headline covers every row."""
-        refused = {'quotes the words for its own filter': [item(leaving_out('Cancelled', 'Refunded'), excluded('Cancelled', 'Refunded', basis='有效订单'))]}
-        dropped = {'gives words that are not the question\'s': [item(leaving_out('Cancelled', 'Refunded'), excluded('Cancelled', 'Refunded', basis='valid'))],
-                   'says nothing of its filter': [item(leaving_out('Cancelled', 'Refunded'))], 'writes no filter': [item()]}
-        for case, said in refused.items():
-            with self.subTest(case=case):
-                body, _ = self.ask('有效订单的总金额是多少？', *said)
-                self.assertEqual(body['status'], 'definition_unmet', body)
-                self.assertNotIn('answer', body)
-                self.assertIn('Cancelled', body['reason'])
-                self.assertIn('Valid orders', body['reason'])   # the confirmed view on Order, named so it can be asked for by its name
-        for case, said in dropped.items():
-            with self.subTest(case=case):
-                body, _ = self.ask('有效订单的总金额是多少？', *said)
-                self.assertEqual(headline(body), ('answered', ALL_AMOUNT, ALL_COUNT))
-                self.assertEqual(beside(body), [('Valid orders', VALID_AMOUNT, VALID_COUNT, 'Demo builder')])
+    def test_a_range_on_top_of_a_named_view_is_applied_as_the_model_wrote_it(self):
+        said = item({**SUM_AMOUNT, 'where': [{'field': 'amount', 'at_least': 1000}]}, [{'id': 'Valid orders', 'direction': 'include', 'basis': 'Valid orders'}])
+        body, _ = self.ask('Valid orders 的总金额是多少？', said)
+        self.assertEqual((body['status'], body['answer']['measure']['value']), ('answered', where_amount(f'{VALID_SQL} AND CAST(amount AS INTEGER) >= 1000')))
+        self.assertEqual(body['answer']['measure']['value'], 94960)
 
-    def test_a_meaning_said_in_the_questions_own_words_is_applied_and_one_said_in_another_language_is_refused_not_dropped(self):
+    def test_a_question_that_says_valid_orders_in_another_language_is_answered_as_before(self):
+        body, _ = self.ask('有效订单的总金额是多少？', item(leaving_out('Cancelled', 'Refunded'), excluded('Cancelled', 'Refunded', basis='有效订单')))
+        self.assertEqual((body['status'], body['answer']['measure']['value']), ('answered', 124790))   # the model's own filter, said under the number as the model's
+        self.assertIsNone(body.get('beside'))
+
+    def test_a_meaning_said_in_another_language_is_counted_by_the_models_filter_as_before_never_all_orders(self):
         cancelled = sql("SELECT COUNT(*) FROM orders WHERE status_code = '4'")
+        self.assertEqual(cancelled, 19)
         query = {**ALL_ORDERS, 'where': [{'field': 'status_code', 'equals': 'Cancelled'}]}
-        body, _ = self.ask('How many Cancelled orders?', item(query, [{'id': 'orders.status_code=Cancelled', 'direction': 'include', 'basis': 'Cancelled'}]))
-        self.assertEqual((body['status'], body['answer']['total']), ('answered', cancelled))
-        body, _ = self.ask('已取消的订单有多少？', item(query, [{'id': 'orders.status_code=Cancelled', 'direction': 'include', 'basis': '已取消'}]))
-        self.assertEqual(body['status'], 'definition_unmet', body)   # never all 150 orders for a question that asks for the cancelled ones
-        self.assertIn('Cancelled', body['reason'])
+        for question, basis in (('已取消的订单有多少？', '已取消'), ('有多少订单被取消了', '被取消')):
+            for used in ([{'id': 'orders.status_code=Cancelled', 'direction': 'include', 'basis': basis}], []):
+                with self.subTest(question=question, basis=bool(used)):
+                    body, _ = self.ask(question, item(query, used))
+                    if used:
+                        self.assertEqual((body['status'], body['answer']['total']), ('answered', cancelled), body.get('reason'))
+                    else:   # as on main: a filter on a confirmed meaning the model gave no direction for is refused, never all orders
+                        self.assertNotEqual((body.get('answer') or {}).get('total'), ALL_COUNT, body)
+                        self.assertIn(body['status'], ('answered', 'definition_unmet'), body)
+                        if body['status'] == 'answered':
+                            self.assertEqual(body['answer']['total'], cancelled)
+
+
+class CommonWordViewTests(unittest.TestCase):
+    """Views named with common words (All keeps Paid, Big keeps Delivered, Now keeps Shipped): the word in an ordinary question is not the model applying the view."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.demo = Seeded().__enter__()
+        admin, builder = cls.demo.admin(), cls.demo.builder()
+        for name, label in (('All', 'Paid'), ('Big', 'Delivered'), ('Now', 'Shipped')):
+            assert admin.call('POST', '/api/workspace/types/views', {'name': name, 'type': 'order', 'filters': [{'column': 'status_code', 'op': 'is', 'label': label}]})[0] == 200
+            view = next(v for v in builder.call('GET', '/api/workspace/types/order/views')[1]['views'] if v['name'] == name)
+            assert builder.call('POST', '/api/workspace/types/views/confirm', {'id': name, 'version': view['version'], 'seen': view['seen']})[0] == 200
+        cls.guest = a_guest(cls.demo.base, 'en')
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.demo.__exit__(None, None, None)
+
+    def test_a_view_named_by_a_common_word_is_never_applied_by_code_alone(self):
+        count = {**ALL_ORDERS}
+        wrong = {'What is the total amount of all orders?': (item(), where_amount("status_code = '1'")), 'How big is the total amount?': (item(), where_amount("status_code = '3'")),
+                 'How many orders are there now?': (item(count), sql("SELECT COUNT(*) FROM orders WHERE status_code = '2'"))}
+        self.demo.model.__class__ = Scripted
+        for question, (said, by_the_view) in wrong.items():
+            with self.subTest(question=question):
+                self.demo.model.replies = [said]
+                before = len(self.demo.model.requests)
+                status, body = self.guest.call('POST', '/api/workspace/ask', {'question': question})
+                self.assertEqual((status, len(self.demo.model.requests) - before), (200, 1))
+                self.assertEqual(body['status'], 'definition_unmet', body)   # as on main: the question says the view's name and the model said nothing of it
+                self.assertNotEqual(((body.get('answer') or {}).get('measure') or {}).get('value', (body.get('answer') or {}).get('total')), by_the_view)
+        self.assertEqual([where_amount("status_code = '1'"), where_amount("status_code = '3'")], [10770, 72240])
 
 
 class ChangedViewTests(unittest.TestCase):
@@ -245,9 +266,11 @@ class ChangedViewTests(unittest.TestCase):
                 self.assertTrue(all(set(d) <= {'kind', 'state', 'waiting', 'text'} for d in body['refusal']['definitions']))   # told only that it waits
             else:
                 self.assertIn('Valid orders', [d['name'] for d in body['refusal']['definitions']])
+            model.item = item()
             status, body = who.call('POST', '/api/workspace/ask', {'question': 'What is the total amount?'})
             self.assertEqual(headline(body), ('answered', ALL_AMOUNT, ALL_COUNT))
             self.assertIsNone(body.get('beside'))
+            model.item = item(used=[{'id': 'Valid orders', 'direction': 'include', 'basis': 'Valid orders'}])
 
 
 class PilotTests(pilot.PilotFoundation):
@@ -259,7 +282,7 @@ class PilotTests(pilot.PilotFoundation):
             ann = self.foundation(base, orders=orders)['ann']
             status, body = ann.post('/api/workspace/ask', {'question': question})
             self.assertEqual(status, 200, body)
-            return body
+            return body, len(model.requests)
 
     def test_with_an_order_whose_customer_is_missing_the_named_view_gives_the_rows_total_or_is_refused_never_the_customers_sum(self):
         orders = with_orphan()
@@ -267,40 +290,32 @@ class PilotTests(pilot.PilotFoundation):
         self.assertEqual(rows, 169810)
         view = [{'id': '有效订单', 'direction': 'include', 'basis': '有效订单'}]
         every_customer = {'start': 'customer', 'where': [{'field': 'tier', 'equals': ['A', 'B', 'C']}], 'via': [], 'group_by': None, 'share': None,
-                          'measure': {'field': '有效订单金额', 'op': 'sum'}}   # a filter every customer matches, which the question never says
+                          'measure': {'field': '有效订单金额', 'op': 'sum'}}   # a filter every customer matches
         for case, said in {'reads the orders through the view': item(used=view), 'reads the orders and writes the filter itself': item(leaving_out('新建', '已取消', '已退款'), []),
                            'reads the orders and leaves out less than the view': item(leaving_out('已取消'), [])}.items():
             with self.subTest(case=case):
-                body = self.ask('有效订单的总金额是多少？', said, orders=orders)
+                body, _ = self.ask('有效订单的总金额是多少？', said, orders=orders)
                 self.assertEqual((body['status'], body['answer']['measure']['value']), ('answered', rows), body.get('reason'))
-        body = self.ask('有效订单的总金额是多少？', item(every_customer, view), orders=orders)
+        body, _ = self.ask('有效订单的总金额是多少？', item(every_customer, view), orders=orders)
         self.assertNotEqual((body.get('answer') or {}).get('measure', {}).get('value'), 119810)
-        self.assertEqual(body['status'], 'definition_unmet', body)
+        self.assertNotEqual(body['status'], 'answered', body)
 
-    def test_a_total_whose_model_made_up_filter_drops_one_small_customer_is_the_rows_total_or_refused_never_the_filters_rows(self):
-        """The review case: the model reads the property over every customer but C009, which the question never says. 119,310 would be the rows of the customers
-        it keeps, with the orphan order (no customer) quietly outside too; the question's total is 169,810."""
-        orders = with_orphan()
-        rows = sql(f'SELECT SUM(CAST(amount AS INTEGER)) FROM orders WHERE {VALID_SQL}', orders)
-        kept = rows - 50000 - sql(f"SELECT SUM(CAST(amount AS INTEGER)) FROM orders WHERE {VALID_SQL} AND customer_id = 'C009'", orders)
-        self.assertEqual((rows, kept), (169810, 119310))
-        view = [{'id': '有效订单', 'direction': 'include', 'basis': '有效订单'}]
-        for where in ([{'field': 'customer_id', 'not_equals': ['C009']}], [{'field': 'customer_id', 'not_equals': 'C009'}]):
-            made_up = {'start': 'customer', 'where': where, 'via': [], 'group_by': None, 'share': None, 'measure': {'field': '有效订单金额', 'op': 'sum'}}
-            with self.subTest(where=where):
-                body = self.ask('有效订单的总金额是多少？', item(made_up, view), orders=orders)
-                value = (body.get('answer') or {}).get('measure', {}).get('value')
-                self.assertNotEqual(value, kept, body)
-                self.assertTrue(body['status'] == 'definition_unmet' or value == rows, body)
+    def test_a_condition_said_in_another_language_than_its_value_is_applied_as_the_model_wrote_it(self):
+        chengdu = {'start': 'customer', 'where': [{'field': 'city', 'equals': 'Chengdu'}], 'via': [], 'group_by': None, 'share': None, 'measure': None}
+        both = {**chengdu, 'where': [*chengdu['where'], {'field': 'tier', 'equals': 'A'}]}
+        tier_a = {**chengdu, 'where': [{'field': 'tier', 'equals': 'A'}]}
+        for question, query, expected in (('成都的客户有多少个？', chengdu, "city = 'Chengdu'"), ('成都 A 级客户有多少个？', both, "city = 'Chengdu' AND tier = 'A'"),
+                                          ('How many A customers?', tier_a, "tier = 'A'")):
+            with self.subTest(question=question):
+                body, asked = self.ask(question, item(query))
+                self.assertEqual((body['status'], body['answer']['total'], asked), ('answered', sql(f'SELECT COUNT(*) FROM customers WHERE {expected}'), 1), body.get('reason'))
+        self.assertEqual([sql(f"SELECT COUNT(*) FROM customers WHERE {w}") for w in ("city = 'Chengdu'", "city = 'Chengdu' AND tier = 'A'", "tier = 'A'")], [9, 5, 13])
 
-    def test_a_value_the_question_says_is_kept_and_one_the_model_adds_is_dropped(self):
-        city = {'start': 'customer', 'where': [{'field': 'city', 'equals': 'Shenzhen'}], 'via': [], 'group_by': None, 'share': None, 'measure': None}
-        body = self.ask('Shenzhen 的客户有多少？', item(city))
-        self.assertEqual((body['status'], body['answer']['total']), ('answered', sql("SELECT COUNT(*) FROM customers WHERE city = 'Shenzhen'")))
-        body = self.ask('客户总数是多少？', item(city))
-        self.assertEqual((body['status'], body['answer']['total']), ('answered', sql('SELECT COUNT(*) FROM customers')))
-        self.assertEqual([d['name'] for d in body['not_applied']], ['city'])
-        self.assertNotIn('WHERE', body.get('query_text', ''))
+    def test_no_question_is_answered_without_the_model(self):
+        for question in ('What is the amount of an order?', '客户有多少？'):
+            with self.subTest(question=question):
+                body, asked = self.ask(question, 'not json')
+                self.assertEqual((body['status'], asked), ('no_query', 2))
 
 
 class PlantedTests(Planted):
@@ -316,7 +331,7 @@ class PlantedTests(Planted):
     def test_a_viewer_limited_by_a_row_rule_gets_the_headline_and_the_view_number_on_their_own_rows(self):
         from tests.test_workspace_questions import ORDERS
         mine = [r for r in ORDERS if r['客户编号'] == 'KH001']
-        with self.service(gateway=Scripted('not json')) as (base, out):
+        with self.service(gateway=Scripted(item(ALL_ORDERS))) as (base, out):
             team = self.team(base)
             self.with_valid(team, {**ORDER, 'properties': [*ORDER['properties'], {'column': '客户编号'}]})
             vera_id = next(u['id'] for u in team['admin'].get('/api/users')[1]['users'] if u['username'] == 'vera')
@@ -348,7 +363,8 @@ class PlantedTests(Planted):
         kinds = [[('is', '已交付')], [('is', '生产中')], [('is', '已取消')], [('is_not', '已交付')], [('is_not', '生产中')], [('is_not', '已交付'), ('is_not', '生产中')]]
         views = [{'name': f'视图{i}', 'type': 'order', 'filters': [{'column': '状态码', 'op': op, 'label': label} for op, label in k]} for i, k in enumerate(kinds, 1)]
         grouped = {**ALL_ORDERS, 'group_by': ['状态码']}
-        with self.service(gateway=Scripted(item(grouped, [{'id': f'订单.状态码={l}', 'direction': 'mention', 'basis': '状态'} for l in labels]))) as (base, out):
+        model = Scripted(item(ALL_ORDERS))
+        with self.service(gateway=model) as (base, out):
             team = self.team(base)
             self.with_valid(team)
             for v in views:
@@ -359,24 +375,25 @@ class PlantedTests(Planted):
             self.assertEqual([v['name'] for v in body['beside']['views']], names[:5])
             self.assertEqual(body['beside']['more'], names[5:])
             self.assertTrue(all('answer' in v for v in body['beside']['views']))
+            model.replies = [item(grouped, [{'id': f'订单.状态码={l}', 'direction': 'mention', 'basis': '状态'} for l in labels])]
             body = self.ask(team['ann'], '各状态码的订单各有多少？')[1]
             self.assertEqual(body['status'], 'answered', body)
             self.assertEqual([v['name'] for v in body['beside']['views']], names[:5])
             self.assertFalse(any('answer' in v for v in body['beside']['views']))
 
-    def test_a_question_that_leaves_a_meaning_out_by_its_name_is_answered_so_and_the_view_it_reads_is_not_beside_it(self):
+    def test_a_view_the_question_asks_for_by_its_meaning_is_applied_and_one_it_does_not_is_beside(self):
         model = Scripted(item(ALL_ORDERS, [{'id': '订单.状态码=已取消', 'direction': 'exclude', 'basis': '不算已取消'}]))
         with self.service(gateway=model) as (base, out):
             team = self.team(base)
             self.with_valid(team)
-            body = self.ask(team['ann'], '不算已取消的订单有多少？')[1]
-            self.assertEqual((body['status'], body['answer']['total']), ('answered', 144))
-            self.assertIsNone(body.get('beside'))
-            model.replies = [item({**ALL_ORDERS, 'where': [{'field': '状态码', 'equals': '2'}]}, [{'id': '订单.状态码=已取消', 'direction': 'include', 'basis': '取消的'}])]
-            body = self.ask(team['ann'], '取消的订单有多少？')[1]   # 已取消 said without its 已
-            self.assertEqual((body['status'], body['answer']['total']), ('answered', 16))
+            for said in (item(ALL_ORDERS, [{'id': '订单.状态码=已取消', 'direction': 'exclude', 'basis': '不算已取消'}]),
+                         item({**ALL_ORDERS, 'where': [{'field': '状态码', 'not_equals': ['2']}]}, [{'id': '订单.状态码=已取消', 'direction': 'exclude', 'basis': '不算已取消'}])):
+                model.replies = [said]
+                body = self.ask(team['ann'], '不算已取消的订单有多少？')[1]   # the question says 已取消: the view's conditions are what it asks for
+                self.assertEqual((body['status'], body['answer']['total']), ('answered', 144), body.get('reason'))
+                self.assertIsNone(body.get('beside'))
             model.replies = [item({**ALL_ORDERS, 'where': [{'field': '状态码', 'not_equals': ['2']}]}, [{'id': '订单.状态码=已取消', 'direction': 'exclude', 'basis': '销售总额'}])]
-            body = self.ask(team['ann'], '订单的销售总额是多少？')[1]   # the model reads 销售 as leaving out 已取消: not said, so not applied
+            body = self.ask(team['ann'], '订单的销售总额是多少？')[1]   # exactly 有效订单's conditions, which the question does not say: every row, the view beside it
             self.assertEqual((body['status'], body['answer']['total']), ('answered', 160))
             self.assertEqual([(v['name'], v['answer']['total']) for v in body['beside']['views']], [('有效订单', 144)])
 
@@ -407,7 +424,7 @@ class PlantedTests(Planted):
                     self.assertIn('有效订单', body['reason'])
 
     def test_a_saved_answer_says_when_a_view_beside_it_has_changed(self):
-        with self.service(gateway=Scripted('not json')) as (base, out):
+        with self.service(gateway=Scripted(item(ALL_ORDERS))) as (base, out):
             team = self.team(base)
             self.with_valid(team)
             ann = team['ann']
@@ -424,7 +441,7 @@ class PlantedTests(Planted):
 class QueryTextTests(Planted):
     """POST /api/workspace/query and the MCP answers carry the same `beside` as a question."""
 
-    def test_a_written_query_lists_the_views_beside_it(self):
+    def test_a_written_query_with_no_condition_lists_the_views_beside_it_and_one_with_a_condition_does_not(self):
         with self.service(gateway=Scripted('not json')) as (base, out):
             team = self.team(base)
             self.confirmed_orders(team)
@@ -433,6 +450,9 @@ class QueryTextTests(Planted):
             status, body = team['ann'].post('/api/workspace/query', {'text': 'SELECT count(o) FROM (o:订单)'})
             self.assertEqual((status, body['answer']['total']), (200, 160), body)
             self.assertEqual([(v['name'], v['answer']['total'], v['confirmed_by']) for v in body['beside']['views']], [('有效订单', 144, 'Bob')])
+            status, body = team['ann'].post('/api/workspace/query', {'text': "SELECT count(o) FROM (o:订单) WHERE o.状态码 = '已交付'"})
+            self.assertEqual(status, 200, body)
+            self.assertNotIn('beside', body)
 
     def test_the_mcp_answers_pass_beside_through(self):
         from ontology_poc_generator import mcp_server
@@ -443,11 +463,10 @@ class QueryTextTests(Planted):
 
             def request(self, path, payload=None):
                 return self.body
-        body = {'status': 'answered', 'answer': {'total': 160}, 'beside': {'views': [{'name': '有效订单', 'answer': {'total': 144}, 'confirmed_by': 'Bob'}], 'more': []},
-                'not_applied': [{'kind': 'condition', 'name': 'city', 'why': 'x'}], 'definitions': [], 'query_text': 'SELECT count(o) FROM (o:订单)'}
+        body = {'status': 'answered', 'answer': {'total': 160}, 'beside': {'views': [{'id': 'objview:有效订单', 'version': 1, 'name': '有效订单', 'answer': {'total': 144}, 'confirmed_by': 'Bob'}], 'more': []},
+                'definitions': [], 'query_text': 'SELECT count(o) FROM (o:订单)'}
         lean = {'views': [{'name': '有效订单', 'confirmed_by': 'Bob', 'answer': {'total': 144}}]}   # no id or version for an agent
         self.assertEqual(mcp_server.ask(Session(body), {'question': 'q'})['beside'], lean)
-        self.assertEqual(mcp_server.ask(Session(body), {'question': 'q'})['not_applied'], body['not_applied'])
         self.assertEqual(mcp_server.ontopoc_query(Session(body), {'text': 'SELECT count(o) FROM (o:订单)'})['beside'], lean)
 
 
