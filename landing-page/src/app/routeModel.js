@@ -6,7 +6,7 @@ export const TABS = ["fields", "preview", "versions"];
 /** Tab names in the current language (getters: read at use time). */
 const labels = (prefix, keys) => Object.defineProperties({}, Object.fromEntries(keys.map((k) => [k, { enumerable: true, get: () => t(`nav.${prefix}.${k}`) }])));
 export const TAB_LABEL = labels("tab", TABS);
-export const TYPE_TABS = ["props", "derived", "views", "actions", "objects", "log"];
+export const TYPE_TABS = ["props", "views", "derived", "objects", "log", "actions"];   // 行为 last: shown only when the type has actions (typeModel.typeTabs)
 export const TYPE_TAB_LABEL = labels("typeTab", TYPE_TABS);
 
 /** `?dataset=name` on a "new" address: the dataset the page starts from (用它建管道, 用它建对象类型). */
@@ -141,17 +141,20 @@ export const PLANNED = {
 };
 
 const BUILT = { home: "#/home", qa: "#/qa", tasks: "#/tasks", notices: "#/notices", datasets: "#/datasets", types: "#/types", relations: "#/relations", lineage: "#/lineage", agents: "#/agents", boards: "#/boards", confirm: "#/confirm", users: "#/users", settings: "#/settings", permissions: "#/permissions", pipelines: "#/pipelines", sources: "#/sources", schedules: "#/schedules" };
-const BUILDERS = ["tasks", "confirm", "pipelines", "sources", "schedules", "agents"];   // shown to builders and admins only: a viewer has nothing to confirm, the task list quotes keys and values and a pipeline's steps and previews quote rows (the service refuses them to a viewer)
+const BUILDERS = ["confirm", "pipelines", "sources", "schedules", "agents"];   // in the sidebar of builders and admins only: a viewer has nothing to confirm, and a pipeline's steps and previews quote rows (the service refuses them to a viewer)
+const ONLY_WITH = { notices: "notices" };   // shown only when the person has one: 消息 once a notice has arrived (the top bar's bell and the address always reach it)
 // label (and a group's label and hint) are getters: the words are read when drawn, in the language chosen then
-const item = (key, icon) => ({ key, get label() { return t(`nav.${key}`); }, icon, href: BUILT[key] ?? `#/${key}`, built: key in BUILT, builders: BUILDERS.includes(key) });
+const item = (key, icon) => ({ key, get label() { return t(`nav.${key}`); }, icon, href: BUILT[key] ?? `#/${key}`, built: key in BUILT, builders: BUILDERS.includes(key), ...(ONLY_WITH[key] ? { onlyWith: ONLY_WITH[key] } : {}) });
 const group = (key, icon, rest) => ({ key, get label() { return t(`nav.group.${key}`); }, icon, get hint() { return t(`nav.group.${key}.hint`); }, ...rest });
 
-/** The sidebar: a group with a `label` folds and has a grey one-line `hint`; `builders` items are for builders and admins. A viewer sees 首页, 问数, 看板, 消息
- * and the definitions they may read (数据集, 血缘, 对象类型, 关系: the service serves them to a viewer); every page stays reachable by its address. */
+/** The sidebar, around the gate (docs/PRODUCT.md): the main line, then the definitions a person confirms (the review queue first, and lineage, which says why
+ * one went back), then the data they are built on, then the agents that answer from them. A group with a `label` folds and has a grey one-line `hint`;
+ * `builders` items are for builders and admins. A viewer sees 首页, 助手, 看板, the definitions they may read (对象类型, 关系, 血缘) and 数据集. The task list is not
+ * in the sidebar; every page stays reachable by its address. */
 export const NAV = [
   { key: "main", items: [item("home", "home"), item("qa", "chat"), item("boards", "board"), item("notices", "bell")] },
-  group("data", "database", { items: [item("datasets", "table"), item("sources", "plug"), item("pipelines", "pipeline"), item("schedules", "clock"), item("lineage", "lineage"), item("tasks", "tasks")] }),
-  group("objects", "cube", { items: [item("confirm", "check"), item("types", "cube"), item("relations", "link")] }),
+  group("objects", "cube", { items: [item("confirm", "check"), item("types", "cube"), item("relations", "link"), item("lineage", "lineage")] }),
+  group("data", "database", { items: [item("datasets", "table"), item("sources", "plug"), item("pipelines", "pipeline"), item("schedules", "clock")] }),
   group("apps", "apps", { items: [item("agents", "bot")] }),
 ];
 
@@ -159,11 +162,12 @@ export const NAV = [
 export const ADMIN_NAV = [group("settings", "settings", { items: [item("settings", "settings"), item("users", "users"), item("permissions", "shield")] })];
 
 /** The groups this person's role sees, in order, each with the items their role may open; a group left with none is not shown, and nobody signed in sees
- * the first group only. A group keeps its own words (the getters) underneath. */
-export const navFor = (user) => [...NAV, ...(isAdmin(user) ? ADMIN_NAV : [])]
+ * the first group only. `has` says what the person has of the items shown only then ({notices: true} once a notice has arrived). A group keeps its own
+ * words (the getters) underneath. */
+export const navFor = (user, has = {}) => [...NAV, ...(isAdmin(user) ? ADMIN_NAV : [])]
   .filter((g) => !g.label || user)
   .map((g) => {
-    const items = g.items.filter((i) => !i.builders || canBuild(user));
+    const items = g.items.filter((i) => (!i.builders || canBuild(user)) && (!i.onlyWith || has[i.onlyWith]));
     return items.length === g.items.length ? g : { __proto__: g, items };
   })
   .filter((g) => g.items.length);
@@ -173,14 +177,14 @@ export const navFor = (user) => [...NAV, ...(isAdmin(user) ? ADMIN_NAV : [])]
 export const PAGES = {
   home: { nav: "home" },
   qa: { nav: "qa" },
-  tasks: { nav: "tasks" },
+  tasks: { nav: null, role: "builder" },   // the task list quotes keys and values: the service gives it to builders only. Not in the sidebar; its address stays
   notices: { nav: "notices" },
   datasets: { nav: "datasets" }, dataset: { nav: "datasets" },
   pipelines: { nav: "pipelines", role: "builder" }, pipelinenew: { nav: "pipelines", role: "builder" }, pipeline: { nav: "pipelines", role: "builder" },
   sources: { nav: "sources", role: "builder" }, source: { nav: "sources", role: "builder" },
   schedules: { nav: "schedules", role: "builder" },
-  types: { nav: "types" }, type: { nav: "types" }, typenew: { nav: "types" }, typeedit: { nav: "types" }, object: { nav: "types" },
-  relations: { nav: "relations" }, relation: { nav: "relations" }, relationnew: { nav: "relations" }, relationedit: { nav: "relations" },
+  types: { nav: "types" }, type: { nav: "types" }, typenew: { nav: "types", role: "builder" }, typeedit: { nav: "types", role: "builder" }, object: { nav: "types" },
+  relations: { nav: "relations" }, relation: { nav: "relations" }, relationnew: { nav: "relations", role: "builder" }, relationedit: { nav: "relations", role: "builder" },
   confirm: { nav: "confirm", role: "builder" }, confirmgroup: { nav: "confirm", role: "builder" },
   agents: { nav: "agents", role: "builder" },
   boards: { nav: "boards" }, board: { nav: "boards" }, boardnew: { nav: "boards", role: "builder" }, boardedit: { nav: "boards", role: "builder" },

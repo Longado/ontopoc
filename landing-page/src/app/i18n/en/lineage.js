@@ -1,6 +1,6 @@
 // Data lineage and the graph components it shares with the relation graph (canvas, nodes, side panel, graphModel's words).
 export default {
-  "crumb": "Data",
+  "crumb": "Definitions",
   "title": "Lineage",
   "sub": "Where data comes from and what uses it: from left to right, sources, datasets, pipelines, datasets, object types, then relations, actions, views and derived properties.",
   "loading": "Loading…",

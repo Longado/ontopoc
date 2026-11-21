@@ -21,7 +21,7 @@ export default {
   "demo.try": "Try the demo",
   "demo.trying": "Opening the demo…",
   "demo.haveAccount": "Have an account? Sign in",
-  "guest.banner": "Demo · read-only sample data · resets daily",
+  "guest.banner": "Demo · read-only sample data · guest accounts and their questions are deleted after 24 hours",
   "guest.try": "Try: “What is the total amount of valid orders?”",
   "guest.signOut": "Sign out",
   "guest.openBoards": "Open Boards",

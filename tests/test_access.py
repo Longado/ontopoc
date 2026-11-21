@@ -67,6 +67,10 @@ class RouteTableTests(unittest.TestCase):
                 ('POST', '/api/auth/login', PUBLIC), ('GET', '/api/ontology/health', PUBLIC), ('GET', '/api/auth/me', SESSION), ('POST', '/api/auth/tokens/revoke', SESSION)):
             self.assertEqual(required_role(method, path), role, (method, path))
 
+    def test_checked_numbers_are_recorded_and_read_in_full_by_builders(self):
+        for method, path, role in (('POST', '/api/workspace/checked', 'builder'), ('GET', '/api/workspace/checked/question/3', 'builder'), ('GET', '/api/workspace/checked/question/x', None)):
+            self.assertEqual(route_role(method, path), role, (method, path))
+
     def test_a_pattern_matches_the_whole_path(self):
         self.assertEqual(required_role('GET', '/api/workspace/datasets/../../users'), 'viewer')   # no traversal on the server: it is a name, so this is a viewer read of a dataset
         self.assertEqual(required_role('POST', '/api/ontology/confirm/extra'), 'admin')
@@ -433,6 +437,12 @@ class NoAuthTests(GateTestCase):
             self.assertEqual((status, body['user']['role'], body['auth']), (200, 'admin', False))
             self.assertEqual(guest.post('/api/users', {'username': 'x'})[0], 400)
             self.assertEqual(guest.get('/api/workspace/datasets', headers={'Host': 'evil.example'})[0], 403)
+
+
+class ImpactRouteTests(unittest.TestCase):
+    def test_the_impact_of_a_change_and_the_receipts_are_for_builders(self):
+        for method, path in (('POST', '/api/workspace/impact'), ('GET', '/api/workspace/receipt'), ('POST', '/api/workspace/receipt')):
+            self.assertEqual(required_role(method, path), 'builder', (method, path))
 
 
 if __name__ == '__main__':

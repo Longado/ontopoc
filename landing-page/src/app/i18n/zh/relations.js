@@ -34,7 +34,7 @@ export default {
   "health.some": "{rows} 行{many}里 {matched} 行找到了{one}",
   "health.miss": " · {count} 行找不到",
   "health.missKeys": " · {count} 行找不到（{keys}）",
-  "page.crumbGroup": "业务对象",
+  "page.crumbGroup": "定义",
   "page.title": "关系",
   "page.sub": "关系说明两个对象类型怎么连起来，这样就能跨类型提问（“按客户城市看订单”），也能从订单打开它的客户。每个关系都会对着数据检查。",
   "page.new": "新建关系",

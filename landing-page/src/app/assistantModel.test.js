@@ -7,12 +7,12 @@ const store = () => {
   return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k), size: () => m.size };
 };
 
-test("a builder sees all five modes and a viewer sees Ask only", () => {
-  assert.deepEqual(modesFor(true), ["ask", "query", "model", "pipeline", "meanings"]);
+test("a builder sees four modes (pipeline put away) and a viewer sees Ask only", () => {
+  assert.deepEqual(modesFor(true), ["ask", "query", "model", "meanings"]);   // the pipeline mode is put away; its code and past turns stay
   assert.equal(allowedMode("meanings", false), "ask");
   assert.deepEqual(modesFor(false), ["ask"]);
   assert.equal(allowedMode("pipeline", false), "ask");
-  assert.equal(allowedMode("pipeline", true), "pipeline");
+  assert.equal(allowedMode("pipeline", true), "ask");
   assert.equal(allowedMode("nonsense", true), "ask");
 });
 
@@ -24,7 +24,7 @@ test("each mode has its own scope kind and privacy line", () => {
 });
 
 test("slash commands switch the mode and keep the rest of the line", () => {
-  assert.deepEqual(parseCommand("/pipeline total by customer", true), { mode: "pipeline", text: "total by customer" });
+  assert.equal(parseCommand("/pipeline total by customer", true), null);
   assert.deepEqual(parseCommand("/model", true), { mode: "model", text: "" });
   assert.deepEqual(parseCommand("  /Query  SELECT 1\nFROM x", true), { mode: "query", text: "SELECT 1\nFROM x" });
   assert.deepEqual(parseCommand("/ask how many", true), { mode: "ask", text: "how many" });
@@ -37,10 +37,10 @@ test("slash commands switch the mode and keep the rest of the line", () => {
 });
 
 test("typing a slash offers the commands this person may use", () => {
-  assert.deepEqual(commandChoices("/", true), ["ask", "query", "model", "pipeline", "meanings"]);
+  assert.deepEqual(commandChoices("/", true), ["ask", "query", "model", "meanings"]);
   assert.deepEqual(commandChoices("/mea", true), ["meanings"]);
   assert.deepEqual(commandChoices("/mea", false), []);
-  assert.deepEqual(commandChoices("/p", true), ["pipeline"]);
+  assert.deepEqual(commandChoices("/p", true), []);
   assert.deepEqual(commandChoices("/p", false), []);
   assert.deepEqual(commandChoices("/", false), ["ask"]);
   assert.deepEqual(commandChoices("/pipeline x", true), []);

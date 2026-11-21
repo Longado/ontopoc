@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ontopoc"
 version = "0.2.1"   # also in server.json and src/ontology_poc_generator/__init__.py; scripts/check_release_version.py checks them against the tag
-description = "An ontology draft from business tables or a document: the model drafts, code checks the draft against the data, a person confirms"
+description = "Ontology tool: the confirmation gate between a team's data and the AI that answers questions about it. Agents answer only from definitions a named person confirmed against the current data, otherwise they refuse and say who can confirm"
 readme = "README.en.md"   # the PyPI page; its mcp-name line is what the MCP Registry checks
 requires-python = ">=3.11"
 license = "AGPL-3.0-only"

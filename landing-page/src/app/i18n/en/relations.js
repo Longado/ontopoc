@@ -34,7 +34,7 @@ export default {
   "health.some": "{matched} of {rows} {many} find their {one}",
   "health.miss": " · {count} don't",
   "health.missKeys": " · {count} don't ({keys})",
-  "page.crumbGroup": "Business objects",
+  "page.crumbGroup": "Definitions",
   "page.title": "Relations",
   "page.sub": "Relations connect object types, so you can ask across them (“orders by customer city”) and open an order's customer. Each one is checked against the data.",
   "page.new": "New relation",

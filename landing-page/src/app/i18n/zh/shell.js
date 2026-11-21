@@ -26,7 +26,7 @@ export default {
   "nav.queueCount_other": "{count} 项等你确认",
   "nav.noticeCount_one": "{count} 条未读消息",
   "nav.noticeCount_other": "{count} 条未读消息",
-  "forbidden.title": "这个页面需要建设者或管理员权限",
-  "forbidden.text": "想用它，请联系你们的建设者或管理员。",
+  "forbidden.title": "你的账号打不开这个页面",
+  "forbidden.text": "它只给权限更高的人用（有的页面只给管理员）。需要的话，请联系你们的管理员。",
   "notFound.title": "没有这个页面",
 };

@@ -92,7 +92,7 @@ class StandingTests(StandingCase):
                 self.assertTrue(body['definitions'])
                 self.assertTrue(all(e['state'] == 'confirmed' and e['confirmed'] for e in body['definitions']))
                 said = json.dumps(body, ensure_ascii=False)
-                for word in ('含税金额', 'gross', 'who_can_confirm', 'Ann'):   # not its name, not who could confirm it (D9), not who put it forward
+                for word in ('含税金额', 'gross', 'who_can_confirm', 'Ann'):   # not its name, not who could confirm it (a viewer is not told names), not who put it forward
                     self.assertNotIn(word, said)
                 hidden = read(element_id=GROSS_ID, expect=404)
                 self.assertEqual(hidden, read(element_id='derived:order:nothing', expect=404))   # the same answer as for one that does not exist

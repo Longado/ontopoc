@@ -19,7 +19,7 @@ Open **Data > Datasets**, click **Upload**, choose `orders.csv` and `customers.c
 
 ## 2. Create the object type (Builder A)
 
-Open **Business objects > Object types > New object type**.
+Open **Definitions > Object types > New object type**.
 
 - Name: `Order`. Dataset: `orders`.
 - Properties: tick all columns. Set `order_id` as the **Key**, then click **Check key**: it reports all 150 rows checked, no duplicates, no blanks.
@@ -45,7 +45,7 @@ Click **Propose these meanings**. The service checks them against the data (ever
 
 ## 4. Confirm (Builder B)
 
-Sign in as Builder B in another browser. Open **Business objects > Review queue**: the `Order` object type and the `status_code` meanings are waiting, each marked as needing another builder. Open each, read the checks and what the data shows (the rows per value), and click **Confirm this object type** and **Confirm these meanings**. Builder A cannot confirm their own proposal; that is the point. The confirmation keeps the data version and who confirmed.
+Sign in as Builder B in another browser. Open **Definitions > Review queue**: the `Order` object type and the `status_code` meanings are waiting, each marked as needing another builder. Open each, read the checks and what the data shows (the rows per value), and click **Confirm this object type** and **Confirm these meanings**. Builder A cannot confirm their own proposal; that is the point. The confirmation keeps the data version and who confirmed.
 
 Do the same for `Customer` (key `customer_id`; `tier` can be a code column: A, B, C) if you want to ask about customers.
 

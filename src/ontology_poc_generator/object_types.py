@@ -127,7 +127,11 @@ def write_elements(conn, changes: list[tuple], reads: dict[str, list[str]], vers
 # --- the definition a person writes -------------------------------------------------------------------------------------------------------------
 
 def _key_failure(conn, result: dict) -> tuple[str, dict]:
-    """(what is wrong with this key, in words; the detail a page shows) for a failed key check: the repeated values, up to 20, and how many rows are empty."""
+    """(what is wrong with this key, in words; the detail a page shows) for a failed key check: the repeated values, up to 20, and how many rows are empty;
+    or that the version has no rows at all, so there was nothing to check."""
+    if not result['rows_checked']:
+        detail = {'key_check': {'status': result['status'], 'rows_checked': 0, 'violations': 0, 'null_key_rows': 0, 'repeated_values': 0, 'repeated': []}}
+        return no_rows_text(result['dataset']), detail
     repeated = [{'key': list(r[:-1]), 'rows': r[-1]} for r in conn.execute(f'{result["query"]} LIMIT 20')]
     count = conn.execute(f'SELECT COUNT(*) FROM ({result["query"]})').fetchone()[0]
     parts = []
@@ -139,6 +143,10 @@ def _key_failure(conn, result: dict) -> tuple[str, dict]:
     detail = {'key_check': {'status': result['status'], 'rows_checked': result['rows_checked'], 'violations': result['violations'],
                             'null_key_rows': result['null_key_rows'], 'repeated_values': count, 'repeated': repeated}}
     return tr(f'查了全部 {result["rows_checked"]} 行，{tr("；", "; ").join(parts)}', f'Checked all {result["rows_checked"]} rows: {"; ".join(parts)}'), detail
+
+
+def no_rows_text(dataset: str) -> str:
+    return tr(f'“{dataset}”这一版一行数据都没有，查了 0 行不算通过', f'"{dataset}" has no rows in this version, and a check over 0 rows does not count as passed')
 
 
 def check_key_choice(conn, dataset: dict, cols: dict, key) -> tuple[dict, list[str]]:
@@ -159,6 +167,8 @@ def check_key_choice(conn, dataset: dict, cols: dict, key) -> tuple[dict, list[s
     key_check = check_key(conn, dataset['id'], key)
     if key_check['status'] != 'passed':
         why, detail = _key_failure(conn, key_check)
+        if not key_check['rows_checked']:
+            raise TypeRefused(tr(f'主键没法检查：{why}。先上传有数据的一版', f'The key cannot be checked: {why}. Upload a version with rows first'), detail=detail)
         raise TypeRefused(tr(f'这个主键不行：{why}。请换一个主键，或先处理数据里的重复', f'This key does not work: {why}. Pick another key, or deal with the repeats in the data first'), detail=detail)
     return key_check, warnings
 
@@ -465,8 +475,11 @@ def propose_meanings(conn, payload: dict, who: str | None, user: dict | None = N
 
 
 def _refresh_view_reasons(conn, english_name: str, column: str) -> None:
-    from ontology_poc_generator.object_views import refresh_new_value_reasons   # object_views reads this module
+    """The views and derived properties that wait on a new value of this column get their question written again from the meanings as they are now."""
+    from ontology_poc_generator.object_views import refresh_new_value_reasons   # object_views and derived_properties read this module
+    from ontology_poc_generator.derived_properties import refresh_new_value_reasons as refresh_derived
     refresh_new_value_reasons(conn, english_name, column)
+    refresh_derived(conn, english_name, column)
 
 
 # --- checks: now, and again when the data moves ---------------------------------------------------------------------------------------------------
@@ -483,7 +496,9 @@ def _type_problems(conn, content: dict) -> tuple[list[str], int | None]:
     problems = [tr(f'“{p["column"]}”现在的内容是{TYPE_NAME[cols[p["column"]]["type"]]}，装不进{TYPE_NAME[p["type"]]}', f'"{p["column"]}" now holds {TYPE_NAME[cols[p["column"]]["type"]]} values, which do not fit {TYPE_NAME[p["type"]]}')
                 for p in content['properties'] if p['type'] not in FITS[cols[p['column']]['type']]]
     key_check = check_key(conn, dataset['id'], content['key'])
-    if key_check['status'] != 'passed':
+    if key_check['status'] != 'passed' and not key_check['rows_checked']:
+        problems.append(tr(f'主键“{" + ".join(content["key"])}”没法检查：{no_rows_text(dataset["name"])}', f'The key "{" + ".join(content["key"])}" cannot be checked: {no_rows_text(dataset["name"])}'))
+    elif key_check['status'] != 'passed':
         problems.append(tr(f'主键“{" + ".join(content["key"])}”现在不唯一或有空值：{_key_failure(conn, key_check)[0]}', f'The key "{" + ".join(content["key"])}" is no longer unique or has empty values: {_key_failure(conn, key_check)[0]}'))
     return problems, key_check['id']
 
@@ -512,6 +527,12 @@ def _new_value_question(conn, view: dict, moved: list[str]) -> str | None:
             said.append(tr(f'它用的{_label(conn, meanings["element_id"])}需要再看（原因见那一组含义）。“{f["column"]}”出现了新值 {tr("、", ", ").join(f"{v}（{n} 行）" for v, n in new.items())}：新值 {values} 算不算进来？', f'It uses {_label(conn, meanings["element_id"])}, which needs review (see the reason on that set of meanings). "{f["column"]}" has new values {", ".join(f"{v} ({n} rows)" for v, n in new.items())}: should the new values {values} be counted? ') +
                         tr(f'按现在的写法（{in_out_text(conn, content)}），{"它们" if len(new) > 1 else "它"}{default}。请先给新值写含义，再决定', f'As it is written now ({in_out_text(conn, content)}), {default}. Write meanings for the new values first, then decide'))
     return tr('；', '; ').join(said) or None
+
+
+def _derived_question(conn, row: dict) -> str | None:
+    """The question a derived property asks, like a view, when a code its conditions read has a new value (derived_properties.new_value_reason)."""
+    from ontology_poc_generator.derived_properties import new_value_reason   # derived_properties reads this module
+    return new_value_reason(conn, row)
 
 
 def _enum_problems(conn, row: dict) -> list[str]:
@@ -615,7 +636,7 @@ def _flag(conn, element_id: str, reason: str, caused_by: str | None, moved: list
     if row is None or row['state'] != 'confirmed':
         return
     start = len(moved)
-    reason = (_new_value_question(conn, row, moved) if element_id.startswith(VIEW_PREFIX) else None) or reason
+    reason = (_new_value_question(conn, row, moved) if element_id.startswith(VIEW_PREFIX) else _derived_question(conn, row) if element_id.startswith(DERIVED_PREFIX) else None) or reason
     conn.execute("UPDATE element_state SET state = 'needs_look', reason = ?, cause = ?, via = ?, version = version + 1 WHERE element_id = ?", (reason, cause, via, element_id))
     log_line(conn, 'system', element_id, 'needs_look',
              before={'state': 'confirmed', 'confirmed_by': row['confirmed_by'], 'confirmed_at': row['confirmed_at']},

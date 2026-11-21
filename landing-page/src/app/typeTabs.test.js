@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { meaningsSummary, tabCounts, typeSub, usesSummary } from "./typeModel.js";
+import { meaningsSummary, offerFirstAction, tabCounts, typeSub, typeTabs, usesSummary } from "./typeModel.js";
 import { setLocale } from "./i18n/index.js";
 
 setLocale("zh");   // these tests pin the Chinese wording; the English is in modelingEnglish.test.js
@@ -12,6 +12,22 @@ test("each tab of a type carries the number of what is in it (W3)", () => {
   const type = { properties: [1, 2, 3, 4, 5, 6, 7], rows: 160 };
   assert.deepEqual(tabCounts(type, USES), { props: 7, derived: 0, views: 1, actions: 3, objects: 160 });
   assert.deepEqual(tabCounts(type, null), { props: 7, objects: 160 });   // uses not loaded yet: only what the type itself knows
+});
+
+test("a type's tabs: properties, views, derived, objects, log; 行为 only to a builder and only when the type has actions (its address still opens it)", () => {
+  assert.deepEqual(typeTabs({ actions: 0 }, "props", true), ["props", "views", "derived", "objects", "log"]);
+  assert.deepEqual(typeTabs({}, "props", true), ["props", "views", "derived", "objects", "log"]);   // not known yet: not shown
+  assert.deepEqual(typeTabs({ actions: 3 }, "props", true), ["props", "views", "derived", "objects", "log", "actions"]);
+  assert.deepEqual(typeTabs({ actions: 3 }, "props", false), ["props", "views", "derived", "objects", "log"]);
+  assert.deepEqual(typeTabs({ actions: 0 }, "actions", true), ["props", "views", "derived", "objects", "log", "actions"]);   // opened by its address
+});
+
+test("a builder looking at a type with no actions is offered a visible way to make the first one; a viewer, or a type that has actions, is not", () => {
+  assert.equal(offerFirstAction({ actions: 0 }, "props", true), true);
+  assert.equal(offerFirstAction({ actions: 3 }, "props", true), false);   // the 行为 tab is there
+  assert.equal(offerFirstAction({ actions: 0 }, "actions", true), false);   // already on it
+  assert.equal(offerFirstAction({}, "props", true), false);   // not known yet
+  assert.equal(offerFirstAction({ actions: 0 }, "props", false), false);
 });
 
 test("what uses a type is one line that expands: the counts, nothing for kinds nobody uses", () => {

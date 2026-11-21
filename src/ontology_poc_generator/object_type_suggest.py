@@ -86,7 +86,8 @@ def suggest_types(conn, gateway, names, purpose, who: str | None, now: str, user
 
 
 def _keep(conn, suggested, asked: set[str], user: dict | None) -> dict:
-    """One suggestion through the checks a person's definition goes through, then kept as a proposed element: no proposer, the task's model as the writer."""
+    """One suggestion through the checks a person's definition goes through, then kept as a proposed element: no proposer by name (a model draft), the task's
+    model as the writer, and the account of the person who asked as proposed_by_user_id, which the two-person rule reads."""
     if not isinstance(suggested, dict):
         raise TypeRefused(tr('不是一个对象类型的写法', 'This is not a valid object type'))
     if suggested.get('dataset') not in asked:
@@ -102,8 +103,10 @@ def _keep(conn, suggested, asked: set[str], user: dict | None) -> dict:
     content = {**content, 'basis': basis.strip()[:200], 'properties': [{**p, 'needed_for': why[p['column']].strip()[:100]} if p['column'] in why else p for p in content['properties']]}
     dataset = current_dataset(conn, content['dataset'])
     anchors = {'dataset': dataset['name'], 'version': dataset['version'], 'key_rows': key_check['rows_checked']}
+    asker = user.get('id') if user else None   # the person who asked counts as its proposer for the two-person rule: they do not confirm the model's draft alone
     write_elements(conn, [(type_id(content['english_name']), 'proposed', f'check_result:{key_check["id"]},dataset:{dataset["name"]}@v{dataset["version"]}', MODEL_NAME,
-                   content, anchors, None)], {type_id(content['english_name']): [f'dataset:{dataset["name"]}']})
+                   content, anchors, None)], {type_id(content['english_name']): [f'dataset:{dataset["name"]}']},
+                   after=(lambda c: c.execute('UPDATE element_state SET proposed_by_user_id = ? WHERE element_id = ?', (asker, type_id(content['english_name'])))) if asker is not None else None)
     used = {p['column'] for p in content['properties']}
     columns = dataset_columns(conn, dataset['id'])
     left_out = [c for c in columns if c not in used]   # the columns of the dataset this type does not use

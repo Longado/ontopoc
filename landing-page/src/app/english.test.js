@@ -24,15 +24,15 @@ test("roles are Admin / Builder / Viewer", () => {
 });
 
 test("the sidebar speaks English, and the labels follow a language switch", () => {
-  const admin = navFor({ role: "admin" });
-  assert.deepEqual(admin.map((g) => g.label ?? "(main)"), ["(main)", "Data", "Business objects", "Apps", "Settings"]);
+  const admin = navFor({ role: "admin" }, { notices: true });
+  assert.deepEqual(admin.map((g) => g.label ?? "(main)"), ["(main)", "Definitions", "Data", "Agents", "Settings"]);
   assert.deepEqual(admin.flatMap((g) => g.items.map((i) => i.label)), [
-    "Home", "Assistant", "Boards", "Notifications", "Datasets", "Sources", "Pipelines", "Schedules", "Lineage", "Tasks", "Review queue", "Object types", "Relations", "AI tool access", "Workspace", "Users", "Permissions",
+    "Home", "Assistant", "Boards", "Notifications", "Review queue", "Object types", "Relations", "Lineage", "Datasets", "Sources", "Pipelines", "Schedules", "AI tool access", "Workspace", "Users", "Permissions",
   ]);
   assert.equal(TAB_LABEL.fields, "Fields");
-  assert.match(NAV[1].hint, /^Datasets are tables/);
+  assert.match(NAV[1].hint, /confirmed it on the current data/);
   setLocale("zh");
-  assert.equal(NAV[1].items[0].label, "数据集");
+  assert.equal(NAV[2].items[0].label, "数据集");
   assert.equal(TAB_LABEL.fields, "字段");
   setLocale("en");
   assert.equal(getLocale(), "en");

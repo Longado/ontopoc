@@ -21,7 +21,8 @@ from ontology_poc_generator.derived_properties import derived_visible, describe 
 from ontology_poc_generator.named_views import name_views
 from ontology_poc_generator.object_relations import CARDINALITY, _relation_visible, cardinality_false, check_relation, relation_id
 from ontology_poc_generator.object_types import (
-    CAUSE_WORDS, DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, _confirmers, _content, _visible, dataset_columns, element_row, enum_id, reason_for, stale_word, type_id)
+    CAUSE_WORDS, DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, _confirmers, _content, _visible, _waiting_line, dataset_columns, element_row, enum_id, reason_for,
+    stale_word, type_id, waiting_for_viewer)
 from ontology_poc_generator.ontopoc_query import QueryError, canonical as canonical_query, compile_query, is_graph, parse as parse_query, to_text
 from ontology_poc_generator.object_views import describe, kept_positions, view_visible
 from ontology_poc_generator.agent_harness import ask_model
@@ -36,6 +37,7 @@ from ontology_poc_generator.lang import english, tr
 
 MAX_QUESTION = 300
 HISTORY_LIMIT = 100
+VIEWERS_TOLD_WHAT_WAITS = False   # whether a viewer's refusal names the definition that waits and whom it waits for (off: a viewer is told only that the answer waits; builders and admins get the name and who can confirm)
 ROW_KEYS = {'examples', 'without_value_examples', 'unreadable_examples', 'keys', 'samples'}   # the objects behind a count: a viewer reads the counts and not these
 def _state_words(state):
     return {'proposed': tr('模型提出了，还没有人确认', 'Proposed by the model, not confirmed yet'), 'checked': tr('已经提出，还没有另一位确认', 'Proposed, waiting for a second person to confirm'),
@@ -225,6 +227,24 @@ def _blockers(conn, user: dict | None, question: str) -> list[dict]:
             hit = all(r and (_named(question, _content(r)['name']) or _named(question, _content(r)['english_name'])) for r in ends)
         if hit:
             out.append({**line, 'because': _causes(conn, row, user)})
+    if user is not None and user['role'] == 'viewer':
+        out += _waiting_blockers(conn, user, question)
+    return out
+
+
+def _waiting_blockers(conn, user: dict, question: str) -> list[dict]:
+    """For a viewer: the types they may see that were confirmed and now wait for a second look (object_types.waiting_for_viewer), when the question names one.
+    The refusal tells a viewer only that the answer waits (VIEWERS_TOLD_WHAT_WAITS off); turned on, it says what the type list already tells them (its name and who
+    it waits for). Never a reason, a cause, a count or anything of the data."""
+    out = []
+    for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objtype:%' ORDER BY element_id").fetchall():
+        row = element_row(conn, element_id)
+        if not waiting_for_viewer(conn, row, user):
+            continue
+        content = _content(row)
+        if _named(question, content['name']) or _named(question, content['english_name']):
+            waiting = _waiting_line(conn, row, user)
+            out.append({'id': element_id, 'kind': 'type', 'name': waiting['name'], 'state': waiting['state'], 'waiting': True, 'who_can_confirm': waiting['waiting_for'], 'because': []})
     return out
 
 
@@ -236,8 +256,16 @@ def _refused_unsettled(blockers: list[dict]) -> dict:
             if d['id'] in names:
                 continue
             names.append(d['id'])
-            why = d['reason'] or (f'{d["stale_word"] or tr("要再看一遍", "Needs another look")}{tr("：", ": ")}{d["reason_hidden"]}' if d['reason_hidden'] else _state_words(d['state']))
-            who = tr(f'；可以确认的人：{"、".join(d["who_can_confirm"])}', f'; who can confirm: {", ".join(d["who_can_confirm"])}') if d['who_can_confirm'] else ''
+            if d.get('waiting') and not VIEWERS_TOLD_WHAT_WAITS:   # a viewer's line: only that the answer waits for a confirmation
+                text = tr('用到的一个定义在等再确认', 'A definition it uses is waiting to be confirmed again')   # it follows "…is not confirmed. ": a sentence of its own
+                if all(l['text'] != text for l in lines):
+                    lines.append({'kind': d['kind'], 'state': d['state'], 'waiting': True, 'text': text})
+                continue
+            if d.get('waiting'):   # a viewer's line: where it stands and who it waits for, nothing more
+                why, who = (tr(f'在等 {"、".join(d["who_can_confirm"])} 再确认', f'waiting for {", ".join(d["who_can_confirm"])} to confirm it again') if d['who_can_confirm'] else _state_words(d['state'])), ''
+            else:
+                why = d['reason'] or (f'{d["stale_word"] or tr("要再看一遍", "Needs another look")}{tr("：", ": ")}{d["reason_hidden"]}' if d['reason_hidden'] else _state_words(d['state']))
+                who = tr(f'；可以确认的人：{"、".join(d["who_can_confirm"])}', f'; who can confirm: {", ".join(d["who_can_confirm"])}') if d['who_can_confirm'] else ''
             lines.append({**d, 'text': tr(f'{_kind_word(d["kind"])}「{d["name"]}」：{why}{who}', f'{_kind_word(d["kind"])} "{d["name"]}": {why}{who}')})
     return {'status': 'refused', 'reason': tr('没有回答：问题用到的定义不是已确认的状态。', 'Not answered: a definition the question uses is not confirmed. ') + tr('；', '; ').join(l['text'] for l in lines),
             'refusal': {'kind': 'unsettled', 'definitions': lines}}
@@ -294,7 +322,9 @@ def _inputs(conn, sc: dict) -> dict:
         source = alias[owner['dataset']['name']]
         rows = {**rows, source: [(i, {**r, content['name']: text_of(result['values'].get(i), result['output_type'])}) for i, r in rows[source]]}
         extra[content['type']] = [*extra.get(content['type'], []), {'source': source, 'path': content['name']}]
-        derived_attrs[f'{source}.{content["name"]}'] = {'element': element_id, 'type': result['output_type'], 'says': describe_derived(conn, content)}
+        derived_attrs[f'{source}.{content["name"]}'] = {'element': element_id, 'type': result['output_type'], 'says': describe_derived(conn, content), 'name': content['name'],
+                                                        'source': alias[sc['types'][content['types'][-1]]['dataset']['name']], 'conditions': content['conditions']}   # the table its rows are counted from, and by which conditions (answer_checks)
+        derived_attrs[f'{source}.{content["name"]}'].update(exact=_each_row_once(conn, sc, content), waiting=_waiting_views(conn, sc, content), fn=content['fn'])   # whether it can stand for a view's rows (answer_checks)
     object_types = [{'key': k, 'label': t['content']['name'], 'populated_from': [{'source': alias[t['dataset']['name']], 'identity': {c: c for c in t['content']['key']}}],
                      'attributes': [*({'source': alias[t['dataset']['name']], 'path': p['column']} for p in t['content']['properties']), *extra.get(k, [])]} for k, t in sc['types'].items()]
     relations, unusable = [], []
@@ -311,6 +341,46 @@ def _inputs(conn, sc: dict) -> dict:
     meanings = {f'{alias[sc["types"][k]["dataset"]["name"]]}.{column}': {'labels': m['labels']} for k, cols in sc['meanings'].items() for column, m in cols.items()}
     return {'ontology': {'object_types': object_types, 'relations': relations, 'ignored_fields': [], 'open_questions': []}, 'alias': alias, 'unusable': unusable, 'derived': derived_attrs,
             'bundle': {'decision': '', 'sources': sources, 'meanings': meanings}, 'views': _engine_views(conn, sc, alias, sources)}
+
+
+def _each_row_once(conn, sc: dict, content: dict) -> bool:
+    """Whether every row of the type a derived statistic counts reaches exactly one object of its own type, by the relations' checks now (over the rows this
+    person may read): each hop goes from the one side to the many side, every row of the many side is matched (no empty or missing key) and the one side's key
+    does not repeat. Only then do its values, added up over the objects, add up to the rows themselves; a row whose key names nothing would be dropped, a key
+    that repeats would count a row twice, and a hop toward the one side (or a many-to-many one) repeats what it reaches."""
+    if content['kind'] != 'statistic':
+        return False
+    here = content['type']
+    for key in content['path']:
+        relation = sc['relations'].get(key)
+        if relation is None:
+            return False
+        c = relation['content']
+        many = {'many_to_one': 'from', 'one_to_many': 'to'}.get(c['cardinality'])
+        if many is None or c['from'] == c['to'] or c[many] == here:
+            return False
+        result = check_relation(conn, c, record=False, user=sc['user'], examples=False)
+        n = result.get('numbers')
+        if result['problems'] or not n or n['matched'] != n['rows'] or n['fan_keys'] or n['extra_rows']:
+            return False
+        here = c[many]
+    return True
+
+
+def _waiting_views(conn, sc: dict, content: dict) -> list[str]:
+    """The views this person may see on the type a derived statistic counts that were confirmed with exactly its conditions and now wait for another look or for
+    confirming (changed since): while one of them is being redefined, the property's older conditions do not stand for it."""
+    if content['kind'] != 'statistic':
+        return []
+    mine = {(c['column'], c['op'], c['label']) for c in content['conditions']}
+    out = []
+    for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objview:%' AND state != 'confirmed' ORDER BY element_id").fetchall():
+        row = element_row(conn, element_id)
+        last = conn.execute('SELECT content_json FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1', (element_id,)).fetchone()
+        was = json.loads(last[0]) if last else None
+        if was and was['type'] == content['types'][-1] and not was.get('latest') and {(f['column'], f['op'], f['label']) for f in was['filters']} == mine and view_visible(conn, row, sc['user']):
+            out.append(was['name'])
+    return out
 
 
 def _readable_rows(conn, sc: dict, name: str, dataset: dict) -> list[tuple[int, dict]]:
@@ -342,7 +412,7 @@ def _engine_views(conn, sc: dict, alias: dict, sources: dict) -> list[dict]:
         out.append({'name': name, 'sql_name': None, 'kind': 'filter' if not content['latest'] else 'latest' if not content['filters'] else 'combined', 'source': source, 'state': 'confirmed',
                     'why': None, 'from': describe(content, t['content']['name']), 'confirmed_by': who, 'confirmed_at': at,
                     'definition': {'kind': 'filter', **content['filters'][0]} if single else {'kind': 'combined'}, 'rows': len(positions), 'positions': positions,
-                    'element': v['row']['element_id']})
+                    'element': v['row']['element_id'], 'filters': content['filters'], 'latest': content['latest']})
     return out
 
 
@@ -468,7 +538,7 @@ def _engine(sc: dict, parts: dict, relations: list[dict]):
     held = column_values(bundle, bundle['meanings'], ontology, graph)   # what a filter that leaves codes out lets through
 
     def answer(query, asked, used=None, check=True, told=None):
-        checked = definition_check(asked, query, ontology, parts['views'], bundle['meanings'], used, told, values=held)
+        checked = definition_check(asked, query, ontology, parts['views'], bundle['meanings'], used, told, values=held, derived=parts['derived'])
         if checked['unmet']:
             return {**refusal(checked['unmet']), 'understood': checked['understood']}
         reading, reading_graph = bundle, graph
@@ -502,7 +572,9 @@ def _finish(conn, user: dict | None, sc: dict, parts: dict, item: dict, applied:
     limited = [{'type': t['id'], 'name': t['name'], 'rule': describe_limit(sc['types'][t['id']]['limit'])} for t in types if sc['types'][t['id']]['limit'] is not None]
     if limited and item['status'] in ('answered', 'no_data'):   # the rows were limited before anything was counted: the answer says so
         result['limited_by_rule'] = limited
-    return {**result, 'steps': _steps({**item, **result}, types, [d['name'] for d in lines if d['kind'] == 'relation']), 'definitions': lines, 'types': types, 'datasets': datasets}
+    held = {t['dataset']['name']: t['dataset'] for t in sc['types'].values()}
+    as_of = [{'dataset': n, 'version': v, 'imported_at': held[n]['imported_at'] if n in held else None} for n, v in sorted(datasets.items())]   # the data the answer read: which version, and when it came
+    return {**result, 'steps': _steps({**item, **result}, types, [d['name'] for d in lines if d['kind'] == 'relation']), 'definitions': lines, 'types': types, 'datasets': datasets, 'data_as_of': as_of}
 
 
 def _answered(conn, gateway, user: dict | None, question: str, sc: dict) -> dict:
@@ -820,7 +892,7 @@ def _named_ids(result: dict, sc: dict) -> list[str]:
     ids = [type_id(t['id']) for t in result.get('types', [])] + [d['id'] for d in result.get('definitions', [])]
     refusal = result.get('refusal') or {}
     if refusal.get('kind') == 'unsettled':
-        ids += [d['id'] for d in refusal['definitions']]
+        ids += [d['id'] for d in refusal['definitions'] if 'id' in d]   # a viewer's line that says only that something waits names nothing
     elif refusal.get('kind') in ('not_in_scope', 'definition_unmet'):   # these say what is in scope (and for a builder what is left out)
         ids += [type_id(k) for k in sc['types']] + [v['row']['element_id'] for v in sc['views'].values()] + [d['id'] for d in refusal.get('left_out', [])]
     return list(dict.fromkeys(ids))
@@ -932,7 +1004,8 @@ def tally(conn, user: dict | None, now: str | None = None) -> dict:
         held.append({'id': element_id, 'kind': kind, 'name': name, 'questions': questions[element_id]})
         if len(held) == HELD_BACK_LIMIT:
             break
-    return {**periods, 'days': TALLY_DAYS, 'held_back': held}
+    from ontology_poc_generator.checked_numbers import answers_tally
+    return {**periods, 'days': TALLY_DAYS, 'held_back': held, 'checked': answers_tally(conn)}   # how many saved answers still match the number the team checked them against
 
 
 def _may_see(conn, user: dict | None, element_id: str) -> bool:
@@ -963,6 +1036,19 @@ def reopen(conn, user: dict | None, question_id: int) -> dict:
     record = json.loads(stored)
     named = list(dict.fromkeys([*record.pop('named', []), *(type_id(t['id']) for t in record['types'])]))
     lost = [element_id for element_id in named if not _may_see(conn, user, element_id)]
+    waiting = [_waiting_line(conn, row, user) for row in (element_row(conn, e) for e in lost) if waiting_for_viewer(conn, row, user)]
+    if lost and len(waiting) == len(lost):   # each waits for a second look: said as a fresh question would say it, the name and who it waits for, nothing of why
+        refusal = record.get('refusal') or {}
+        if refusal.get('kind') == 'unsettled' and all(d.get('waiting') for d in refusal.get('definitions', [])):
+            lost = []   # a viewer's own refusal that said only that: shown as it was kept
+        else:
+            if not VIEWERS_TOLD_WHAT_WAITS:
+                return {'id': i, 'question': question, 'asked_at': at, 'status': record['status'], 'withheld': {'types': [], 'waiting': []},
+                        'reason': tr(f'这条{"拒答" if refusal else "回答"}用到的一个定义在等再确认，现在不能用。确认之后再问一次。', f'A definition this {"refusal" if refusal else "answer"} uses is waiting to be confirmed again and cannot be used now. Ask again once it is confirmed.')}
+            said = tr('；', '; ').join(tr(f'「{w["name"]}」在等 {"、".join(w["waiting_for"])} 再确认', f'"{w["name"]}" is waiting for {", ".join(w["waiting_for"])} to confirm it again') if w['waiting_for']
+                                      else tr(f'「{w["name"]}」需要再看', f'"{w["name"]}" needs another look') for w in waiting)
+            return {'id': i, 'question': question, 'asked_at': at, 'status': record['status'], 'withheld': {'types': [], 'waiting': [{'name': w['name'], 'waiting_for': w['waiting_for']} for w in waiting]},
+                    'reason': tr(f'这条{"拒答" if refusal else "回答"}说到的定义现在不能用：{said}。确认之后再问一次。', f'A definition this {"refusal" if refusal else "answer"} names cannot be used now: {said}. Ask again once it is confirmed.')}
     if lost:   # an answer names the types it read (the asker saw them then); a refusal names nothing, since what it says about a definition is for those who may see it
         types = [] if 'refusal' in record else [t['name'] for t in record['types'] if type_id(t['id']) in lost]
         return {'id': i, 'question': question, 'asked_at': at, 'status': record['status'], 'withheld': {'types': types},

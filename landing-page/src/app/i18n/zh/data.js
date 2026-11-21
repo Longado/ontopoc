@@ -36,6 +36,7 @@ export default {
   "key.unique": "唯一，没有空值",
   "key.failed": "主键检查没通过：{parts}",
   "key.noResult": "没有结果",
+  "key.noRows": "没有一行数据，查了 0 行不算通过",
   "key.sample_one": "{value}，{count} 行",
   "key.sample_other": "{value}，{count} 行",
   "key.repeated_one": "重复 {count} 个值（{shown}{more}）",
@@ -224,4 +225,6 @@ export default {
   "tasks.state": "状态",
   "tasks.by": "操作人",
   "tasks.note": "说明",
+  // an upload that moves board numbers without sending a definition back
+  "upl.askFootBoards": "继续就会写成新版本，上面看板上的数随之改变",
 };

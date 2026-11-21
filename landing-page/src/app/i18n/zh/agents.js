@@ -1,7 +1,7 @@
 // AI 工具接入：外部智能体能调用的工具、怎么连、令牌、技能包（AgentsPage、agentModel）。
 export default {
   "title": "AI 工具接入",
-  "sub": "让外部智能体用有范围的令牌，以某个具体的人的身份使用 OntoPoc。",
+  "sub": "外部智能体用令牌、以某位同事的身份接进来：只按已确认的定义回答；没确认的，就拒答；令牌主人是建设者或管理员时，还会说出在等哪个定义、谁能确认。",
   "loading": "加载中",
   "tools.title": "能调用什么",
   "tools.tool": "工具",
@@ -42,8 +42,9 @@ export default {
   "tokens.revokeTitle": "撤销这个令牌",
   "tokens.revokeConfirm": "确认撤销",
   "tokens.revokeText": "“{label}”（{name} 的令牌）马上失效，用它的智能体会被拒绝。撤销后不能恢复，要用就得重新创建一个。",
-  "skill.title": "技能包",
+  "skill.title": "技能包（快照）",
   "skill.sentence": "{text}。",
+  "skill.snapshot": "技能包是下载那一刻的快照：之后数据变了、定义退回“需再看”，它都不知道，也不会因此拒答。要让智能体跟着当前数据拒答，用上面的 MCP 连接。",
   "skill.download": "下载技能包（zip）",
   "standing.text": "技能包是导出那天的快照。每条定义现在是不是已确认、谁确认的、在哪个数据版本上，实时读 GET /api/workspace/agent/standing（MCP 工具 definition_standing）；已确认的定义也可以下载成表格。",
   "standing.download": "下载已确认的定义（CSV）",

@@ -1,5 +1,7 @@
 import React, { useState } from "react";
-import { confirmGroup, getQueueGroup } from "./api.js";
+import { confirmGroup, getQueueGroup, previewImpact } from "./api.js";
+import { ImpactList, ReceiptPanel } from "./ImpactList.jsx";
+import { receiptElements } from "./impactModel.js";
 import { KIND, groupTitle, markKey, missing, requestItems, resultLines, withMark } from "./batchModel.js";
 import { timeText } from "./format.js";
 import { t } from "./i18n/index.js";
@@ -65,8 +67,10 @@ function Item({ item, marks, onMark, picked, onPick }) {
 }
 
 function Done({ result }) {
+  const [receipt, setReceipt] = useState(true);
   return (
     <div className="cards">
+      {receipt && result.confirmed.length > 0 && <ReceiptPanel elements={receiptElements(result)} onClose={() => setReceipt(false)} />}
       <section className="card">
         <ul className="checks">
           {resultLines(result).map((line, i) => <li key={i}>{line}</li>)}
@@ -88,6 +92,8 @@ export function ConfirmGroupPage({ route }) {
   const [result, setResult] = useState(null);
   const group = state.data;
   const lacking = group ? missing(group, marks, picked) : "";
+  const asked = group && !lacking && !result ? { dataset, version, items: requestItems(group, picked) } : null;   // once all is seen: what confirming would do to the boards
+  const [impact] = useLoad(() => (asked ? previewImpact(asked) : Promise.resolve(null)), [asked]);
   const confirm = async () => {
     setBusy(true);
     setError("");
@@ -116,6 +122,13 @@ export function ConfirmGroupPage({ route }) {
                 picked={picked[item.element] ?? {}} onPick={(element, key, choice) => setPicked({ ...picked, [element]: { ...(picked[element] ?? {}), [key]: choice } })} />
             ))}
           </div>
+          {asked && (
+            <section className="card q-impact">
+              {impact.status === "loading" && <p className="muted small">{t("review.impact.loading")}</p>}
+              {impact.status === "error" && <p className="warn small">{t("review.impact.failed", { error: impact.error })}</p>}
+              {impact.status === "ready" && impact.data && <ImpactList impact={impact.data} />}
+            </section>
+          )}
           <div className="batch-bar" role="region" aria-label={t("review.group.aria")}>
             <button className="secondary" onClick={() => setMarks(group.items.filter((i) => i.ready).reduce((m, i) => withMark(m, i, true), marks))}>{t("review.group.markAll")}</button>
             <span className="batch-spacer" />
