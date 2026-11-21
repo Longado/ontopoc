@@ -37,7 +37,7 @@ from ontology_poc_generator.lang import english, tr
 
 MAX_QUESTION = 300
 HISTORY_LIMIT = 100
-VIEWERS_TOLD_WHAT_WAITS = False   # whether a viewer's refusal names the definition that waits and whom it waits for (owner decision D9; off until decided)
+VIEWERS_TOLD_WHAT_WAITS = False   # whether a viewer's refusal names the definition that waits and whom it waits for (off: a viewer is told only that the answer waits; builders and admins get the name and who can confirm)
 ROW_KEYS = {'examples', 'without_value_examples', 'unreadable_examples', 'keys', 'samples'}   # the objects behind a count: a viewer reads the counts and not these
 def _state_words(state):
     return {'proposed': tr('模型提出了，还没有人确认', 'Proposed by the model, not confirmed yet'), 'checked': tr('已经提出，还没有另一位确认', 'Proposed, waiting for a second person to confirm'),

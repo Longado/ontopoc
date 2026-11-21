@@ -1,7 +1,7 @@
 // AI tool access: the tools an outside agent may call, how to connect, tokens, the skill pack (AgentsPage, agentModel).
 export default {
   "title": "AI tool access",
-  "sub": "Outside AI agents connect with a token, as a named person. They answer only from confirmed definitions; for anything unconfirmed they refuse and say who can confirm it.",
+  "sub": "Outside AI agents connect with a token, as a named person. They answer only from confirmed definitions; for anything unconfirmed they refuse; when the token belongs to a builder or admin, the refusal also says which definition waits and who can confirm it.",
   "loading": "Loading…",
   "tools.title": "What they can call",
   "tools.tool": "Tool",
