@@ -25,10 +25,13 @@ const query = {
 const columns = [{ column: "id", name: "ID", key: true }, { column: "name", name: "Name" }, { column: "source", name: "Source" }];
 const row = ["case-10", "Observed case", "https://example.com/report.pdf#page=2\nhttps://example.com/video?t=60"];
 
-function links(total, rows) {
+function renderPreview(total, rows) {
   const result = { query, chart: { kind: "rows" }, columns, enums: {}, total, rows, numbers: rows.map((_, n) => n + 1), standing: { confirmed: true } };
-  const html = renderToStaticMarkup(React.createElement(ChartResult, { result, withStanding: false }));
-  return [...html.matchAll(/<a\b[^>]* href="([^"]+)"/g)].map(([, href]) => href.replaceAll("&amp;", "&"));
+  return renderToStaticMarkup(React.createElement(ChartResult, { result, withStanding: false }));
+}
+
+function links(total, rows) {
+  return [...renderPreview(total, rows).matchAll(/<a\b[^>]* href="([^"]+)"/g)].map(([, href]) => href.replaceAll("&amp;", "&"));
 }
 
 test("a truncated board table links to the full query including the selected rows, while each citation keeps its own link", () => {
@@ -47,4 +50,10 @@ test("a complete or empty preview has no extra collection link", () => {
     const routes = links(total, rows).map(parseRoute);
     assert.equal(routes.some((route) => route.page === "type" && route.tab === "objects"), false);
   }
+});
+
+test("the link to the complete result stays outside the scrollable table", () => {
+  const html = renderPreview(13, Array(10).fill(row));
+  const scrollArea = html.match(/<div class="table-wrap">[\s\S]*?<\/div>/)[0];
+  assert.doesNotMatch(scrollArea, /class="[^"]*table-note/, "navigation should remain visible when the table scrolls");
 });
