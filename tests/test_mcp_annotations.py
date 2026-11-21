@@ -13,6 +13,9 @@ READ_ONLY = {'describe_definitions', 'ontopoc_query', 'list_unconfirmed', 'read_
              'health', 'list_runs', 'preview_upload', 'run_overview', 'list_objects', 'object_fields', 'object_rows', 'list_relations', 'suggest_relations',
              'find_instances', 'instance_neighbourhood', 'list_rules', 'data_layout', 'data_check', 'list_questions', 'get_card', 'list_proposed_views'}
 
+# the tools whose call has the service send the person's data to a language model, outside this machine (with the service's own model key)
+MODEL_TOOLS = {'ask', 'build_ontology', 'ask_question', 'draft_form', 'find_name_variants'}
+
 
 def listed(only=None):
     return {t['name']: t for t in handle({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'}, None, only=only)['result']['tools']}
@@ -53,6 +56,12 @@ class AnnotationTests(unittest.TestCase):
         for name in ('build_ontology', 'ask_question', 'drop_filter', 'confirm_proposed_view'):
             a = tools[name]['annotations']
             self.assertEqual((a['readOnlyHint'], a['destructiveHint']), (False, False), name)
+
+    def test_the_tools_that_send_data_to_the_model_say_they_reach_an_open_world(self):
+        tools = listed()
+        self.assertEqual({name for name, t in tools.items() if t['annotations']['openWorldHint']}, MODEL_TOOLS)
+        for name in MODEL_TOOLS:   # what the tool description says too
+            self.assertTrue(any(word in tools[name]['description'] for word in ('调用模型', '调模型', '模型调用')), name)
 
     def test_the_read_toolset_lists_annotations_too(self):
         for t in listed(READ_TOOLS).values():
