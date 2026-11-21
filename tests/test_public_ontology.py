@@ -169,7 +169,7 @@ class SharedCoreStandsAloneTests(unittest.TestCase):
                          'fd5e92badbe24726f55b88132dd5fa1ceec0efd960b3bcd44f527b4bcc84af34')
         tree = ast.parse(Path(core.__file__).read_text(encoding='utf-8'))
         imported = {node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)}
-        self.assertNotIn('ontology_poc_generator.nhtsa_sources', imported)
+        self.assertEqual([name for name in imported if 'nhtsa' in (name or '')], [])
 
 
 if __name__ == '__main__':
