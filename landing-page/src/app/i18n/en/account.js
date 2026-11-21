@@ -16,7 +16,7 @@ export default {
   "password.done": "Password changed. You've been signed out everywhere else.",
   "password.submit": "Change password",
   "tokens.heading": "Tokens",
-  "tokens.intro": "For scripts and MCP: a token has the same permissions as your role, and what it does is recorded under your name. It is shown only once, when you create it.",
+  "tokens.intro": "For scripts and MCP: a token works within your role, and what it does is recorded under your name. In the team app it cannot confirm, approve or record a checked number: you do those yourself, signed in on this page. It is shown only once, when you create it.",
   "tokens.label": "What it's for, for example MCP",
   "tokens.labelAria": "Token purpose",
   "tokens.create": "Create token",

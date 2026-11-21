@@ -70,7 +70,7 @@ class CommandTests(unittest.TestCase):
     def test_the_ontopoc_command_and_the_old_ones_resolve_to_callables(self):
         scripts = pyproject()['project']['scripts']
         self.assertEqual(scripts['ontopoc'], 'ontology_poc_generator.cli:main')
-        for name in ('ontopoc', 'ontopoc-mcp', 'ontopoc-recall'):
+        for name in ('ontopoc', 'ontopoc-mcp'):
             self.assertTrue(callable(entry(scripts[name])), name)
 
     def test_version_prints_the_package_version(self):

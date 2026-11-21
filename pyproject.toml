@@ -35,7 +35,6 @@ Changelog = "https://github.com/Longado/ontopoc/releases"
 
 [project.scripts]
 ontopoc = "ontology_poc_generator.cli:main"   # the MCP server: what `uvx ontopoc` and the MCP Registry entry run
-ontopoc-recall = "ontology_poc_generator.recall_cli:main"
 ontopoc-mcp = "ontology_poc_generator.mcp_server:main"
 
 [tool.setuptools.packages.find]

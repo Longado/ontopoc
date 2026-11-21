@@ -85,6 +85,7 @@ export default {
   "chart.noMissing": "None missing.",
   "chart.rows": "Rows",
   "chart.rowsShown": "{total} rows in all; showing the first {shown}",
+  "chart.openAllRows": "View all matching objects",
   "chart.yourRows": "rows you can see",
   "chart.noRows": "No rows to draw",
   "chart.noNumbers": "No numbers to draw",

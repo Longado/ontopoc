@@ -14,7 +14,7 @@ import json
 import re
 from pathlib import PurePath
 
-from ontology_poc_generator.actor import actor_id_for
+from ontology_poc_generator.actor import actor_id_for, token_mark
 from ontology_poc_generator.company_sources import TABLE_SUFFIXES, SourceFileError, load_table_file
 from ontology_poc_generator.object_actions import overwritten_by_upload
 from ontology_poc_generator.object_types import dataset_readers_of, element_row, one_telling, recheck_after_write
@@ -335,9 +335,9 @@ def delete_dataset(conn, name: str, who: str | None, readers: list[dict]) -> dic
         conn.execute('DELETE FROM current_dataset WHERE name = ?', (name,))
         conn.execute('DELETE FROM source_table WHERE dataset = ?', (name,))   # it no longer comes from a source: the source can be deleted now
         conn.execute('UPDATE log SET element_id = ? WHERE element_id = ?', (f'deleted:{name}@{stamp}', f'dataset:{name}'))
-        conn.execute('INSERT INTO log(time, who, element_id, change, before_json, after_json, user_id) VALUES (?, ?, ?, ?, ?, NULL, ?)',
+        conn.execute('INSERT INTO log(time, who, element_id, change, before_json, after_json, user_id, via_token) VALUES (?, ?, ?, ?, ?, NULL, ?, ?)',
                      (stamp, signer, f'deleted:{name}@{stamp}', DELETED,
-                      json.dumps({'versions': len(versions), 'rows': max(v['rows_stored'] for v in versions)}, ensure_ascii=False), actor_id_for(signer)))
+                      json.dumps({'versions': len(versions), 'rows': max(v['rows_stored'] for v in versions)}, ensure_ascii=False), actor_id_for(signer), token_mark()))
         conn.execute('COMMIT')
     except BaseException:
         conn.execute('ROLLBACK')

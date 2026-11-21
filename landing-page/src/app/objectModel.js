@@ -2,11 +2,29 @@
 import { t } from "./i18n/index.js";
 import { joinList } from "./typeModel.js";
 
-/** The value of the column that names the object (a Chinese "name" column, or name): a column that is not a key and not derived, called ...name or ending in the Chinese word for name. "" when none, or when it is empty. */
-export function objectName(columns, row) {
+/** Locate the visible name column when it contains a value for this row. */
+export function objectNameIndex(columns, row) {
   const i = columns.findIndex((c) => !c.key && !c.derived && /(\u540d\u79f0|\u540d|name)$/i.test(c.name));
   const value = i < 0 ? null : row[i];
-  return value == null ? "" : String(value).trim();
+  return value == null || !String(value).trim() ? -1 : i;
+}
+
+export function objectName(columns, row) {
+  const i = objectNameIndex(columns, row);
+  return i === -1 ? "" : String(row[i]).trim();
+}
+
+/** Only a complete standalone web address becomes a link; fragments locate a page or recording. */
+export function sourceHref(value) {
+  if (typeof value !== "string") return null;
+  const href = value.trim();
+  if (!/^https?:\/\/[^\s\\]+$/iu.test(href)) return null;
+  try {
+    const url = new URL(href);
+    return url.hostname && !url.username && !url.password ? href : null;
+  } catch {
+    return null;
+  }
 }
 
 /** One related object's label: its key, and its name beside it when its type has a name column ("KH022 + Suzhou · Suzhou Appliances 22"). */

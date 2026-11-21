@@ -200,8 +200,8 @@ Issues and pull requests are welcome. Read the [development guardrails](docs/DEV
 ## Development
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (2,440 on 2026-11-20; install ".[check,sources]" first, or TTL and some source checks are skipped)
-npm --prefix landing-page run test:unit                       # page tests (832 on 2026-11-20)
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (2,347 on 2026-11-20; install ".[check,sources]" first, or TTL and some source checks are skipped)
+npm --prefix landing-page run test:unit                       # page tests (794 on 2026-11-20)
 PYTHONPATH=src:. python3 scripts/real_model_check.py --out /tmp/check   # real model against SQL (needs a model key; fails only on a wrong number)
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # a trial run in another data directory
 ```
@@ -215,7 +215,6 @@ Page code: the team app is in `landing-page/src/app/` and uses only `/api/worksp
 | [docs/MCP.md](docs/MCP.md) | The MCP tools |
 | [docs/AGENTS.md](docs/AGENTS.md) | Every model call: its definition card and the call log |
 | [docs/DEVELOPMENT_GUARDRAILS.md](docs/DEVELOPMENT_GUARDRAILS.md) | Red lines, and directions waiting for a trigger |
-| [docs/archive/](docs/archive/README.md) | Earlier plans, hand-offs and retros, kept as history |
 
 ## License
 

@@ -1,3 +1,3 @@
-"""OntoPoc: recall scope review over public data — auto-built ontology, code-verified, human-reviewed."""
+"""OntoPoc: the confirmation gate between a team's data and the AI that answers questions about it."""
 
 __version__ = '0.2.1'   # one version for pyproject.toml, server.json and the release tag: scripts/check_release_version.py
