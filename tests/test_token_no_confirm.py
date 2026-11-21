@@ -11,6 +11,16 @@ COVERED = ('/api/workspace/types/confirm', '/api/workspace/types/views/confirm',
            '/api/workspace/queue/confirm-group', '/api/workspace/checked')
 REFUSED_ZH = '确认和批准要由本人登录页面来做'
 REFUSED_EN = 'Confirming and approving are done by a person signed in to the page'
+CHECKED = '/api/workspace/checked'   # a checked number is recorded on a board card or a saved answer, not in the review queue: its own sentence
+CHECKED_ZH = '核对过的数要由本人登录页面来记'
+CHECKED_EN = 'A checked number is recorded by a person signed in to the page'
+
+
+def refusal(path, english=False):
+    """The start of the sentence a token is refused with on this route."""
+    if path == CHECKED:
+        return CHECKED_EN if english else CHECKED_ZH
+    return REFUSED_EN if english else REFUSED_ZH
 
 
 def part(name):
@@ -86,11 +96,11 @@ class TokenMayNotConfirmTests(GateTestCase):
             for path in COVERED:
                 for token in (full, admin_token):
                     status, body = agent.post(path, {}, **bearer(token))
-                    self.assertEqual((status, REFUSED_ZH in body['error']), (403, True), (path, body))
+                    self.assertEqual((status, refusal(path) in body['error']), (403, True), (path, body))
                     status, body = agent.post(path, {}, **bearer(token, english=True))
-                    self.assertEqual((status, REFUSED_EN in body['error']), (403, True), (path, body))
+                    self.assertEqual((status, refusal(path, english=True) in body['error']), (403, True), (path, body))
                 status, body = team['builder'].post(path, {})   # a session reaches the route's own checks: an empty body is refused there, not for the token
-                self.assertNotIn(REFUSED_ZH, body.get('error', ''), path)
+                self.assertNotIn(refusal(path), body.get('error', ''), path)
                 self.assertFalse(body.get('needs_person'), path)
 
     def test_proposing_editing_and_sending_back_by_token_are_not_refused_for_the_token(self):
