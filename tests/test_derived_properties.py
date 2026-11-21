@@ -247,7 +247,7 @@ class AcceptanceTests(DerivedTestCase):
             self.foundation(team, types=(ORDER, customer, PRODUCT, STOCK, COMMIT, TICKET))
             self.assertEqual(ann.post('/api/workspace/types/derived', CANCELLED)[0], 200)
             self.assertEqual(self.confirm(bob, CANCELLED)[0], 200)
-            status, answer = ann.post('/api/workspace/ask', {'question': 'CN 客户的已取消订单一共有多少？'})   # the question says CN: a condition it does not say is not applied
+            status, answer = ann.post('/api/workspace/ask', {'question': '已取消订单一共有多少？'})
             self.assertEqual(status, 200, answer)
             return answer
 
@@ -290,7 +290,7 @@ class AcceptanceTests(DerivedTestCase):
             self.foundation(team, types=(ORDER, customer, PRODUCT, STOCK, COMMIT, TICKET))
             self.assertEqual(ann.post('/api/workspace/types/derived', amount)[0], 200)
             self.assertEqual(self.confirm(bob, amount)[0], 200)
-            status, answer = ann.post('/api/workspace/ask', {'question': 'CN 客户的已取消订单金额一共多少？'})
+            status, answer = ann.post('/api/workspace/ask', {'question': '已取消订单金额一共多少？'})
             self.assertEqual((status, answer['status']), (200, 'definition_unmet'), answer)
             self.assertIn('不是每一行都正好连上一个对象', answer['reason'])
 
@@ -304,7 +304,7 @@ class AcceptanceTests(DerivedTestCase):
             for where in ([{'field': '状态码', 'equals': {'a': 1}}], [{'field': '状态码', 'equals': ['2', ['3']]}],
                           [{'field': '状态码', 'equals': '2'}, {'field': '状态码', 'not_equals': {'a': 1}}], [{'field': '交付天数', 'equals': '1', 'at_least': 'abc'}]):
                 model.item = {'reasoning': '订单', 'query': {'start': 'order', 'where': where, 'via': [], 'group_by': None, 'share': None, 'measure': {'field': '交付天数', 'op': 'sum'}}, 'definitions_used': []}
-                status, answer = ann.post('/api/workspace/ask', {'question': '订单一共下了几单？'})   # a question of names and "how many" only is answered by code, with no model
+                status, answer = ann.post('/api/workspace/ask', {'question': '订单有多少？'})
                 self.assertEqual((status, answer.get('status')), (200, 'query_limit'), (where, answer))
 
     def test_a_confirmed_property_the_model_writes_as_a_derived_measure_is_still_cited(self):

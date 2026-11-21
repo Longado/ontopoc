@@ -156,10 +156,8 @@ test("the question tally: the last 7 days by outcome with the answered share, th
 const DEMO = [T("order", "Order"), { id: "customer", name: "Customer", state: "needs_look", waiting: true, waiting_for: ["demo-admin"] }];
 
 test("a guest on the demo is offered three questions with three outcomes: an answer, a refusal for the type that waits, another answer", () => {
-  // the answered ones say the confirmed names (the view Valid orders, the property amount, the meaning Delivered): a view or meaning is applied only when the
-  // question says its name, and the demo's names are English
-  assert.deepEqual(demoQuestions(DEMO), ["Valid orders 的 amount 合计是多少？", "按 Customer 城市看有效订单金额", "Delivered 的订单有几笔？"]);   // the refused one says the type's name, which is how the service finds it
-  assert.deepEqual(demoQuestions([T("order", "Order"), T("customer", "Customer")]), ["Valid orders 的 amount 合计是多少？", "Delivered 的订单有几笔？"]);   // nothing waits: no refusal to show
+  assert.deepEqual(demoQuestions(DEMO), ["有效订单的总金额是多少？", "按 Customer 城市看有效订单金额", "已送达的订单有几笔？"]);   // the refused one says the type's name, which is how the service finds it
+  assert.deepEqual(demoQuestions([T("order", "Order"), T("customer", "Customer")]), ["有效订单的总金额是多少？", "已送达的订单有几笔？"]);   // nothing waits: no refusal to show
   assert.equal(demoQuestions([T("ticket", "Ticket")]), null);   // not the demo's workspace: the usual examples
   assert.equal(demoQuestions([]), null);
   setLocale("en");
