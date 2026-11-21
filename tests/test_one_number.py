@@ -108,7 +108,7 @@ def stripped(body: dict) -> str:
 
 VALID_INCLUDE = [{'id': 'Valid orders', 'direction': 'include', 'basis': 'Valid orders'}]
 RANGE = {**SUM_AMOUNT, 'where': [{'field': 'amount', 'at_least': 1000}]}
-DEMO_PAIRS = [   # (question, the model's reply): the reviewer's groups, B1–B4 on the demo, the 已取消 cases and the D15 question in every reading
+DEMO_PAIRS = [   # (question, the model's reply): conditions said in other words, qualifiers, view names that are common words, ranges, the 已取消 cases and a plain total in every reading
     ('销售额是多少？', item(used=[{'id': 'Valid orders', 'direction': 'include', 'basis': '销售额'}])), ('销售额是多少？', item()),
     ('销售额是多少？', item(leaving_out('New', 'Cancelled', 'Refunded'), excluded('New', 'Cancelled', 'Refunded', basis='销售额'))),
     ('销售额是多少？', item(leaving_out('New', 'Cancelled', 'Refunded'))), ('销售额是多少？', '销售额要按哪个口径？'),
