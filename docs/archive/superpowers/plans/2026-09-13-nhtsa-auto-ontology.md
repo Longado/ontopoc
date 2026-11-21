@@ -1,6 +1,6 @@
 # 公开场景自动搭建本体 · 实施计划
 
-> 背景、试验证据见 `docs/NHTSA_AUTO_ONTOLOGY_PLAN.md`；试验代码已在 A 轮后删除，试验记录在 `experiments/nhtsa_auto_ontology/recorded/`。本文是 A 轮的逐项实施计划，B、C、D 轮只定设计要点。步骤用 `- [ ]` 跟踪。
+> 背景、试验证据见 `docs/archive/NHTSA_AUTO_ONTOLOGY_PLAN.md`；试验代码已在 A 轮后删除，试验记录在 `experiments/nhtsa_auto_ontology/recorded/`。本文是 A 轮的逐项实施计划，B、C、D 轮只定设计要点。步骤用 `- [ ]` 跟踪。
 
 **目标：** 给一份公开数据快照和一个业务问题，系统自动搭建本体，用代码拿数据核验，按本体回答"召回范围内外有哪些同类投诉"，并给出可复核的候选清单。
 
@@ -139,7 +139,7 @@
 
 - [x] 运行全量回归：`PYTHONPATH=src python -m unittest discover -s tests -q`、前端 `test:unit`、`build`、`test:sites`、两个 artifact `--check`、`git diff --check`，记录确切数字。
 - [x] README 加"公开场景自动搭建本体（本地）"一节：能做什么、怎么跑、边界（候选待复核、只到车型年款、四个角色）。
-- [x] 在 `docs/NHTSA_AUTO_ONTOLOGY_PLAN.md` 第 4 节标 A 轮完成情况；删掉 `experiments/nhtsa_auto_ontology/` 里已被正式代码取代的部分，或在其开头写明已被取代。
+- [x] 在 `docs/archive/NHTSA_AUTO_ONTOLOGY_PLAN.md` 第 4 节标 A 轮完成情况；删掉 `experiments/nhtsa_auto_ontology/` 里已被正式代码取代的部分，或在其开头写明已被取代。
 
 ### A 轮验收
 

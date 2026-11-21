@@ -718,7 +718,7 @@ TOOLS = [
           '不记进问答历史、不算提问次数，可以重试：同样的查询在数据和定义没变时结果相同。',
           {'text': {'type': 'string', 'maxLength': 4000, 'description': '一条本体查询'},
            'params': {'type': 'object', 'description': '参数名 → 值（文字或数字），对应查询里的 $名字'}}, ('text',)),
-    _tool(list_unconfirmed, '现在不是“已确认”的定义（提出了还没确认、需要再看、被退回），每条有状态、原因和可以确认它的人。这些不能拿来回答问题。令牌的主人是只读的人时这里是空的。只是读，可以重试。'),
+    _tool(list_unconfirmed, '现在不是“已确认”的定义（提出了还没确认、需要再看、被退回），每条有状态、原因和可以确认它的人。这些不能拿来回答问题。确认要那个人自己登录页面做，用令牌确认会被拒绝（不论令牌范围），不要替人去确认。令牌的主人是只读的人时这里是空的。只是读，可以重试。'),
     _tool(definition_standing, '每条定义现在的状态（实时读，不是技能包那样的快照）：是不是已确认（confirmed）、谁确认的、什么时候、在哪个数据版本上（data_versions）；'
           '没确认的写明状态、原因和可以确认它的人。给 id（例如 objtype:order、enum:order:状态码、derived:customer:cancelled_orders）只看那一条，没有或看不到的都是“没有这条定义”。'
           '只有令牌的主人看得到的定义；令牌的主人是只读的人时只有已确认的。没有数据行，没有全部数据的行数。只是读，可以重试。',
@@ -748,9 +748,39 @@ LOOK_ALIKE = {
     'data_layout': '看的是已经建过模的运行里每张表的结构（行数、列、怎么连）；还没建模、只有文件路径时用 preview_upload，数据有没有问题用 data_check。',
     'data_check': '看的是数据有没有问题（七项检查）；表的结构用 data_layout，服务在不在跑、有没有模型凭据用 health。',
 }
+# MCP tool annotations (spec 2025-03-26 and later): hints a client may show, or use to decide whether to ask the person first; never a guarantee. Every tool works on
+# this machine's service or this machine's files; the ones in MODEL_TOOLS also have the service send the person's data to a language model outside this machine, so
+# they say they reach an open world.
+_READS = {'readOnlyHint': True, 'destructiveHint': False, 'idempotentHint': True, 'openWorldHint': False}
+_ADDS = {'readOnlyHint': False, 'destructiveHint': False, 'idempotentHint': False, 'openWorldHint': False}   # adds a record (a run, an asked question, a new answer) and takes nothing away
+_REPLACES = {'readOnlyHint': False, 'destructiveHint': True, 'idempotentHint': True, 'openWorldHint': False}   # writes over what was kept (a list, a form, a card, files it exported before); the same call again changes nothing more
+_REDRAFTS = {'readOnlyHint': False, 'destructiveHint': True, 'idempotentHint': False, 'openWorldHint': False}   # the model writes again over its own earlier suggestions, never over what a person wrote
+_CONFIRMS = {'readOnlyHint': False, 'destructiveHint': False, 'idempotentHint': True, 'openWorldHint': False}   # adds a confirmation; a second call is refused as already confirmed
+ANNOTATIONS = {
+    'health': ('Service health', _READS), 'list_runs': ('List saved runs', _READS), 'preview_upload': ('Preview what an upload sends to the model', _READS),
+    'build_ontology': ('Build an ontology from files', _ADDS), 'run_overview': ('Run overview and open items', _READS), 'list_objects': ("List a run's objects", _READS),
+    'object_fields': ("An object's fields", _READS), 'object_rows': ("An object's rows", _READS), 'list_relations': ("List a run's relations", _READS),
+    'suggest_relations': ('Relations seen in the data', _READS), 'find_instances': ('Find an object in the data', _READS),
+    'instance_neighbourhood': ("An object's neighbourhood", _READS), 'list_rules': ('List data rules', _READS), 'set_rules': ('Adopt or decline data rules', _REPLACES),
+    'draft_form': ('Draft the object form', _REDRAFTS), 'save_form': ('Save the object form', _REPLACES), 'export_forms': ('Export object forms (CSV)', _REPLACES),
+    'export_mermaid': ('Export organisation charts (Mermaid)', _REPLACES), 'export_ttl': ('Export Turtle (OWL, data, SHACL)', _REPLACES),
+    'export_pipeline_spec': ('Export the pipeline requirement sheet', _REPLACES), 'data_layout': ('Table layout of a run', _READS), 'data_check': ('Data check of a run', _READS),
+    'ask_question': ("Ask about a run's data", _ADDS), 'list_questions': ("A run's questions and answers", _READS),
+    'confirm_derived': ('Confirm a derived measure on a run', _REPLACES), 'fix_question': ('Keep a question as an acceptance question', _REPLACES),
+    'drop_filter': ('Drop a condition the model added', _ADDS), 'confirm_ontology': ("Save a person's review of a run's ontology", _REPLACES),
+    'compare_reference': ('Compare with a reference ontology', _REPLACES), 'get_card': ("A run's data-meaning card", _READS), 'save_card': ("Record the client's answers", _REPLACES),
+    'list_proposed_views': ('Views waiting for confirmation on a run', _READS), 'confirm_proposed_view': ("Confirm another person's view on a run", _CONFIRMS),
+    'find_name_variants': ('Suggest name variants', _REDRAFTS),
+    'describe_definitions': ("The team's confirmed definitions", _READS), 'ask': ('Ask from confirmed definitions', _ADDS), 'ontopoc_query': ('Run an OntoPoc Query', _READS),
+    'list_unconfirmed': ('Definitions not confirmed now', _READS), 'definition_standing': ("A definition's standing", _READS),
+    'read_derived_property': ('Read a confirmed derived property', _READS),
+}
+MODEL_TOOLS = ('ask', 'build_ontology', 'ask_question', 'draft_form', 'find_name_variants')   # a call sends data to the service's model
 for _t in TOOLS:
     _scope = SCOPE_TEAM if _t['name'] in READ_TOOLS else SCOPE_SERVICE if _t['name'] in ('health', 'list_runs') else SCOPE_RUN
     _t['description'] = _scope + _t['description'] + LOOK_ALIKE.get(_t['name'], '')
+    _title, _hints = ANNOTATIONS[_t['name']]   # a tool without a line here fails at import
+    _t['annotations'] = {'title': _title, **_hints, 'openWorldHint': _t['name'] in MODEL_TOOLS}
 BY_NAME = {t['name']: t for t in TOOLS}
 
 
@@ -771,7 +801,7 @@ def handle(message: dict, service, only: tuple | None = None) -> dict | None:
     if method == 'ping':
         return reply({})
     if method == 'tools/list':
-        return reply({'tools': [{k: t[k] for k in ('name', 'description', 'inputSchema')} for t in offered]})
+        return reply({'tools': [{k: t[k] for k in ('name', 'description', 'inputSchema', 'annotations')} for t in offered]})
     if method == 'tools/call':
         params = message.get('params') or {}
         tool = next((t for t in offered if t['name'] == params.get('name')), None)
