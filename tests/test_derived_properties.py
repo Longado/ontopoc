@@ -5,12 +5,14 @@ only. Expected numbers are counted from the planted records here, not from the s
 from collections import Counter, defaultdict
 import json
 import statistics
+import unittest
 from unittest import mock
 
 from tests import test_workspace_store as planted
-from tests.test_object_relations import CUSTOMER, customers_mended
+from tests.test_object_relations import CUSTOMER, CUSTOMERS, customers_mended, table_csv
 from tests.test_object_types import COMMIT, MEANINGS, STOCK, TABLES, orders_upload
 from tests.test_two_person import SigningTestCase
+from ontology_poc_generator import workspace_questions
 from tests.test_workspace_questions import AskModel
 
 SOURCES = planted.planted_bundle()['sources']
@@ -226,6 +228,25 @@ class AcceptanceTests(DerivedTestCase):
             self.assertEqual(ann.post('/api/workspace/types/derived', per_stock)[0], 200)
             self.assertEqual(self.confirm(bob, per_stock)[0], 200)
             status, answer = ann.post('/api/workspace/ask', {'question': '产品 CP01 的已取消订单有多少？'})
+            self.assertEqual((status, answer['status']), (200, 'definition_unmet'), answer)
+            self.assertIn('不是每一行都正好连上一个对象', answer['reason'])
+
+    def test_a_total_written_with_a_filter_every_customer_matches_is_still_refused_when_some_orders_reach_no_customer(self):
+        """国家 = CN keeps every customer, so the query is a total over all of them, not particular customers: the orders that reach no customer (KH099) would be
+        left out without a word. It is refused as the total without the filter is."""
+        everyone_cn = table_csv('客户.csv', [{**r, '国家': 'CN'} for r in {r['客户编号']: r for r in reversed(CUSTOMERS)}.values()], target='客户', mode='overwrite')
+        customer = {**CUSTOMER, 'properties': [*CUSTOMER['properties'], {'column': '国家'}]}
+        total = {'start': 'customer', 'where': [{'field': '国家', 'equals': 'CN'}], 'via': [], 'group_by': None, 'share': None, 'measure': {'field': '已取消订单数', 'op': 'sum'}}
+        model = AskModel({'reasoning': '中国客户的已取消订单数加起来', 'query': total, 'definitions_used': INCLUDES_CANCELLED})
+        self.assertTrue(any(r['客户编号'] not in {c['客户编号'] for c in CUSTOMERS} for r in ORDERS))   # some orders reach no customer
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [everyone_cn]})[0], 200)
+            self.foundation(team, types=(ORDER, customer, PRODUCT, STOCK, COMMIT, TICKET))
+            self.assertEqual(ann.post('/api/workspace/types/derived', CANCELLED)[0], 200)
+            self.assertEqual(self.confirm(bob, CANCELLED)[0], 200)
+            status, answer = ann.post('/api/workspace/ask', {'question': '已取消订单一共有多少？'})
             self.assertEqual((status, answer['status']), (200, 'definition_unmet'), answer)
             self.assertIn('不是每一行都正好连上一个对象', answer['reason'])
 
@@ -670,3 +691,27 @@ class ExpressionCheckTests(DerivedTestCase):
             self.assertIn('重量', body['errors'][0]['message'])
             status, body = ann.post('/api/workspace/types/derived/expression', {'type': 'order', 'expression': '订单号 * 2'})
             self.assertFalse(body['ok'])
+
+
+class RowsCountedOnceTests(unittest.TestCase):
+    """_each_row_once by the relation checks it reads: a repeated key on the one side, or rows a join multiplies, count a row for more than one object; a row
+    that reaches no object only keeps the values from adding up to every row."""
+    SC = {'user': None, 'relations': {'order_customer': {'content': {'from': 'order', 'to': 'customer', 'cardinality': 'many_to_one'}}}}
+    COUNT = {'kind': 'statistic', 'type': 'customer', 'path': ['order_customer']}
+
+    def counted(self, **numbers):
+        found = {'problems': [], 'numbers': {'rows': 10, 'matched': 10, 'fan_keys': 0, 'extra_rows': 0, **numbers}}
+        with mock.patch.object(workspace_questions, 'check_relation', return_value=found):
+            return workspace_questions._each_row_once(None, self.SC, self.COUNT)
+
+    def test_every_row_reaching_one_object_is_counted_once_and_exactly(self):
+        self.assertEqual(self.counted(), {'once': True, 'exact': True})
+
+    def test_a_row_that_reaches_no_object_is_still_counted_once(self):
+        self.assertEqual(self.counted(matched=9), {'once': True, 'exact': False})
+
+    def test_a_repeated_key_on_the_one_side_counts_a_row_for_more_than_one_object(self):
+        self.assertEqual(self.counted(fan_keys=1), {'once': False, 'exact': False})
+
+    def test_rows_a_join_multiplies_are_counted_for_more_than_one_object(self):
+        self.assertEqual(self.counted(extra_rows=2), {'once': False, 'exact': False})
