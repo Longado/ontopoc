@@ -8,6 +8,7 @@ import { Select } from "./Select.jsx";
 import { State } from "./TypesPage.jsx";
 import { confirmersText, joinList, stateLine } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
+import { confirmWords, newValueChoices, newValueText } from "./viewModel.js";
 
 /** What the trial found, as the sentences a person reads before confirming, a few values and, for a formula, the sample it was tried on. */
 function Trial({ trial }) {
@@ -51,11 +52,13 @@ function DerivedCard({ line, mayBuild, onChanged, onEdit }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [history, setHistory] = useState(false);
+  const [picked, setPicked] = useState({});   // {"column|value": "in" | "out"}: what to do with each new value, as on a view
+  const choices = newValueChoices(line.new_values, picked);
   const confirm = async () => {
     setBusy(true);
     setError("");
     try {
-      await confirmDerived(line.type, line.id, line.version, line.seen);
+      await confirmDerived(line.type, line.id, line.version, line.seen, choices);
       onChanged();
     } catch (e) {
       setError(e.message);
@@ -87,8 +90,18 @@ function DerivedCard({ line, mayBuild, onChanged, onEdit }) {
         </div>
       )}
       <Trial trial={line.trial} />
+      {mayBuild && line.can_confirm && line.new_values?.map((v) => {
+        const key = `${v.column}|${v.value}`;
+        return (
+          <fieldset key={key} className="new-value">
+            <legend>{newValueText(v)}</legend>
+            <label><input type="radio" name={`new-${line.type}-${line.id}-${key}`} checked={picked[key] === "in"} onChange={() => setPicked({ ...picked, [key]: "in" })} /> {t("types.view.include")}</label>
+            <label><input type="radio" name={`new-${line.type}-${line.id}-${key}`} checked={picked[key] === "out"} onChange={() => setPicked({ ...picked, [key]: "out" })} /> {t("types.view.exclude")}</label>
+          </fieldset>
+        );
+      })}
       <div className="inline wide">
-        {mayBuild && line.can_confirm && <button className="primary" onClick={confirm} disabled={busy}>{t("types.derived.confirm")}</button>}
+        {mayBuild && line.can_confirm && <button className="primary" onClick={confirm} disabled={busy || !choices}>{choices?.some((c) => c.choice === "out") ? confirmWords(choices) : t("types.derived.confirm")}</button>}
         {mayBuild && <button className="secondary" onClick={onEdit}>{t("types.page.edit")}</button>}
         {mayBuild && <button className="plain" onClick={() => setHistory(!history)}>{history ? t("types.derived.historyHide") : t("types.derived.history")}</button>}
       </div>

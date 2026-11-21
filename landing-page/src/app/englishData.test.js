@@ -33,6 +33,7 @@ test("datasets, versions and columns read in English", () => {
   assert.equal(typeLabel("datetime"), "Date and time");
   assert.equal(keyText({ possible_key: true }), "Unique, no blanks");
   assert.equal(keyText({ key_check: { status: "failed", violations: 1, null_key_rows: 2 } }), "Key check failed: 1 duplicate row, 2 blank rows");
+  assert.equal(keyText({ key_check: { status: "failed", violations: 0, null_key_rows: 0, rows_checked: 0 } }), "Key check failed: no rows, and a check over 0 rows does not count as passed");
   assert.equal(versionChangeText({ mode: "update_by_key", changed: 2, added: 1, unchanged: 5 }), "2 changed, 1 added, 5 unchanged");
   assert.equal(versionChangeText({ mode: "new", rows: 1 }), "1 row");
   assert.equal(keyListText(["a", "b"], 5), "a, b and more (5 rows in all)");

@@ -27,12 +27,15 @@ export function keyText(column) {
   if (check) {
     const parts = [check.violations ? t("data.key.dup", { count: check.violations }) : "", check.null_key_rows ? t("data.key.blank", { count: check.null_key_rows }) : ""].filter(Boolean);
     if (check.status === "passed") return t("data.key.unique");
-    const failed = t("data.key.failed", { parts: parts.join(t("data.sep")) || t("data.key.noResult") });
+    const failed = t("data.key.failed", { parts: check.rows_checked === 0 ? t("data.key.noRows") : parts.join(t("data.sep")) || t("data.key.noResult") });
     return column.near_key ? `${failed}${t("data.semi")}${nearKeyText(column.near_key)}` : failed;   // which values repeat, beside the check
   }
   if (column.possible_key) return t("data.key.unique");
   return column.near_key ? nearKeyText(column.near_key) : "—";
 }
+
+/** A check of several columns as a key, in words: none repeat and none blank, how many do, or that there were no rows to check. */
+export const multiCheckText = (c) => (c.status === "passed" ? t("data.fields.multiOk") : c.rows_checked === 0 ? t("data.key.noRows") : t("data.fields.multiBad", { dup: c.violations, blank: c.null_key_rows }));
 
 /** A column that is almost a key: which values repeat (the worst few) and how many rows are blank. */
 export function nearKeyText(near) {

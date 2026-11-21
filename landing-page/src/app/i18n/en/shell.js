@@ -27,7 +27,7 @@ export default {
   "nav.queueCount_other": "{count} items waiting for review",
   "nav.noticeCount_one": "{count} unread notification",
   "nav.noticeCount_other": "{count} unread notifications",
-  "forbidden.title": "This page needs builder or admin access",
-  "forbidden.text": "Ask your builder or admin if you need it.",
+  "forbidden.title": "Your account cannot open this page",
+  "forbidden.text": "It is for people with more access (some pages are for admins only). Ask your admin if you need it.",
   "notFound.title": "Page not found",
 };

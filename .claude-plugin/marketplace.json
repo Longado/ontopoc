@@ -6,7 +6,7 @@
     {
       "name": "ontopoc",
       "source": "./",
-      "description": "在 Claude Code 里建本体、看体检、记下客户的答复、逐项确认。需要本机 Python 3.11 或更新版本，并先启动 OntoPoc 服务。"
+      "description": "OntoPoc 是团队数据和回答问题的 AI 之间的确认关口。这个插件的两个命令目前走早期按运行建模的界面（建本体、看体检、逐项确认），不经过团队应用的确认关口。需要本机 Python 3.11 或更新版本，并先启动 OntoPoc 服务。"
     }
   ]
 }

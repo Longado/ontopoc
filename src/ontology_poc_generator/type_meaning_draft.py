@@ -1,5 +1,5 @@
 """The assistant's Meanings mode: a model drafts what the codes of one workspace object type's code columns mean. One bounded call (code_meanings.draft_meanings
-over the counts and facts code works out from the type's current dataset version, never a row); the draft is cleaned and checked by code and sent back with the
+over the counts and facts code works out from the type's current dataset version, never a row, with what the person typed as the purpose); the draft is cleaned and checked by code and sent back with the
 facts a person decides from. Nothing is saved here: Apply is the page sending the kept columns through the ordinary meanings path (object_types.propose_meanings),
 so every existing check runs there. A column whose meanings are already confirmed is not drafted and never changes."""
 from __future__ import annotations
@@ -19,13 +19,29 @@ def _order(value: str):
     return (0, int(value), value) if value.lstrip('-').isdigit() else (1, 0, value)
 
 
-def draft_type_meanings(conn, gateway, english_name, user: dict | None) -> dict:
+MAX_HINT = 2000   # what a person types in the assistant's box: a few lines about the codes
+
+
+def _purpose(content: dict, hint) -> str:
+    """What the model is told the meanings are for: the words the person typed (when they typed some), then the type's description or name."""
+    if hint is not None and not isinstance(hint, str):
+        raise TypeRefused(tr('提示要写成文字', 'The hint must be text'))
+    hint = (hint or '').strip()
+    if len(hint) > MAX_HINT:
+        raise TypeRefused(tr(f'提示最多 {MAX_HINT} 个字', f'The hint can be at most {MAX_HINT} characters'))
+    about = content.get('description') or content['name']
+    about = about if about == content['name'] else tr(f'{content["name"]}：{about}', f'{content["name"]}: {about}')
+    return tr(f'{hint}\n（对象类型：{about}）', f'{hint}\n(Object type: {about})') if hint else about
+
+
+def draft_type_meanings(conn, gateway, english_name, user: dict | None, hint=None) -> dict:
     """{'type', 'dataset', 'version', 'model', 'columns': [...], 'rejected', 'skipped', 'assumptions', 'self_check'}. TypeRefused for a type this person may not edit
     (404 not theirs to see; 403 a property or rows kept from them), for a type with no code columns (400) and for a model that failed (502). Each column carries its
     values with the draft beside what is on file, and `checks`: codes in the data with no meaning, meanings for codes that never occur, and whether it is confirmed."""
     row = whole_type_row(conn, english_name, user)   # the "properties you cannot see" rule: a person kept from any column does not write this type's meanings
     refuse_if_limited(conn, row, user)               # nor one who cannot see all the rows the counts are over
     content = _content(row)
+    purpose = _purpose(content, hint)
     dataset = current_dataset(conn, content['dataset'])
     if dataset is None:
         raise TypeRefused(tr(f'数据集“{content["dataset"]}”已经不在了', f'The dataset "{content["dataset"]}" is gone'), 409)
@@ -52,7 +68,7 @@ def draft_type_meanings(conn, gateway, english_name, user: dict | None) -> dict:
             to_ask.append(profiles[column])
     drafted = {'columns': {}, 'rejected': [], 'model': None}
     if to_ask:   # every column confirmed: nothing to ask
-        drafted = draft_meanings(to_ask, gateway, content.get('description') or content['name'], timeout_seconds=MODEL_SECONDS)
+        drafted = draft_meanings(to_ask, gateway, purpose, timeout_seconds=MODEL_SECONDS)
         if drafted['error']:
             raise TypeRefused(drafted['error'], 502)
     out = []

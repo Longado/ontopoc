@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { confirmItem, decideRecord, getQueue, sendBack, withdrawRecord } from "./api.js";
+import { confirmItem, decideRecord, getQueue, previewImpact, sendBack, withdrawRecord } from "./api.js";
+import { ImpactList, ReceiptPanel, WorkspaceReceipt } from "./ImpactList.jsx";
 import { KIND, groupTitle } from "./batchModel.js";
 import { approveWarning, batchPlan, batchSummary, queueCounts, queueLegend, queueRow, rejectProblem, sortByProblem } from "./confirmModel.js";
 import { t } from "./i18n/index.js";
@@ -24,13 +25,14 @@ function waitWords(item, mode) {
 }
 
 /** One item of the queue as one compact row: what it is and its state, one line of what changed, the real problems set apart, and Confirm / Send back in the row. */
-function Row({ item, picked, onPick, onChanged }) {
+function Row({ item, picked, onPick, onChanged, onConfirmed }) {
   const row = queueRow(item);
   const [asking, setAsking] = useState(false);
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [sure, setSure] = useState(false);   // Approve writes a new version of a dataset: the first click asks, the second does it
+  const [impact, setImpact] = useState(null);   // Confirm first shows what it would do to the board numbers: null, {status: loading | ready | failed, data, error}
   const warning = approveWarning(item);
   const act = async (run) => {
     setBusy(true);
@@ -44,7 +46,19 @@ function Row({ item, picked, onPick, onChanged }) {
     }
     setBusy(false);
   };
-  const confirm = () => act(() => (row.mode === "approve" ? decideRecord(item.record, "approve") : confirmItem(item.element, item.version, item.seen)));
+  const confirm = () => act(async () => {
+    if (row.mode === "approve") return decideRecord(item.record, "approve");
+    await confirmItem(item.element, item.version, item.seen);
+    onConfirmed?.([item.element]);
+  });
+  const look = async () => {   // the same body the confirmation sends, run on a copy of the workspace
+    setImpact({ status: "loading" });
+    try {
+      setImpact({ status: "ready", data: await previewImpact({ element: item.element, version: item.version, ...(item.seen ? { seen: item.seen } : {}) }) });
+    } catch (e) {
+      setImpact({ status: "failed", error: e.message });
+    }
+  };
   const sendBackNow = () => act(() => (item.kind === "approval" ? decideRecord(item.record, "reject", reason.trim()) : sendBack(item.element, item.version, reason.trim())));
   const needReason = rejectProblem(reason);
   const batchable = row.mode === "confirm" || row.mode === "approve";
@@ -77,6 +91,17 @@ function Row({ item, picked, onPick, onChanged }) {
               </p>
             </div>
           )}
+          {impact && (
+            <div className="q-impact">
+              {impact.status === "loading" && <p className="muted small">{t("review.impact.loading")}</p>}
+              {impact.status === "failed" && <p className="warn small">{t("review.impact.failed", { error: impact.error })}</p>}
+              {impact.status === "ready" && <ImpactList impact={impact.data} />}
+              <p className="inline">
+                <button className="primary" disabled={busy || impact.status === "loading" || Boolean(impact.data?.refused)} onClick={() => { setImpact(null); confirm(); }}>{t("review.impact.confirmNow")}</button>
+                <button className="plain" onClick={() => setImpact(null)}>{t("review.impact.notYet")}</button>
+              </p>
+            </div>
+          )}
           {asking && (
             <div className="q-ask">
               <input type="text" aria-label={t("review.row.reasonAria")} value={reason} maxLength={300} placeholder={t("review.row.reasonPlaceholder")} autoFocus onChange={(e) => setReason(e.target.value)} />
@@ -88,9 +113,9 @@ function Row({ item, picked, onPick, onChanged }) {
           {error && <p className="error small">{error}</p>}
           <p className="muted small q-meta">{item.proposed_by ? t("review.row.proposedBy", { who: item.proposed_by }) : t("review.row.written")} · {timeText(item.written_at)}</p>
         </div>
-        {!asking && !sure && (
+        {!asking && !sure && !impact && (
           <div className="q-actions">
-            {row.mode === "confirm" && <button className="primary" disabled={busy} onClick={confirm}>{t("review.row.confirm")}</button>}
+            {row.mode === "confirm" && <button className="primary" disabled={busy} onClick={look}>{t("review.row.confirm")}</button>}
             {row.mode === "approve" && <button className="primary" disabled={busy} onClick={() => setSure(true)}>{t("review.row.approve")}</button>}
             {row.canReject && <button className="secondary" disabled={busy} onClick={() => setAsking(true)}>{t("review.row.sendBack")}</button>}
             {row.mode === "withdraw" && <button className="secondary" disabled={busy} onClick={() => act(() => withdrawRecord(item.record))}>{t("review.row.withdraw")}</button>}
@@ -143,6 +168,8 @@ export function ConfirmPage() {
   const [busy, setBusy] = useState(false);
   const [said, setSaid] = useState("");
   const [askBatch, setAskBatch] = useState(false);   // a batch that approves data changes asks once, in words
+  const [receiptFor, setReceiptFor] = useState(null);   // the definitions just confirmed: their receipt is shown at the top until closed
+  const [summary, setSummary] = useState(false);
   const data = state.data;
   const items = sortByProblem((data?.items ?? []).filter((i) => (!mineOnly || i.can_confirm) && !i.group));
   const pickedHere = new Set([...picked].filter((e) => items.some((i) => i.element === e)));
@@ -165,20 +192,27 @@ export function ConfirmPage() {
       try {
         if (step.call === "approve") await decideRecord(step.record, "approve");
         else await confirmItem(step.element, step.version, step.seen);
-        results.push({ title: step.title, ok: true });
+        results.push({ title: step.title, ok: true, element: step.call === "approve" ? null : step.element });
       } catch (e) {
         results.push({ title: step.title, ok: false, error: e.message });
       }
     }
     setPicked(new Set());
     setSaid(batchSummary(results));
+    const confirmed = results.filter((r) => r.ok && r.element).map((r) => r.element);
+    if (confirmed.length) setReceiptFor(confirmed);
     setBusy(false);
     reload();
   };
   return (
     <main className="page has-bar">
       <PageHeader crumbs={[{ label: t("review.page.crumbGroup") }, { label: t("review.page.title") }]} title={t("review.page.title")} sub={data ? queueCounts(data).text : undefined}
-        actions={<label className="check"><input type="checkbox" checked={mineOnly} onChange={(e) => setMineOnly(e.target.checked)} /> {t("review.page.mine")}</label>} />
+        actions={<>
+          <button className="secondary" onClick={() => setSummary(!summary)} aria-expanded={summary}>{t("review.summary.button")}</button>
+          <label className="check"><input type="checkbox" checked={mineOnly} onChange={(e) => setMineOnly(e.target.checked)} /> {t("review.page.mine")}</label>
+        </>} />
+      {summary && <WorkspaceReceipt onClose={() => setSummary(false)} />}
+      {receiptFor && <ReceiptPanel elements={receiptFor} onClose={() => setReceiptFor(null)} />}
       {state.status === "error" && <p className="error">{state.error} <button className="plain" onClick={reload}>{t("common.retry")}</button></p>}
       {state.status === "loading" && !data && <p className="muted">{t("common.loading")}</p>}
       {said && <p className="notice-line" role="status">{said}</p>}
@@ -190,7 +224,7 @@ export function ConfirmPage() {
       {data && data.items.length > 0 && (
         <ul className="queue">
           {(data.groups ?? []).map((g) => <GroupRow key={g.key} group={g} items={data.items} />)}
-          {items.map((item) => <Row key={`${item.element}@${item.version}@${item.state}`} item={item} picked={pickedHere.has(item.element)} onPick={pick} onChanged={reload} />)}
+          {items.map((item) => <Row key={`${item.element}@${item.version}@${item.state}`} item={item} picked={pickedHere.has(item.element)} onPick={pick} onChanged={reload} onConfirmed={setReceiptFor} />)}
         </ul>
       )}
       {batchable.length > 0 && (

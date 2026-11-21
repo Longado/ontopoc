@@ -27,7 +27,7 @@ test("a modelling job says how long it took, why it failed, or that the restart 
 test("an upload says what it did in the version list's words, and a skipped update is plain", () => {
   const made = taskRow(upload());
   assert.deepEqual([made.kind, made.href, made.who, made.text, made.bad], ["上传数据集", "#/datasets/%E8%AE%A2%E5%8D%95/versions", "小王", "按主键更新：改 2，增 3，未变 1，第 2 版", false]);
-  assert.equal(taskRow(draft()).href, "/legacy.html");
+  assert.equal(taskRow(draft()).href, null);   // a modelling run belongs to the earlier screen: the team app does not link into it
   assert.equal(taskRow(upload({ created_version: false, version: null, rows: null })).text, "按主键更新：没有变化，没有新版本");
   assert.equal(taskRow(upload({ created_version: false, mode: "overwrite", version: null, rows: null })).text, "覆盖：内容和当前版本完全一样，没有新版本");
   assert.equal(taskRow(upload({ mode: "overwrite", rows: 160, version: 4, changes: { replaced_rows: 163, same_as: 1 } })).text, "覆盖：原 163 行，现 160 行，内容同第 1 版，第 4 版");

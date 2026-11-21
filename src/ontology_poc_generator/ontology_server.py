@@ -1376,7 +1376,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                         if gateway is None:
                             self.reply(503, {'error': no_key()})
                             return
-                        body = draft_type_meanings(conn, gateway, payload.get('id'), self.user)
+                        body = draft_type_meanings(conn, gateway, payload.get('id'), self.user, payload.get('hint'))
                     else:
                         with runs_lock:   # the lock an upload takes: a check and the write that stands on it are not split by new data
                             if route == '':

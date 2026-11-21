@@ -124,6 +124,11 @@ CREATE TABLE IF NOT EXISTS refresh_run (
     started_at TEXT NOT NULL, finished_at TEXT, rows INTEGER, dataset TEXT, version INTEGER, changed INTEGER, error TEXT, error_public TEXT, detail_json TEXT);
 CREATE TABLE IF NOT EXISTS log (
     time TEXT NOT NULL, who TEXT NOT NULL, element_id TEXT, change TEXT NOT NULL, before_json TEXT, after_json TEXT);
+-- numbers the team has checked (checked_numbers): a board card or a saved answer, the value the team trusts, what OntoPoc computed then and on what; the latest row of each is the check
+CREATE TABLE IF NOT EXISTS checked_number (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, dashboard_id INTEGER, component_id TEXT, component_json TEXT, question_id INTEGER,
+    trusted REAL NOT NULL, computed REAL NOT NULL, note TEXT NOT NULL, by_user_id INTEGER, by_name TEXT NOT NULL, at TEXT NOT NULL,
+    datasets_json TEXT NOT NULL, definitions_json TEXT NOT NULL);
 '''
 
 
@@ -710,7 +715,8 @@ def _record_check(conn, dataset, columns, check_type, query, rows_checked, viola
 
 def check_key(conn, dataset_id: int, columns: list[str]) -> dict:
     """Is this column set unique and filled across every stored row? Records the query, the rows looked at, the extra
-    rows beyond the first per key, up to five duplicated keys, and the rows with an empty key column. Either failure fails."""
+    rows beyond the first per key, up to five duplicated keys, and the rows with an empty key column. Either failure fails, and so does a
+    version with no rows: a check that looked at nothing has not passed."""
     dataset, cols, filled, table = _key_context(conn, dataset_id, columns)
     query = (f'SELECT {cols}, COUNT(*) AS n FROM {table} WHERE {filled} GROUP BY {cols} HAVING COUNT(*) > 1 '
              'ORDER BY n DESC, ' + cols)
@@ -720,7 +726,7 @@ def check_key(conn, dataset_id: int, columns: list[str]) -> dict:
     samples = [{'key': dict(zip(columns, row[:-1])), 'count': row[-1]}
                for row in conn.execute(f'{query} LIMIT {SAMPLE_LIMIT}')]
     return _record_check(conn, dataset, columns, 'key_unique', query, rows_checked, violations, null_key_rows, samples,
-                         'failed' if violations or null_key_rows else 'passed')
+                         'failed' if violations or null_key_rows or not rows_checked else 'passed')
 
 
 def check_distinct(conn, dataset_id: int, columns: list[str]) -> dict:

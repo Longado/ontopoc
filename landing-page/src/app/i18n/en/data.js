@@ -36,6 +36,7 @@ export default {
   "key.unique": "Unique, no blanks",
   "key.failed": "Key check failed: {parts}",
   "key.noResult": "no result",
+  "key.noRows": "no rows, and a check over 0 rows does not count as passed",
   "key.sample_one": "{value} ({count} row)",
   "key.sample_other": "{value} ({count} rows)",
   "key.repeated_one": "{count} repeated value ({shown}{more})",
@@ -224,4 +225,6 @@ export default {
   "tasks.state": "State",
   "tasks.by": "By",
   "tasks.note": "Details",
+  // an upload that moves board numbers without sending a definition back
+  "upl.askFootBoards": "Continuing writes a new version, and the board numbers above change with it",
 };

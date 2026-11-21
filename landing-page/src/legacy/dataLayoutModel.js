@@ -28,7 +28,7 @@ export function tableChecks(run, name) {
         ? [`${k.distinct} 个不同取值`, empty].filter(Boolean)
         : [k.violations ? `重复 ${k.violations} 行，如 ${k.samples.slice(0, 3).map(sampleText).join("、")}` : "", empty].filter(Boolean);
       return { type: labels[k.object_type] || k.object_type, columns: cols, checkId: k.check_id, failed: k.status === "failed",
-               text: parts.length ? parts.join("，") : "没有重复，没有空值" };
+               text: k.rows_checked === 0 ? "没有一行可查，不算通过" : parts.length ? parts.join("，") : "没有重复，没有空值" };
     }),
   };
 }

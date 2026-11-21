@@ -41,6 +41,12 @@ class DiscoveryTests(unittest.TestCase):
         self.assertEqual(checked['order:contract:签订日期:到期日期']['violations'], {'count': 1, 'examples': ['H3']})
         self.assertEqual(checked['required:contract:签订日期']['violations'], {'count': 0, 'examples': []})
 
+    def test_a_rule_over_no_objects_is_not_checked_rather_than_kept(self):
+        rules = discover_rules(ONTOLOGY, {'sources': {'contracts': table(*ROWS)}})
+        checked = check_rules(ONTOLOGY, {'sources': {'contracts': table(ROWS[0])}}, rules)   # the same table, with no rows this time
+        self.assertEqual([r['violations'] for r in checked], [None] * len(rules))   # never "0 violations": nothing was looked at
+        self.assertTrue(all('没有' in r['unchecked'] and 'contract' in r['unchecked'] for r in checked), checked)
+
 
 class ContractModel:
     """Proposes the contract ontology above, and no questions."""

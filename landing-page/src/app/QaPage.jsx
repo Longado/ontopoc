@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { aiDraft, askQuestion, draftMeanings, getAnswer, getAsk, getAssistantTurns, getDatasets, getModelReady, getPipeline, getPipelines, getType, getTypes, keepAssistantTurn, markAssistantTurn, proposeMeanings, runQuery, suggestTypes, updateType } from "./api.js";
 import { useAuth } from "./Auth.jsx";
+import { AnswerCheck } from "./CheckedNumber.jsx";
 import { DemoAskNote } from "./DemoAskNote.jsx";
 import { QUICK_START_URL, askOff, holdAsk } from "./demoModel.js";
 import { useDemoAsk } from "./useDemoAsk.js";
@@ -10,7 +11,7 @@ import { MeaningsCard, NoModel, PlanCard, ProposalCard } from "./AssistantCards.
 import { filterByMode, filterModes, pastTurn, railItems, scopeOf } from "./assistantHistoryModel.js";
 import { PastTurn, modeLabel } from "./PastTurn.jsx";
 import { timeText } from "./format.js";
-import { answerView, criteriaLine, definitionHref, historyView, isAnswer, isThenAnswer, paramsIn, queryExample, queryParams, queryRecord, rangeNotes, readText, staleHeading, staleLines, standingText, timeWarning } from "./qaModel.js";
+import { answerView, criteriaLine, dataAsOf, definitionHref, historyView, namedLines, isAnswer, isThenAnswer, paramsIn, queryExample, queryParams, queryRecord, rangeNotes, readText, staleHeading, staleLines, standingText, timeWarning } from "./qaModel.js";
 import { groupByDay, isThinking, newTurn, savedTurn, sendsOn, settle, suggestions, threadTitle } from "./chatModel.js";
 import { ObjectGraph } from "./ObjectGraph.jsx";
 import { State } from "./TypesPage.jsx";
@@ -27,16 +28,16 @@ function Named({ list, mayBuild }) {
   const t = useT();
   return (
     <ul className="named">
-      {list.map((d) => (
-        <li key={d.id}>
+      {namedLines(list).map((d) => d.plain ? <li key={d.key}><p>{d.text}</p></li> : (
+        <li key={d.key}>
           <p>
-            <span className="muted">{t(KIND[d.kind])}</span> <a href={definitionHref(d.id, d.type)}>{d.name}</a> <State item={d} />
+            <span className="muted">{t(KIND[d.kind])}</span> <a href={d.href}>{d.name}</a> <State item={d} />
           </p>
           <p className="muted">{standingText(d)}</p>
           {d.who_can_confirm?.length > 0 && <p className="muted small">{t("ask.named.confirmers", { names: d.who_can_confirm.join(t("ask.sep")) })}</p>}
         </li>
       ))}
-      {mayBuild && list.some((d) => d.state !== "confirmed") && <li><a href="#/confirm">{t("ask.named.toConfirm")}</a></li>}
+      {mayBuild && list.some((d) => d.id && d.state !== "confirmed") && <li><a href="#/confirm">{t("ask.named.toConfirm")}</a></li>}
     </ul>
   );
 }
@@ -169,11 +170,33 @@ export function Basis({ record, onEdit }) {
   );
 }
 
+/** One answer that cannot be drawn stays one card that says so, with the service's own sentence: the rest of the page and the app go on. */
+class CardBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { failed: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return <section className="qa-card"><p className="warn">{this.props.fallback}</p>{this.props.reason && <p className="muted">{this.props.reason}</p>}</section>;
+  }
+}
+
+function AnswerCard(props) {
+  const t = useT();
+  return <CardBoundary fallback={t("ask.card.broken")} reason={props.record?.reason}><AnswerCardBody {...props} /></CardBoundary>;
+}
+
 /** An answer as a message: the figure or table first, the time-word warning when the question's time was not used, one caliber line, and the technical basis folded. */
-function AnswerCard({ record, mayBuild, onEdit }) {
+function AnswerCardBody({ record, mayBuild, onEdit }) {
   const t = useT();
   const warning = isAnswer(record) ? timeWarning(record) : null;
-  const line = isAnswer(record) ? criteriaLine(record, record.asked_at ? timeText(record.asked_at) : "") : "";
+  const line = isAnswer(record) ? criteriaLine(record, dataAsOf(record, timeText)) : "";
   return (
     <section className="qa-card">
       {record.withheld ? <p className="warn">{record.reason}</p> : (
@@ -186,6 +209,7 @@ function AnswerCard({ record, mayBuild, onEdit }) {
             <Basis record={record} onEdit={onEdit} />
           </details>
           {record.asked_at && <p className="muted small qa-when">{timeText(record.asked_at)}</p>}
+          {mayBuild && <AnswerCheck record={record} />}
         </>
       )}
     </section>
@@ -659,7 +683,7 @@ export function QaPage({ route }) {
       (async () => {
         try {
           if (!(await getModelReady())) return noModel(turn);
-          const result = await draftMeanings(typeScope.id);
+          const result = await draftMeanings(typeScope.id, question);
           finish(turn, { status: "done", meanings: { result, typeLabel: typeScope.label, choices: {}, applied: null, busy: false, error: "" } });
           keep(turn, "meanings", question || typeScope.label, scopeOf("meanings", { type: typeScope }), result);
         } catch (err) {
@@ -859,7 +883,7 @@ export function QaPage({ route }) {
                 <p className="muted">{mayBuild ? t("ask.assistant.empty.sub") : scope && scope.types.length === 0 ? t("ask.chat.emptyNoScope") : t("ask.sub")}</p>
                 {mayBuild && (
                   <div className="chips" aria-label={t("ask.assistant.mode.aria")}>
-                    {["ask", "model", "pipeline", "meanings"].map((m) => <button key={m} className="chip" disabled={busy} onClick={() => setMode(m)}>{t(`ask.assistant.empty.${m}`)}</button>)}
+                    {modesFor(true).filter((m) => m !== "query").map((m) => <button key={m} className="chip" disabled={busy} onClick={() => setMode(m)}>{t(`ask.assistant.empty.${m}`)}</button>)}
                   </div>
                 )}
                 {!noAsk && ideas.length > 0 && queryMode === "ask" && (

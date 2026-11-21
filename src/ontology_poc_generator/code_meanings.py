@@ -134,8 +134,14 @@ def clean_draft(profiles: list[dict], reply) -> dict:
                 out['rejected'].append({'item': f'{cid}={value}', 'reason': tr(f'这一列里没有取值 {value}', f'This column has no value {value}')})
                 continue
             label, description, basis = _text(v.get('label'), MAX_LABEL), _text(v.get('description') or '', MAX_DESCRIPTION), _text(v.get('basis') or '', MAX_BASIS)
+            if v.get('label') in (None, '') or (isinstance(v.get('label'), str) and not v['label'].strip()):   # the prompt asks it to leave a value it is not sure of
+                out['rejected'].append({'item': f'{cid}={value}', 'reason': tr('模型没把握，没有写含义：请人来写', 'The model was not sure and wrote no meaning: a person should write it')})
+                continue
             if not label or description is None or basis is None:
-                out['rejected'].append({'item': f'{cid}={value}', 'reason': tr('含义、描述或依据不是一段短文字', 'The meaning, description or basis is not a short piece of text')})
+                too_long = [name for name, raw, limit in ((tr('含义', 'the meaning'), v.get('label'), MAX_LABEL), (tr('说明', 'the description'), v.get('description'), MAX_DESCRIPTION),
+                                                          (tr('依据', 'the basis'), v.get('basis'), MAX_BASIS)) if isinstance(raw, str) and len(raw.strip()) > limit]
+                out['rejected'].append({'item': f'{cid}={value}', 'reason': tr(f'{"、".join(too_long)}太长（含义最多 {MAX_LABEL} 字，说明和依据最多 {MAX_DESCRIPTION} 字）', f'{", ".join(too_long)} is too long (a meaning at most {MAX_LABEL} characters, a description or basis at most {MAX_DESCRIPTION})') if too_long
+                                        else tr('含义、说明或依据不是文字', 'The meaning, description or basis is not text')})
                 continue
             out['columns'].setdefault(cid, {})[value] = {'label': label, 'description': description, 'basis': basis}
     return out

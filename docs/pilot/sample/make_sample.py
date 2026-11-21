@@ -5,6 +5,7 @@ Writes next to this file:
   orders.csv             150 orders; status_code is a code column (0-5), refunded and cancelled orders still carry an amount
   order_status_notes.csv what the ops team's notes say each status code means (read it, do not upload it)
   orders_update.csv      a later extract: 6 changed rows and 4 new rows, one with a new status code 6
+  customers_update.csv   a later extract of all customers in which C012, who moved city, is listed twice (old and new city): the key repeats
   expected_numbers.txt   the numbers a correct answer must match
 
 The trap: summing `amount` over all orders counts cancelled (4) and refunded (5) orders as revenue.
@@ -53,6 +54,8 @@ for row in changed:
 update = changed + [[f'O{n:04d}', rng.choice(customers)[0], '2026-07-05', rng.randrange(20, 400) * 5, s]
                     for n, s in zip(range(151, 155), (1, 3, 5, 6))]
 write('orders_update.csv', H, update)
+moved = next(c for c in customers if c[0] == 'C012')
+write('customers_update.csv', ['customer_id', 'name', 'city', 'tier'], customers + [[moved[0], moved[1], next(x for x in CITIES if x != moved[2]), moved[3]]])
 
 total = sum(o[3] for o in orders)
 good = sum(o[3] for o in orders if o[4] in (1, 2, 3))

@@ -129,3 +129,38 @@ class MeaningsDraftTests(SigningTestCase):
             ann = self.team(base, 'ann')['ann']
             self.assertEqual(ann.post('/api/workspace/types', BARE)[0], 200)
             self.assertEqual(ann.post(URL, {'id': 'order'})[0], 502)
+
+
+class MeaningsDraftHintTests(SigningTestCase):
+    """What the person typed in the assistant's Meanings mode is sent with the draft request (the product audit of 2026-11-20 found only the id was sent, so the
+    model knew no more than the type's name); a value the model was not sure of is dropped with that reason, not as "not a short piece of text"."""
+    HINT = '这是电商订单的状态码：0 新建、1 已付款、2 已发货'
+
+    def setup(self, base, reply):
+        ann = self.people(base, 'ann')['ann']
+        self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': TABLES})[0], 200)
+        self.assertEqual(ann.post('/api/workspace/types', BARE)[0], 200)
+        return ann
+
+    def test_the_words_the_person_typed_go_to_the_model_with_the_type(self):
+        model = Suggester(DRAFT)
+        with self.service(gateway=model) as (base, out):
+            ann = self.setup(base, DRAFT)
+            status, body = ann.post(URL, {'id': 'order', 'hint': self.HINT})
+            self.assertEqual(status, 200, body)
+            purpose = json.loads(model.asked[0])['purpose']
+            self.assertIn(self.HINT, purpose)
+            self.assertIn('订单', purpose.replace(self.HINT, ''))   # the type is still named
+            self.assertEqual(ann.post(URL, {'id': 'order', 'hint': 'x' * 2001})[0], 400)   # a hint is a few lines, not a document
+
+    def test_a_value_the_model_left_without_a_meaning_is_said_to_be_unsure_and_a_long_one_too_long(self):
+        reply = {'columns': [{'id': COLUMN, 'values': [{'value': '0', 'basis': '没有事实', 'label': '', 'description': ''},
+                                                      {'value': '1', 'basis': 'x', 'label': '很' * 41, 'description': ''}]}]}
+        with self.service(gateway=Suggester(reply)) as (base, out):
+            ann = self.setup(base, reply)
+            status, body = ann.post(URL, {'id': 'order', 'hint': self.HINT})
+            self.assertEqual(status, 200, body)
+            reasons = {r['item']: r['reason'] for r in body['rejected']}
+            self.assertIn('没把握', reasons[f'{COLUMN}=0'])
+            self.assertIn('太长', reasons[f'{COLUMN}=1'])
+            self.assertFalse(any('不是一段短文字' in r for r in reasons.values()))

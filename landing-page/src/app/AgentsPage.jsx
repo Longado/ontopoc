@@ -159,6 +159,7 @@ export function AgentsPage() {
           {isAdmin(user) ? <Tokens onMade={setToken} /> : <p className="muted">{t("agents.tokens.adminOnly")}</p>}
           <h2 className="section">{t("agents.skill.title")}</h2>
           <p className="muted">{t("agents.skill.sentence", { text: skillText(i.skill) })}</p>
+          <p className="warn small">{t("agents.skill.snapshot")}</p>
           <div className="inline"><a className="button secondary" href={SKILL_HREF} download={i.skill.file}>{t("agents.skill.download")}</a></div>
           <p className="muted small">{t("agents.standing.text")}</p>
           <div className="inline"><a className="button secondary" href={STANDING_CSV_HREF} download>{t("agents.standing.download")}</a></div>
