@@ -30,6 +30,24 @@ export function answerView(record) {
   return { big: unit ? countText(a.total, unit) : count(a.total), note: record.status === "no_data" ? record.reason ?? "" : "", table: null };
 }
 
+/** The same question worked out on other rows, beside an answer (the service adds it when the answer covers every row of a type, or exactly one confirmed view):
+ * {title, lines: [{key, name, text, of, by}], more, hint}, or null when there is none. Every row is the first line when the answer read one view. */
+export function besideView(record) {
+  const views = record.beside?.views ?? [];
+  if (!views.length) return null;
+  const unit = record.types?.[0]?.name ?? "";
+  const all = views.find((v) => v.all_rows);
+  const total = all ? all.answer?.total : record.answer?.total;   // what "107 of 150" counts against: every row
+  const lines = views.map((v) => ({
+    key: v.all_rows ? "all-rows" : v.id ?? v.name, name: v.all_rows ? t("ask.beside.all", { unit }) : v.name,
+    text: v.answer ? answerView({ ...record, status: "answered", answer: v.answer }).big : v.no_data ? t("ask.noData") : "",
+    of: !v.all_rows && v.answer?.total != null && total != null ? t("ask.beside.of", { n: count(v.answer.total), total: count(total), unit }) : "",
+    by: v.confirmed_by ? t("ask.beside.by", { by: v.confirmed_by }) : "",
+  }));
+  const more = record.beside.more ?? [];
+  return { title: t("ask.beside.title"), lines, more: more.length ? t("ask.beside.more", { n: more.length, names: more.join(t("ask.sep")) }) : "", hint: t(all ? "ask.beside.hintView" : "ask.beside.hint") };
+}
+
 /** The answer, or the refusal, in one word for the history list. */
 export const statusText = (status) => t(status === "answered" ? "ask.status.answered" : status === "no_data" ? "ask.status.noData" : "ask.status.refused");
 export const isAnswer = (record) => record.status === "answered" || record.status === "no_data";

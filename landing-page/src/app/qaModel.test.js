@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { answerView, definitionHref, isAnswer, namedLines, isThenAnswer, queryExample, queryParams, queryRecord, rangeNotes, readText, scopeText, standingText, staleHeading, staleLines } from "./qaModel.js";
+import { answerView, besideView, definitionHref, isAnswer, namedLines, isThenAnswer, queryExample, queryParams, queryRecord, rangeNotes, readText, scopeText, standingText, staleHeading, staleLines } from "./qaModel.js";
 
 const types = [{ id: "order", name: "订单" }];
 
@@ -160,4 +160,17 @@ test("a viewer's refusal line that names nothing is shown as its text alone, not
   assert.equal(definitionHref(undefined), null);
   const named = namedLines([{ id: "objview:有效订单", type: "order", kind: "view", name: "有效订单", state: "needs_look" }, { kind: "type", state: "needs_look", waiting: true, text: "x" }]);
   assert.deepEqual(named.map((l) => [l.key, l.plain ?? false, l.href ?? null]), [["objview:有效订单", false, "#/types/order/views"], ["line-1", true, null]]);
+});
+
+test("an answer on every row shows each confirmed view's own number beside it, and an answer on one view shows every row", () => {
+  const measure = (value, counted) => ({ total: counted, measure: { field: "金额", op: "sum", value, counted, skipped: 0 } });
+  const all = besideView({ status: "answered", types, answer: measure(162960, 150), beside: { views: [{ id: "objview:有效订单", name: "有效订单", confirmed_by: "Bob", answer: measure(119810, 107) }], more: ["视图6", "视图7"] } });
+  assert.equal(all.title, "同一个问法，换成别的行来算：");
+  assert.deepEqual(all.lines.map((l) => [l.name, l.text, l.of, l.by]), [["有效订单", "金额合计 119,810", "150 个订单里的 107 个", "Bob 确认"]]);
+  assert.equal(all.hint, "上面的数算的是你能看到的全部行。");
+  assert.equal(all.more, "还有 2 个确认过的视图：视图6、视图7");
+  const one = besideView({ status: "answered", types, answer: measure(119810, 107), beside: { views: [{ all_rows: true, name: "订单", answer: measure(162960, 150) }], more: [] } });
+  assert.deepEqual(one.lines.map((l) => [l.name, l.text, l.of, l.by]), [["全部订单", "金额合计 162,960", "", ""]]);
+  assert.equal(one.hint, "上面的数只算了它读的那个视图的行。");
+  assert.equal(besideView({ status: "answered", types, answer: measure(1, 1) }), null);
 });

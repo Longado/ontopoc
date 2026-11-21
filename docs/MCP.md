@@ -37,11 +37,13 @@ claude mcp add ontopoc -- env ONTOPOC_TOKEN=<令牌> ONTOPOC_TOOLSET=read PYTHON
 
 `ask` 的回答带着 `query_text`，也就是这道题写成本体查询的样子。智能体可以先用 `ask` 学写法，再用 `ontopoc_query` 改条件、重复跑，后面这些都不再调用模型。
 
+`answer` 算的是令牌主人能看到的全部行时，`beside.views` 里还有这个类型上他看得到的每个已确认视图各自的数（`name`、`confirmed_by`、`answer`，最多 5 个，其余的名字在 `beside.more`）；`answer` 只算一个已确认视图时，第一条是全部行的数（`all_rows`）。`answer` 算哪些行和以前一样决定。`ontopoc_query` 的文字没有条件时同样带 `beside`。
+
 这几个工具按给模型用的工具该有的样子来做（`tests/test_agent_tools.py` 守着）：
 
 - **少，而且不重叠。** 连上时的说明、`ask` 的说明和拒答规则都写着：要数字先用 `ontopoc_query`，写不出来再用 `ask`。以前这三处都只提 `ask`，智能体会把能直接算的数也交给模型。
 - **专门做一件事。** `ontopoc_query` 看起来像 SQL，但只能沿确认过的关系走、按提问人的行算，不是一个能读任何表的 `run_sql`（为什么见 [QUERY.md](QUERY.md)）。
-- **省字。** 结果里不重复说同一件事：去掉了编译后的结构化查询（`text` 能编译回它），用到的定义只留 id、种类、名字、版本、确认人和派生属性的算式，状态只在不是已确认时给；属性的 `name` 只在和列名不同时给，`code` 只在是代码列时给。分组超过 50 组只给前 50 组，`groups_cut` 说一共几组、怎么用 `ORDER BY … LIMIT` 或 `WHERE` 收窄（`ask` 的回答是改它的 `query_text` 再用 `ontopoc_query` 跑）。`types` 写空列表会报错，要全部就不写。演示数据上，一个计数的结果从 424 个字降到 226 个，全部定义从 4,620 降到 3,847，只取一个类型更少。
+- **省字。** 结果里不重复说同一件事：去掉了编译后的结构化查询（`text` 能编译回它），用到的定义只留 id、种类、名字、版本、确认人和派生属性的算式，状态只在不是已确认时给；属性的 `name` 只在和列名不同时给，`code` 只在是代码列时给。分组超过 50 组只给前 50 组，`groups_cut` 说一共几组、怎么用 `ORDER BY … LIMIT` 或 `WHERE` 收窄（`ask` 的回答是改它的 `query_text` 再用 `ontopoc_query` 跑）。`types` 写空列表会报错，要全部就不写。演示数据上，一个计数的结果从 424 个字降到 226 个（后来多了 `beside`，会长一些），全部定义从 4,620 降到 3,847，只取一个类型更少。
 - **错误说怎么改。** 关系写错列出这个类型能走的关系，属性写错列出它的属性，缺参数写出 `"params": {"名字": …}` 的样子，类型不在定义里列出有的类型。
 - **标明会不会改东西。** 每个工具都带 MCP 的 `annotations`（标题，和 `readOnlyHint`、`destructiveHint`、`idempotentHint`、`openWorldHint`）：上面的 6 个里除了 `ask` 都是只读的，`ask` 会把问题记进问答历史，标成只添加、不删改；早期界面里会覆盖已存内容或旧导出文件的工具标成 destructive；会让服务把数据发给模型的（`ask`，和早期界面的 `build_ontology`、`ask_question`、`draft_form`、`find_name_variants`）标 `openWorldHint`。这些只是给客户端的提示，拒绝什么仍由服务决定。
 - **能放心重试。** 除了 `ask`，都是只读的，同样的调用在数据和定义没变时结果相同；`ask` 的说明里写着不要为了重试再问。

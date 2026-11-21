@@ -529,6 +529,9 @@ def _lean(body: dict, keys: tuple, narrow: str = 'ORDER BY 那个数 DESC LIMIT 
     if isinstance(out.get('definitions'), list):
         out['definitions'] = [{k: d[k] for k in ('id', 'kind', 'name', 'state', 'version', 'confirmed_by', 'says') if k in d and not (k == 'state' and d[k] == 'confirmed')}
                               if isinstance(d, dict) else d for d in out['definitions']]
+    if isinstance(out.get('beside'), dict):   # the other readings beside the number: every row or a view, its name, who confirmed it and its own number (no id, no version)
+        out['beside'] = {'views': [{k: v[k] for k in ('all_rows', 'name', 'confirmed_by', 'answer', 'no_data') if k in v} for v in out['beside'].get('views', []) if isinstance(v, dict)],
+                         **({'more': out['beside']['more']} if out['beside'].get('more') else {})}
     answer = out.get('answer')
     if isinstance(answer, dict) and isinstance(answer.get('groups'), list) and len(answer['groups']) > AGENT_GROUPS:
         out['answer'] = {**answer, 'groups': answer['groups'][:AGENT_GROUPS],
@@ -538,7 +541,7 @@ def _lean(body: dict, keys: tuple, narrow: str = 'ORDER BY 那个数 DESC LIMIT 
 
 def ask(s, a):
     body = s.request('/api/workspace/ask', {'question': _text(a.get('question'), 'question')})
-    out = _lean(body, ('id', 'question', 'status', 'answer', 'path', 'reason', 'refusal', 'query_text', 'definitions', 'datasets', 'limited_by_rule'),
+    out = _lean(body, ('id', 'question', 'status', 'answer', 'beside', 'path', 'reason', 'refusal', 'query_text', 'definitions', 'datasets', 'limited_by_rule'),
                 '把 query_text 加上 ORDER BY 那个数 DESC LIMIT n 或 WHERE，用 ontopoc_query 再跑（不调用模型）')
     if body.get('status') in ('answered', 'no_data') and re.search(r'\bWHERE\b', str(body.get('query_text') or ''), re.I):   # the number is the model's reading, not a confirmed view: say so, not "valid orders"
         where = re.split(r'\bWHERE\b', str(body['query_text']), maxsplit=1, flags=re.I)[1]
@@ -553,7 +556,7 @@ def ontopoc_query(s, a):
     if a.get('params') is not None:
         body['params'] = a['params']
     body = s.request('/api/workspace/query', body)
-    return _lean(body, ('status', 'answer', 'reason', 'refusal', 'text', 'definitions', 'datasets', 'limited_by_rule'), '要前几名就加 ORDER BY 那个数 DESC LIMIT n，要某一部分就加 WHERE')   # text, not the compiled query: it compiles to it
+    return _lean(body, ('status', 'answer', 'beside', 'reason', 'refusal', 'text', 'definitions', 'datasets', 'limited_by_rule'), '要前几名就加 ORDER BY 那个数 DESC LIMIT n，要某一部分就加 WHERE')   # text, not the compiled query: it compiles to it
 
 
 def list_unconfirmed(s, a):
@@ -702,11 +705,11 @@ TOOLS = [
           '属性只有 column 和 type；name 只在和列名不同时给，code 只在是代码列时给。定义多时给 types，只取这几个类型和连着它们的关系、视图、派生属性。只是读，可以重试。'
           '只有已确认的、令牌的主人看得到的；没有数据行，没有全部数据的行数。不在这里的东西没有定义：不要猜，照 rules 拒答。',
           {'types': {'type': 'array', 'items': {'type': 'string'}, 'description': '只要这几个类型（英文名或中文名），不写就是全部'}}),
-    _tool(ask, '只在写不出 ontopoc_query 时用（问题里的说法对不上任何属性或关系，要模型来理解）：用已确认的定义回答一句话问的业务问题（模型把问题写成查询，代码在数据上算）。答得出来给 answer 和它用到的定义 definitions；用到的定义没确认、问题超出范围、取值没有含义时是拒绝：'
+    _tool(ask, '只在写不出 ontopoc_query 时用（问题里的说法对不上任何属性或关系，要模型来理解）：用已确认的定义回答一句话问的业务问题（模型把问题写成查询，代码在数据上算）。答得出来给 answer 和它用到的定义 definitions；beside 里是同一个问法换成别的行算出的数：answer 算的是全部能看的行时，是这个类型上每个已确认视图各自的数和确认人；answer 只算一个已确认视图时，第一条（all_rows）是全部行的数。转述时把它们一起说。用到的定义没确认、问题超出范围、取值没有含义时是拒绝：'
           'status 是 refused 或 ontology_gap / query_limit / definition_unmet，reason 说原因，refusal 说拒绝的种类和涉及的定义。拒绝就把原因原样转告人，不要换问法绕过，更不要自己猜一个答案。'
           'query_text 是这道题写成的本体查询，改条件、重跑都用 ontopoc_query，不再调用模型。会调用模型，慢且花钱；每问一次都记进问答历史、算一次提问，不要为了重试再问。',
           {'question': {'type': 'string', 'maxLength': 300, 'description': '要问的业务问题'}}, ('question',)),
-    _tool(ontopoc_query, '用本体查询（OntoPoc Query，像 SQL）直接算一个数：代码按令牌主人能看的行和已确认的定义算，不调用模型，快，结果和 ask 一样带 definitions 和 limited_by_rule。'
+    _tool(ontopoc_query, '用本体查询（OntoPoc Query，像 SQL）直接算一个数：代码按令牌主人能看的行和已确认的定义算，不调用模型，快，结果和 ask 一样带 definitions 和 limited_by_rule；没有条件时还带 beside（这个类型上每个已确认视图各自的数）。'
           '写法：SELECT 分组列, 一个数 FROM 路径 [WHERE 条件 AND …] [GROUP BY 分组列] [ORDER BY 那个数 DESC|ASC] [LIMIT n]。'
           '路径沿已确认的关系走，不写 JOIN：(o:订单)-[:订单买的产品]->(p:产品)，几条路径用逗号隔开，(o) 再次出现是同一个对象。'
           '一个数是 count(o)、sum(o.金额)、avg(o.金额) 或 share(o.状态码 = \'已取消\')（占比）；SELECT 里其余的列要写进 GROUP BY。'
