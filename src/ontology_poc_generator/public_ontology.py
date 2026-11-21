@@ -9,7 +9,6 @@ import json
 import re
 
 from ontology_poc_generator.agent_harness import ask_model
-from ontology_poc_generator.nhtsa_sources import bundle_content_hash
 from ontology_poc_generator.recognition import RecognitionError
 
 ROLES = ('event', 'affected_object', 'mechanism', 'signal')
@@ -688,6 +687,11 @@ def _content_hash(value) -> str:
 
 def ontology_content_hash(ontology: dict) -> str:
     return _content_hash(ontology)
+
+
+def bundle_content_hash(bundle: dict) -> str:
+    """The hash a saved run keeps of the data it was built from: canonical JSON, SHA-256."""
+    return _content_hash(bundle)
 
 
 def _clean(proposal: dict) -> tuple[list, list]:

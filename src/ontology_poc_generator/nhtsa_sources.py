@@ -4,7 +4,6 @@ from __future__ import annotations
 from collections import Counter
 import copy
 from datetime import datetime, timezone
-import hashlib
 import json
 from pathlib import Path
 import re
@@ -12,6 +11,8 @@ from typing import Callable
 from urllib.parse import urlencode
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+
+from ontology_poc_generator.public_ontology import bundle_content_hash  # noqa: F401  kept here for the recall code until it goes; the hash lives in the shared core
 
 SCHEMA = 'public_source_bundle.v1'
 RECALL_SCOPE_DECISION = ('一次汽车召回发布后，判断：哪些车型年款在召回范围内；哪些车主投诉指向同一部件'
@@ -261,11 +262,6 @@ def load_source_bundle(path: str | Path) -> dict:
     except (OSError, ValueError) as exc:
         raise PublicSourceError(f'cannot read source bundle {path}: {exc}') from exc
     return validate_bundle(bundle)
-
-
-def bundle_content_hash(bundle: dict) -> str:
-    canonical = json.dumps(bundle, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
-    return hashlib.sha256(canonical.encode('utf-8')).hexdigest()
 
 
 def referenced_campaigns(text: str, campaign_ids: list[str]) -> list[str]:
