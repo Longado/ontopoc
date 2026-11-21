@@ -1,9 +1,10 @@
 """Notices: an action names who hears when one of its changes is approved: named people, the people whose attribute equals a column of the row, or the people whose
 attribute equals a column of the object the row points to through a relation. A notice goes only to someone who may read that row; the approver is not told."""
+import re
 from unittest import mock
 from urllib.parse import quote
 
-from tests.test_derived_properties import ORDER, RELATIONS, DerivedTestCase
+from tests.test_derived_properties import CANCELLED, ORDER, RELATIONS, DerivedTestCase
 from tests.test_object_relations import CUSTOMER, customers_mended, table_csv
 from tests.test_object_types import TABLES, orders_upload, shifted_orders_csv
 from tests.test_explorer import CUSTOMERS, ORDERS
@@ -276,3 +277,345 @@ class BackForAnotherLookTests(DerivedTestCase):
             states = self.states(out)
             self.assertEqual((states['objtype:order'], states['relation:order_customer']), ('checked', 'needs_look'))   # the edit stands, and the relation went back
             self.assertNotIn('交付天数', [p['column'] for p in cara.get('/api/workspace/types/order')[1]['properties']])
+
+
+ORDER_COUNT = {'type': 'customer', 'english_name': 'order_count', 'name': '订单数', 'kind': 'statistic', 'path': ['order_customer'], 'measure': {'column': None}, 'fn': 'count'}
+ORDER2 = {**ORDER, 'english_name': 'order2', 'name': '订单副表'}   # a second type on 订单, with its own meanings of 状态码
+SET_CODE = {'name': '改状态码', 'type': 'order', 'properties': ['状态码'], 'description': '订单的状态改了'}
+CANCELLED_ORDERS = [r for r in ORDERS if r['状态码'] == '2']
+PIPELINES = '/api/workspace/pipelines'
+TOTAL_ROWS_TYPE = {'english_name': 'customer_rows', 'name': '客户行数', 'dataset': '客户合计', 'key': ['客户编号'], 'properties': [{'column': '行数'}]}
+TWO_COPIES = {'steps': [{'id': 'o', 'type': 'input', 'dataset': '订单'},
+                        {'id': 'a', 'type': 'output', 'from': 'o', 'name': '订单甲', 'key': {'columns': ['订单号']}},
+                        {'id': 'b', 'type': 'output', 'from': 'o', 'name': '订单乙', 'key': {'columns': ['订单号']}}]}
+COPY_A = {**ORDER, 'english_name': 'order_a', 'name': '订单甲', 'dataset': '订单甲'}
+COPY_B = {**ORDER, 'english_name': 'order_b', 'name': '订单乙', 'dataset': '订单乙'}
+MORE = re.compile(r'还有 (\d+) 项')
+
+
+class ToldOncePerMoveTests(DerivedTestCase):
+    """The other ways a confirmed definition goes back, each one operation: a relation edit, a pipeline edit, an approved action's write, a pipeline run with two
+    outputs. Each person who can confirm what moved (or confirmed it last) and may see it gets one notice for the operation, counting the rest they may see; a notice
+    that cannot be written never loses the move nor stops the answer. Who may see is checked three times over (who is asked, who is told, who reads it): what each
+    person was told is read from the notice table as well as from their list, so a check that fails is not hidden by the next one."""
+
+    def team(self, base):
+        team = self.people(base, 'ann', 'bob', 'cara', 'dan', 'vera', roles={'vera': 'viewer'})
+        self.assertEqual(team['ann'].post('/api/workspace/datasets/upload', {'files': TABLES})[0], 200)
+        self.assertEqual(team['ann'].post('/api/workspace/datasets/upload', {'files': [customers_mended()]})[0], 200)
+        return team
+
+    def ids(self, admin):
+        return {u['username']: u['id'] for u in admin.get('/api/users')[1]['users']}
+
+    def notices(self, client):
+        status, body = client.get('/api/workspace/notices')
+        self.assertEqual(status, 200, body)
+        return body['notices']
+
+    def written(self, out, user_id):
+        """What the notice table holds for this person about definitions that went back (the definition each one names), oldest first: not filtered as it is read."""
+        conn = self.db(out)
+        try:
+            return [a for (a,) in conn.execute('SELECT action_name FROM notice WHERE user_id = ? AND record_id IS NULL ORDER BY id', (user_id,))]
+        finally:
+            conn.close()
+
+    def all_written(self, out):
+        conn = self.db(out)
+        try:
+            return conn.execute('SELECT COUNT(*) FROM notice WHERE record_id IS NULL').fetchone()[0]
+        finally:
+            conn.close()
+
+    def states(self, out, *element_ids):
+        conn = self.db(out)
+        try:
+            return {e: (conn.execute('SELECT state FROM element_state WHERE element_id = ?', (e,)).fetchone() or [None])[0] for e in element_ids}
+        finally:
+            conn.close()
+
+    def asked(self, out, element_id):
+        """The ids of the people who may confirm this definition now (confirmer_people)."""
+        from ontology_poc_generator.object_types import confirmer_people, element_row
+        from ontology_poc_generator.workspace_store import open_workspace
+        conn = open_workspace(out / 'workspace.sqlite')
+        try:
+            return {person for person, _ in confirmer_people(conn, element_row(conn, element_id))}
+        finally:
+            conn.close()
+
+    def says_more(self, notice, more):
+        """The notice counts exactly `more` others this person may see (0: it gives no count at all)."""
+        found = MORE.findall(notice['text'])
+        self.assertEqual(found, [str(more)] if more else [], notice['text'])
+
+    def told_once(self, client, kinds, more):
+        """One notice, about one of the definitions that moved, saying exactly how many more this person may see went back."""
+        told = self.notices(client)
+        self.assertEqual(len(told), 1, [n['text'] for n in told])
+        notice = told[0]
+        self.assertIn(notice['definition']['kind'], kinds)
+        self.assertEqual(notice['definition']['state'], 'needs_look')
+        self.says_more(notice, more)
+        return notice
+
+    def broken_notices(self):
+        """Writing notices fails after the first one is written: the half-written set must go, and the move must stay."""
+        from ontology_poc_generator import notices
+        real, calls = notices.now_text, []
+
+        def second_fails():
+            calls.append(1)
+            if len(calls) > 1:
+                raise RuntimeError('the notice table is broken')
+            return real()
+        return mock.patch.object(notices, 'now_text', side_effect=second_fails)
+
+    # --- a relation edit ------------------------------------------------------------------------------------------------------------------------------
+
+    def relation_read_twice(self, team):
+        """order_customer confirmed, and two derived properties on 客户 that read it, put forward by Ann and confirmed by Bob."""
+        ann, bob = team['ann'], team['bob']
+        self.foundation(team, types=(ORDER, CUSTOMER), relations=[r for r in RELATIONS if r['english_name'] == 'order_customer'])
+        for derived in (CANCELLED, ORDER_COUNT):
+            status, body = ann.post('/api/workspace/types/derived', derived)
+            self.assertEqual(status, 200, body)
+            status, body = self.confirm(bob, derived)
+            self.assertEqual(status, 200, body)
+
+    def edit_relation(self, client):
+        detail = client.get('/api/workspace/relations/order_customer')[1]
+        edited = {**next(r for r in RELATIONS if r['english_name'] == 'order_customer'), 'id': 'order_customer', 'version': detail['version'], 'cardinality': 'one_to_one'}
+        return client.post('/api/workspace/relations/update', edited)
+
+    RELATION_AND_READERS = ('relation:order_customer', 'derived:customer:cancelled_orders', 'derived:customer:order_count')
+
+    def test_a_relation_edit_that_sends_two_confirmed_readers_back_tells_each_person_once_with_the_count(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob, cara, dan, vera, admin = (team[k] for k in ('ann', 'bob', 'cara', 'dan', 'vera', 'admin'))
+            self.relation_read_twice(team)
+            ids = self.ids(admin)
+            self.assertEqual(admin.post('/api/workspace/permissions', {'type': 'customer', 'visible_to': [ids['ann'], ids['bob'], ids['cara']]})[0], 200)   # 客户 kept from Dan
+            moved_before = self.states(out, *self.RELATION_AND_READERS)
+            self.assertEqual(set(moved_before.values()), {'confirmed'}, moved_before)
+            status, body = self.edit_relation(cara)
+            self.assertEqual(status, 200, body)
+            self.assertTrue(body['reset'], body)
+            states = self.states(out, *self.RELATION_AND_READERS)
+            self.assertEqual(list(states.values()), ['checked', 'needs_look', 'needs_look'], states)   # the relation is Cara's to have confirmed again; what reads it went back
+            for person in (bob, admin, cara):   # who confirmed it last; an admin; the editor, who did not put the properties forward
+                notice = self.told_once(person, ('derived',), 1)
+                self.assertIn('定义改了', notice['text'])
+            for person in (ann, dan, vera):   # the proposer; a builder 客户 is kept from; a viewer
+                self.assertEqual(self.notices(person), [])
+            for name in ('ann', 'dan', 'vera'):
+                self.assertEqual(self.written(out, ids[name]), [], name)
+
+    def test_a_relation_edit_whose_notices_cannot_all_be_written_still_sends_its_readers_back_and_answers(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.relation_read_twice(team)
+            with self.broken_notices():
+                status, body = self.edit_relation(team['cara'])
+            self.assertEqual(status, 200, body)
+            self.assertEqual(list(self.states(out, *self.RELATION_AND_READERS).values()), ['checked', 'needs_look', 'needs_look'])
+            self.assertEqual(self.all_written(out), 0)   # the one written before the failure went with the rest
+            self.assertEqual(team['cara'].get('/api/workspace/relations/order_customer')[1]['cardinality'], 'one_to_one')
+
+    # --- a pipeline edit ------------------------------------------------------------------------------------------------------------------------------
+
+    def pipeline_read_twice(self, team):
+        """The 客户合计 pipeline, written and run by Ann and confirmed by Bob, and two types on its output, put forward by Ann and confirmed by Bob."""
+        from tests.test_pipeline_server import SPEC, TOTAL_TYPE
+        ann, bob = team['ann'], team['bob']
+        self.assertEqual(ann.post(PIPELINES, {'name': '客户合计', 'description': '每个客户的订单金额合计', 'spec': SPEC})[0], 200)
+        status, body = ann.post(f'{PIPELINES}/run', {'id': '客户合计'})
+        self.assertEqual((status, body.get('status')), (200, 'success'), body)
+        shown = bob.get(f'{PIPELINES}/{quote("客户合计")}')[1]
+        status, body = bob.post(f'{PIPELINES}/confirm', {'id': '客户合计', 'version': shown['version'], 'seen': {'inputs': shown['inputs_now']}})
+        self.assertEqual(status, 200, body)
+        for t in (TOTAL_TYPE, TOTAL_ROWS_TYPE):
+            self.assertEqual(ann.post('/api/workspace/types', t)[0], 200, t['english_name'])
+            self.confirm_type(bob, t['english_name'])
+
+    def edit_pipeline(self, client):
+        from tests.test_pipeline_server import SPEC
+        now = client.get(f'{PIPELINES}/{quote("客户合计")}')[1]
+        inner = {'steps': [{**s, 'how': 'inner'} if s['id'] == 'j' else s for s in SPEC['steps']]}
+        return client.post(f'{PIPELINES}/update', {'id': '客户合计', 'version': now['version'], 'spec': inner})
+
+    PIPELINE_AND_READERS = ('pipeline:客户合计', 'objtype:customer_total', 'objtype:customer_rows')
+
+    def test_a_pipeline_edit_that_sends_two_confirmed_types_back_tells_each_person_once_with_the_count_they_may_see(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob, cara, dan, vera, admin = (team[k] for k in ('ann', 'bob', 'cara', 'dan', 'vera', 'admin'))
+            self.pipeline_read_twice(team)
+            ids = self.ids(admin)
+            self.assertEqual(admin.post('/api/workspace/permissions', {'type': 'customer_total', 'visible_to': [ids['ann'], ids['bob'], ids['cara']]})[0], 200)
+            self.assertEqual(admin.post('/api/workspace/permissions', {'type': 'customer_rows', 'visible_to': [ids['ann'], ids['bob']]})[0], 200)   # Cara sees one of the two, Dan neither
+            self.assertEqual(set(self.states(out, *self.PIPELINE_AND_READERS).values()), {'confirmed'})
+            status, body = self.edit_pipeline(bob)   # a type on the output kept from Cara and Dan keeps the output from them: theirs neither to write nor to edit
+            self.assertEqual((status, body.get('changed')), (200, True), body)
+            states = self.states(out, *self.PIPELINE_AND_READERS)
+            self.assertEqual(list(states.values()), ['checked', 'needs_look', 'needs_look'], states)
+            self.assertEqual(self.asked(out, 'objtype:customer_rows'), {ids['bob'], ids['root']})   # who may confirm it: not its proposer, nor anyone it is kept from
+            self.assertEqual(self.asked(out, 'objtype:customer_total'), {ids['bob'], ids['cara'], ids['root']})
+            for person in (bob, admin):   # the editor, who confirmed both types last; an admin
+                self.told_once(person, ('type',), 1)
+            notice = self.told_once(cara, ('type',), 0)   # she may see one of the two: told of it, and of no other
+            self.assertEqual(notice['definition']['id'], 'customer_total')
+            self.assertNotIn('客户行数', notice['text'])
+            self.assertEqual(self.written(out, ids['cara']), ['objtype:customer_total'])
+            for name in ('ann', 'dan', 'vera'):   # the types' proposer; a builder kept from both; a viewer: nothing is even written for them
+                self.assertEqual(self.written(out, ids[name]), [], name)
+                self.assertEqual(self.notices(team[name]), [], name)
+
+    def test_a_pipeline_edit_whose_notices_cannot_all_be_written_still_sends_the_types_back_and_answers(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.pipeline_read_twice(team)
+            with self.broken_notices():
+                status, body = self.edit_pipeline(team['dan'])
+            self.assertEqual((status, body.get('changed'), body.get('definition_version')), (200, True, 2), body)
+            self.assertEqual(list(self.states(out, *self.PIPELINE_AND_READERS).values()), ['checked', 'needs_look', 'needs_look'])
+            self.assertEqual(self.all_written(out), 0)
+
+    # --- an approved action ---------------------------------------------------------------------------------------------------------------------------
+
+    def code_action(self, team):
+        """订单 with two types that each confirmed the meanings of 状态码 (two roots), order_customer and a derived property on it; the action 改状态码. All put forward
+        by Ann and confirmed by Bob."""
+        ann, bob = team['ann'], team['bob']
+        self.foundation(team, types=(ORDER, CUSTOMER), relations=[r for r in RELATIONS if r['english_name'] == 'order_customer'])
+        self.assertEqual(ann.post('/api/workspace/types', ORDER2)[0], 200)
+        self.confirm_type(bob, 'order2', ('状态码',))
+        self.assertEqual(ann.post('/api/workspace/types/derived', ORDER_COUNT)[0], 200)
+        self.assertEqual(self.confirm(bob, ORDER_COUNT)[0], 200)
+        self.assertEqual(ann.post('/api/workspace/actions', SET_CODE)[0], 200)
+        shown = bob.get('/api/workspace/actions/' + quote(SET_CODE['name']))[1]
+        status, body = bob.post('/api/workspace/actions/confirm', {'id': SET_CODE['name'], 'version': shown['version']})
+        self.assertEqual(status, 200, body)
+
+    def approve(self, submitter, approver, order):
+        status, body = submitter.post('/api/workspace/actions/submit', {'action': SET_CODE['name'], 'key': {'订单号': order['订单号']}, 'params': {'状态码': '0'}, 'reason': '其实交付了'})
+        self.assertEqual(status, 200, body)
+        return approver.post('/api/workspace/actions/decide', {'id': body['record'], 'decision': 'approve'})
+
+    def approve_all_but_the_last(self, submitter, approver):
+        """Every cancelled order but one is set to 0, one approval each: the code 2 is still there, so nothing moves."""
+        self.assertGreater(len(CANCELLED_ORDERS), 1)
+        for order in CANCELLED_ORDERS[:-1]:
+            status, body = self.approve(submitter, approver, order)
+            self.assertEqual((status, body.get('state')), (200, 'approved'), body)
+
+    MOVED_BY_CODE = ('enum:order:状态码', 'objtype:order', 'enum:order2:状态码', 'objtype:order2', 'relation:order_customer', 'derived:customer:order_count',
+                     'objaction:改状态码')
+
+    def test_an_approved_action_whose_write_sends_two_confirmed_meanings_back_with_what_stands_on_them_tells_each_person_once_with_the_count(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob, cara, dan, vera, admin = (team[k] for k in ('ann', 'bob', 'cara', 'dan', 'vera', 'admin'))
+            self.code_action(team)
+            ids = self.ids(admin)
+            self.assertEqual(admin.post('/api/workspace/permissions', {'type': 'customer', 'visible_to': [ids['ann'], ids['bob'], ids['cara']]})[0], 200)   # 客户 kept from Dan
+            self.approve_all_but_the_last(ann, cara)
+            self.assertEqual(set(self.states(out, *self.MOVED_BY_CODE).values()), {'confirmed'})
+            self.assertEqual(self.all_written(out), 0)
+            status, body = self.approve(ann, cara, CANCELLED_ORDERS[-1])   # the last 2 goes: both sets of meanings go back, each with its type, and what stands on 订单 (the relation, the count, the action)
+            self.assertEqual((status, body.get('state'), body.get('recheck_error')), (200, 'approved', None), body)
+            self.assertEqual(set(self.states(out, *self.MOVED_BY_CODE).values()), {'needs_look'})
+            for person in (bob, admin, cara):   # who confirmed all seven last; an admin; the approver, who may confirm all seven
+                notice = self.told_once(person, ('meaning', 'type', 'relation', 'derived', 'action'), 6)
+                self.assertIn('数据变了', notice['text'])
+            notice = self.told_once(dan, ('meaning', 'type', 'action'), 4)   # 客户 kept from him: the meanings, the types and the action, not the relation nor the count on 客户
+            self.assertNotIn('订单属于客户', notice['text'])
+            self.assertEqual(len(self.written(out, ids['dan'])), 1)
+            for name in ('ann', 'vera'):   # the proposer and submitter; a viewer
+                self.assertEqual(self.notices(team[name]), [], name)
+                self.assertEqual(self.written(out, ids[name]), [], name)
+
+    def test_an_approved_action_whose_notices_cannot_all_be_written_still_moves_what_it_sent_back_and_answers(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.code_action(team)
+            self.approve_all_but_the_last(team['ann'], team['cara'])
+            with self.broken_notices():
+                status, body = self.approve(team['ann'], team['cara'], CANCELLED_ORDERS[-1])
+            self.assertEqual((status, body.get('state'), body.get('recheck_error')), (200, 'approved', None), body)
+            self.assertEqual(set(self.states(out, *self.MOVED_BY_CODE).values()), {'needs_look'})
+            self.assertEqual(self.all_written(out), 0)
+
+    # --- a pipeline run with two outputs --------------------------------------------------------------------------------------------------------------
+
+    def two_outputs_read(self, team):
+        """A pipeline that copies 订单 to 订单甲 and 订单乙, run and confirmed, and a type with its 状态码 meanings on each copy, confirmed; then 订单 is uploaded with
+        its codes shifted, and Bob confirms the pipeline and the two types again on it. The next run is what moves the copies' definitions."""
+        ann, bob = team['ann'], team['bob']
+        self.assertEqual(ann.post(PIPELINES, {'name': '两份副本', 'description': '订单抄两份', 'spec': TWO_COPIES})[0], 200)
+        status, body = ann.post(f'{PIPELINES}/run', {'id': '两份副本'})
+        self.assertEqual((status, body.get('status')), (200, 'success'), body)
+        self.confirm_pipeline(bob)
+        for t in (COPY_A, COPY_B):
+            self.assertEqual(ann.post('/api/workspace/types', t)[0], 200, t['english_name'])
+            self.confirm_type(bob, t['english_name'], ('状态码',))
+        self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [shifted_orders_csv()]})[0], 200)   # the pipeline goes back, and the types that stand on it
+        self.confirm_pipeline(bob)
+        for t in (COPY_A, COPY_B):
+            self.confirm_type(bob, t['english_name'])
+
+    def confirm_pipeline(self, bob):
+        shown = bob.get(f'{PIPELINES}/{quote("两份副本")}')[1]
+        status, body = bob.post(f'{PIPELINES}/confirm', {'id': '两份副本', 'version': shown['version'], 'seen': {'inputs': shown['inputs_now']}})
+        self.assertEqual(status, 200, body)
+
+    COPIES = ('enum:order_a:状态码', 'objtype:order_a', 'enum:order_b:状态码', 'objtype:order_b')
+
+    def test_a_pipeline_run_whose_two_outputs_each_send_confirmed_definitions_back_tells_each_person_once_for_the_run(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob, cara, dan, vera, admin = (team[k] for k in ('ann', 'bob', 'cara', 'dan', 'vera', 'admin'))
+            self.two_outputs_read(team)
+            ids = self.ids(admin)
+            # the first copy is Ann's only now, so kept from Bob, who confirmed it last; the second from Dan. What moves first in the run is the first copy's
+            self.assertEqual(admin.post('/api/workspace/permissions', {'type': 'order_a', 'visible_to': [ids['ann']]})[0], 200)
+            self.assertEqual(admin.post('/api/workspace/permissions', {'type': 'order_b', 'visible_to': [ids['ann'], ids['bob'], ids['cara']]})[0], 200)
+            self.assertEqual(set(self.states(out, *self.COPIES).values()), {'confirmed'})
+            before = {name: len(self.written(out, ids[name])) for name in ('ann', 'bob', 'cara', 'dan', 'vera', 'root')}
+            status, run = ann.post(f'{PIPELINES}/run', {'id': '两份副本'})
+            self.assertEqual((status, run.get('status')), (200, 'success'), run)
+            self.assertEqual([(w['dataset'], w['recheck_error']) for w in run['outputs']], [('订单甲', None), ('订单乙', None)])
+            self.assertEqual(set(self.states(out, *self.COPIES).values()), {'needs_look'})   # both meanings and both types, on two outputs
+            self.assertEqual(self.asked(out, 'enum:order_a:状态码'), {ids['root']})   # who may confirm the first copy's meanings: only the admin
+            self.assertEqual(self.asked(out, 'enum:order_b:状态码'), {ids['bob'], ids['cara'], ids['root']})
+            fresh = {name: self.written(out, ids[name])[n:] for name, n in before.items()}
+            self.assertEqual(len(fresh['root']), 1)   # one notice for the run, not one per output
+            self.assertEqual(fresh['bob'], ['enum:order_b:状态码'])   # he confirmed the first copy last, but may not see it now: told of the second only
+            self.assertEqual(fresh['cara'], ['enum:order_b:状态码'])
+            for name in ('ann', 'dan', 'vera'):   # the proposer; a builder kept from both copies; a viewer
+                self.assertEqual(fresh[name], [], name)
+            listed = {name: self.notices(team[name] if name != 'root' else admin) for name in ('bob', 'cara', 'root')}
+            self.says_more(listed['root'][0], 3)
+            for name in ('bob', 'cara'):
+                self.assertEqual(listed[name][0]['definition']['id'], 'order_b')
+                self.says_more(listed[name][0], 1)
+                self.assertNotIn('订单甲', listed[name][0]['text'])
+            # the second copy kept from Cara since: her notice is no longer hers to read, though it is still in the table
+            self.assertEqual(admin.post('/api/workspace/permissions', {'type': 'order_b', 'visible_to': [ids['ann'], ids['bob']]})[0], 200)
+            self.assertNotIn('order_b', [n['definition']['id'] for n in self.notices(cara)])
+            self.assertIn('enum:order_b:状态码', self.written(out, ids['cara']))
+            self.assertEqual(len(self.notices(bob)), len(listed['bob']))
+
+    def test_a_pipeline_run_whose_notices_cannot_all_be_written_still_writes_both_outputs_moves_their_readers_and_answers(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            self.two_outputs_read(team)
+            before = self.all_written(out)
+            with self.broken_notices():
+                status, run = team['ann'].post(f'{PIPELINES}/run', {'id': '两份副本'})
+            self.assertEqual((status, run.get('status')), (200, 'success'), run)
+            self.assertEqual([(w['dataset'], w['recheck_error']) for w in run['outputs']], [('订单甲', None), ('订单乙', None)])
+            self.assertEqual(set(self.states(out, *self.COPIES).values()), {'needs_look'})
+            self.assertEqual(self.all_written(out), before)
