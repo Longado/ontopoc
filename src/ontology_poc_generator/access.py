@@ -120,6 +120,7 @@ PERSON_ONLY_POSTS = (
     '/api/workspace/actions/decide',          # approve (or reject) a submitted change: one route, decided before the body is read
     '/api/workspace/queue/confirm',           # any of the above from the review queue
     '/api/workspace/queue/confirm-group',     # what one upload moved, confirmed together
+    '/api/workspace/checked',                 # "checked by <person>" on a board card or a saved answer: the mark carries a person's name
 )
 
 
