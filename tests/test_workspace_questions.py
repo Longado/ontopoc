@@ -121,7 +121,7 @@ class QuestionTests(SigningTestCase):
             self.assertEqual([(d['kind'], d['name'], d['state'], d['who_can_confirm']) for d in refused['refusal']['definitions']], [('view', '有效订单', 'checked', ['Bob', '管理员'])])
             self.assertIn('视图「有效订单」', refused['reason'])
             self.confirm_view(bob, 'order', '有效订单')
-            status, body = self.ask(ann, '有效订单有多少？')
+            status, body = self.ask(ann, '有效订单一共下了几单？')   # not only names and "how many": code would answer that one without the model
             self.assertEqual((status, body['status'], body['answer']['total']), (200, 'answered', 144))
             self.assertEqual((CANCELLED, len(ORDERS)), (16, 160))   # 160 planted orders, 16 cancelled: 144 are left
             self.assertEqual([(d['kind'], d['name'], d['confirmed_by'], d['state']) for d in body['definitions']], [('type', '订单', 'Bob', 'confirmed'), ('view', '有效订单', 'Bob', 'confirmed')])
@@ -197,7 +197,7 @@ class QuestionTests(SigningTestCase):
             self.confirm_view(bob, 'order', '有效订单')
             self.assertEqual(ann.post('/api/workspace/types/privacy', {'id': 'order', 'column': '状态码', 'hide_values': True})[0], 200)
             self.assertEqual(ann.get('/api/workspace/ask')[1]['views'], [])
-            self.ask(ann, '订单有多少？')
+            self.ask(ann, '订单一共下了几单？')
             self.assertNotIn('definitions', model.requests[0])   # neither the meaning nor the view that would tell it
 
     def test_a_viewers_scope_leaves_out_unconfirmed_and_hidden_types_and_questions_are_each_persons_own(self):
@@ -452,7 +452,7 @@ class QuestionTests(SigningTestCase):
             team = self.team(base)
             self.assertEqual(team['ann'].post('/api/workspace/types', product)[0], 200)
             self.confirm(team['bob'], 'product')
-            self.assertEqual(self.ask(team['ann'], '产品有多少？')[0], 200)
+            self.assertEqual(self.ask(team['ann'], '产品一共有几种？')[0], 200)
             sent = json.dumps(model.requests[0], ensure_ascii=False)
             planted_products = planted.planted_bundle()['sources']['产品']['records']
             for r in planted_products:

@@ -1,6 +1,7 @@
 """The demo workspace after a person changes the confirmed view Valid orders, and after an upload sends Order back for a second look: what a guest and a builder
 are told. A question that names a view which is not confirmed now is refused before the model, naming it and who it waits for (a viewer only for a view that was
-confirmed once); a question that names no view is answered from the model's own filter on the confirmed meanings, and nothing in the answer says a view was used;
+confirmed once); a question that names no view (有效订单 is not the name of Valid orders) gets every row as its number, since the question does not say the model's filter,
+and nothing in the answer says a view was used;
 the board says the view waits and for whom; a guest whose scope is empty after an upload is told what waits and for whom; a type whose key check fails is not
 counted or offered as one a builder can confirm now. Numbers are those of docs/pilot/sample/orders.csv."""
 import json
@@ -126,17 +127,19 @@ class ChangedViewTests(unittest.TestCase):
         line = next(d for d in body['refusal']['definitions'] if d['kind'] == 'view')
         self.assertEqual((line['name'], line['who_can_confirm']), ('Valid orders', ['Demo builder']))
 
-    def test_a_question_that_names_no_view_is_answered_from_the_models_filter_and_claims_no_view(self):
+    def test_a_question_that_names_no_view_is_not_answered_from_the_models_own_filter_and_claims_no_view(self):
         self.demo.model.item = {'reasoning': 'not cancelled or refunded', 'query': ALL_BUT, 'definitions_used': ALL_BUT_USED}
         try:
             status, body = a_guest(self.demo.base).call('POST', '/api/workspace/ask', {'question': '有效订单的总金额是多少？'})
         finally:
             self.demo.model.item = {'reasoning': 'test'}
         self.assertEqual(status, 200, body)
-        self.assertEqual((body['status'], body['answer']['measure']['value']), ('answered', 124790), body.get('reason'))   # 114 orders: neither 119,810 nor 109,040
+        self.assertEqual((body['status'], body['answer']['measure']['value']), ('answered', 162960), body.get('reason'))   # every order: the question says neither Cancelled nor Refunded
         self.assertNotIn('view', [d['kind'] for d in body['definitions']])
         self.assertFalse((body.get('evidence') or {}).get('views'))
-        self.assertIn('NOT IN', body['query_text'])   # the filter the caliber line quotes as the model's
+        self.assertNotIn('WHERE', body['query_text'])
+        self.assertEqual([d['name'] for d in body['not_applied']], ['status_code'])
+        self.assertNotIn('beside', body)   # Valid orders waits for confirming: it is not beside the number either
 
     def test_a_view_nobody_ever_confirmed_is_not_named_to_a_guest(self):
         admin = self.demo.admin()

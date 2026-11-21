@@ -146,7 +146,7 @@ class SizeTests(AgentCase):
             replies = self.mcp(base, self.token_for(team['admin'], 'ann')['token'], [('ontopoc_query', {'text': 'SELECT count(o) FROM (o:订单)'}), ('describe_definitions', {}),
                                                                                      ('describe_definitions', {'types': ['订单']})])
             size = lambda r: len(json.dumps(self.payload(r), ensure_ascii=False))
-            self.assertLess(size(replies[10]), 250)   # was 424: the compiled query and the confirmation times are gone
+            self.assertLess(size(replies[10]), 330)   # was 424: the compiled query and the confirmation times are gone; the confirmed view beside the count is part of it now
             self.assertLess(size(replies[11]), 3900)   # was 4,620 on this world; the rest is who confirmed what and the refusal rules, which stay
             self.assertLess(size(replies[12]), size(replies[11]) * 2 // 3)
 

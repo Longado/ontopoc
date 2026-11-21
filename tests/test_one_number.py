@@ -21,7 +21,8 @@ from tests.test_demo_view_waits import Seeded, change_the_view
 from tests.test_derived_view_exact import with_orphan
 from tests.test_object_types import ORDER, VALID
 from tests.test_two_person import SigningTestCase
-from tests.test_workspace_questions import ALL_ORDERS, AskModel, QuestionTests
+from tests import test_workspace_questions as planted_questions
+from tests.test_workspace_questions import ALL_ORDERS, AskModel
 
 _KEPT = (demo_mode.GUEST_PER_ADDRESS, ask_budget.GUEST_LIMIT, ask_budget.PERSON_LIMIT, ask_budget.demo_daily_asks)
 
@@ -36,7 +37,8 @@ def tearDownModule():
 
 class Planted(SigningTestCase):
     """The helpers of the planted-table Q&A tests, without their tests."""
-    team, confirm, confirmed_orders, ask, confirm_view = QuestionTests.team, QuestionTests.confirm, QuestionTests.confirmed_orders, QuestionTests.ask, QuestionTests.confirm_view
+    _helpers = planted_questions.QuestionTests
+    team, confirm, confirmed_orders, ask, confirm_view = _helpers.team, _helpers.confirm, _helpers.confirmed_orders, _helpers.ask, _helpers.confirm_view
 
 
 SAMPLE = Path(__file__).resolve().parents[1] / 'docs' / 'pilot' / 'sample'
@@ -165,10 +167,9 @@ class DemoTests(unittest.TestCase):
     def test_a_question_that_names_the_view_gets_the_views_number_whatever_filter_the_model_writes_in_its_place(self):
         replies = {
             'applies the view': [item(used=[{'id': 'Valid orders', 'direction': 'include', 'basis': 'Valid orders'}])],
-            'writes nothing about it': [item()],
             'writes its own filter instead, saying it': [item(leaving_out('Cancelled', 'Refunded'), excluded('Cancelled', 'Refunded', basis='Valid orders'))],
             'writes its own filter instead, saying nothing': [item(leaving_out('Cancelled', 'Refunded'))],
-            'returns nothing usable once': ['not json', item()],
+            'returns nothing usable once': ['not json', item(used=[{'id': 'Valid orders', 'direction': 'include', 'basis': 'Valid orders'}])],
         }
         for case, said in replies.items():
             with self.subTest(case=case):
@@ -178,6 +179,11 @@ class DemoTests(unittest.TestCase):
                 self.assertIsNone(body.get('beside'))   # the question named a view: nothing beside it
         body, asked = self.ask('What is the total amount of Valid orders?', 'not json')   # in the names only: code reads it
         self.assertEqual((headline(body), asked), (('answered', VALID_AMOUNT, VALID_COUNT), 0))
+        for case, said in {'writes nothing about it': item(), 'writes the other rows': item({**SUM_AMOUNT, 'where': [{'field': 'status_code', 'equals': 'Cancelled'}]})}.items():
+            with self.subTest(case=case):   # no word on the view, or a filter that goes against it: code does not guess the direction, it refuses
+                body, _ = self.ask('Valid orders 的总金额是多少？', said)
+                self.assertEqual(body['status'], 'definition_unmet', body)
+                self.assertNotIn('answer', body)
 
     def test_a_view_said_in_another_language_than_its_name_never_gives_the_models_own_filter_as_the_headline(self):
         """有效订单 is not the name of Valid orders, and code cannot tell that it means it. The model's own filter is never the headline: when it quotes the question's
@@ -255,7 +261,7 @@ class PilotTests(pilot.PilotFoundation):
         every_customer = {'start': 'customer', 'where': [{'field': 'tier', 'equals': ['A', 'B', 'C']}], 'via': [], 'group_by': None, 'share': None,
                           'measure': {'field': '有效订单金额', 'op': 'sum'}}   # a filter every customer matches, which the question never says
         for case, said in {'reads the orders through the view': item(used=view), 'reads the orders and writes the filter itself': item(leaving_out('新建', '已取消', '已退款'), []),
-                           'reads the orders and says nothing of the view': item()}.items():
+                           'reads the orders and leaves out less than the view': item(leaving_out('已取消'), [])}.items():
             with self.subTest(case=case):
                 body = self.ask('有效订单的总金额是多少？', said, orders=orders)
                 self.assertEqual((body['status'], body['answer']['measure']['value']), ('answered', rows), body.get('reason'))
@@ -389,9 +395,10 @@ class QueryTextTests(Planted):
                 return self.body
         body = {'status': 'answered', 'answer': {'total': 160}, 'beside': {'views': [{'name': '有效订单', 'answer': {'total': 144}, 'confirmed_by': 'Bob'}], 'more': []},
                 'not_applied': [{'kind': 'condition', 'name': 'city', 'why': 'x'}], 'definitions': [], 'query_text': 'SELECT count(o) FROM (o:订单)'}
-        self.assertEqual(mcp_server.ask(Session(body), {'question': 'q'})['beside'], body['beside'])
+        lean = {'views': [{'name': '有效订单', 'confirmed_by': 'Bob', 'answer': {'total': 144}}]}   # no id or version for an agent
+        self.assertEqual(mcp_server.ask(Session(body), {'question': 'q'})['beside'], lean)
         self.assertEqual(mcp_server.ask(Session(body), {'question': 'q'})['not_applied'], body['not_applied'])
-        self.assertEqual(mcp_server.ontopoc_query(Session(body), {'text': 'SELECT count(o) FROM (o:订单)'})['beside'], body['beside'])
+        self.assertEqual(mcp_server.ontopoc_query(Session(body), {'text': 'SELECT count(o) FROM (o:订单)'})['beside'], lean)
 
 
 if __name__ == '__main__':
