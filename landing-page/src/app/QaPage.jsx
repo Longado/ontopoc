@@ -11,7 +11,7 @@ import { MeaningsCard, NoModel, PlanCard, ProposalCard } from "./AssistantCards.
 import { filterByMode, filterModes, pastTurn, railItems, scopeOf } from "./assistantHistoryModel.js";
 import { PastTurn, modeLabel } from "./PastTurn.jsx";
 import { timeText } from "./format.js";
-import { answerView, besideView, criteriaLine, dataAsOf, definitionHref, historyView, namedLines, notAppliedLines, isAnswer, isThenAnswer, paramsIn, queryExample, queryParams, queryRecord, rangeNotes, readText, staleHeading, staleLines, standingText, timeWarning } from "./qaModel.js";
+import { answerView, besideView, criteriaLine, dataAsOf, definitionHref, historyView, namedLines, isAnswer, isThenAnswer, paramsIn, queryExample, queryParams, queryRecord, rangeNotes, readText, staleHeading, staleLines, standingText, timeWarning } from "./qaModel.js";
 import { groupByDay, isThinking, newTurn, savedTurn, sendsOn, settle, suggestions, threadTitle } from "./chatModel.js";
 import { ObjectGraph } from "./ObjectGraph.jsx";
 import { State } from "./TypesPage.jsx";
@@ -158,7 +158,6 @@ export function Basis({ record, onEdit }) {
             </dd>
           </>
         )}
-        {notAppliedLines(record).length > 0 && <><dt>{t("ask.basis.notApplied")}</dt><dd>{notAppliedLines(record).map((line) => <span className="block" key={line}>{line}</span>)}</dd></>}
         {read.length > 0 && <><dt>{t("ask.basis.read")}</dt><dd>{read.map((line) => <span className="block" key={line}>{line}</span>)}</dd></>}
         {record.limited_by_rule?.length > 0 && (
           <>

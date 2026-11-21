@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { answerView, besideView, definitionHref, notAppliedLines, isAnswer, namedLines, isThenAnswer, queryExample, queryParams, queryRecord, rangeNotes, readText, scopeText, standingText, staleHeading, staleLines } from "./qaModel.js";
+import { answerView, besideView, definitionHref, isAnswer, namedLines, isThenAnswer, queryExample, queryParams, queryRecord, rangeNotes, readText, scopeText, standingText, staleHeading, staleLines } from "./qaModel.js";
 
 const types = [{ id: "order", name: "订单" }];
 
@@ -174,10 +174,4 @@ test("an answer that names no view shows each confirmed view's own number beside
   assert.deepEqual(grouped.lines.map((l) => [l.name, l.text]), [["有效订单", ""]]);
   assert.equal(grouped.more, "还有 2 个确认过的视图：视图6、视图7");
   assert.equal(besideView({ ...record, beside: undefined }), null);
-});
-
-test("what the model wrote and code did not apply is listed under the basis", () => {
-  assert.deepEqual(notAppliedLines({ not_applied: [{ kind: "condition", name: "city", values: ["上海"], why: "问题里没有说这个条件，没有按它算" }, { kind: "view", name: "有效订单", why: "问题里没有说这个视图的名字，没有按它算" }] }),
-    ["city = 上海：问题里没有说这个条件，没有按它算", "有效订单：问题里没有说这个视图的名字，没有按它算"]);
-  assert.deepEqual(notAppliedLines({}), []);
 });

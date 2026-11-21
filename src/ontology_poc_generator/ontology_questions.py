@@ -18,7 +18,7 @@ from ontology_poc_generator.lang import english, tr
 
 ontopoc_query.SAY = tr   # the query language says its messages in the asker's language (it imports nothing itself)
 
-QUESTION_PROMPT_VERSION = 'company_questions.v19'
+QUESTION_PROMPT_VERSION = 'company_questions.v18'
 ENGLISH_NOTE = '\n\nThe person asking works in English: write the "reasoning" of each question in English.'   # appended only for an English asker
 QUESTION_COUNT = 6          # ponytail: one screen of questions; make it a request field if readers want more
 MAX_GROUPS = 200   # ponytail: a result must fit the browser's local storage (~5 MB) and stay readable; the count of all groups is kept
@@ -58,7 +58,7 @@ Return ONLY a JSON object:
                 "terms": [{{"sign": 1 | -1, "factors": [{{"field": "<attribute path of that type>", "complement": true | false}}]}}]}}
               (only when you propose a new derived measure),
     "definitions_used": [{{"id": "<an id exactly as listed in `definitions`>", "direction": "include" | "exclude" | "mention",
-                         "basis": "<the words of the question that refer to it, copied exactly from the question>"}}],
+                         "basis": "<the words of the question that refer to it, in Chinese>"}}],
     "missing": "ontology" | "query_language"   (only when query is null),
     "unmatched_relation": {{"relation": "<relation key>", "direction": "many_without_one" | "one_without_many", "other_conditions": true | false}}
                           (only for a question of the kind described below)
@@ -844,7 +844,7 @@ def value_said(question: str, value) -> bool:
 
 def flag_unasked_filters(result: dict, question: str) -> dict:
     """Mark the filters whose value the question never says (value_said): the model added them on its own. A hint for the person checking the answer, not a
-    refusal (the workspace's questions do not apply such a filter at all: workspace_questions._keep_asked)."""
+    refusal."""
     filters = (result.get('evidence') or {}).get('filters')
     if not filters:
         return result

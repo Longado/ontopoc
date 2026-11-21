@@ -7,9 +7,9 @@ current version of each dataset. The model gets the catalog (names, typed proper
 a column a builder marked "don't send values" goes without its values and meanings.
 
 A question that names a definition which is not confirmed (proposed, checked, needs another look, sent back) is refused before the model is asked, naming it,
-why, and who could confirm it; there is no answer from the old definition. Code, not the model, decides which rows a number covers (see "one question, one
-number" below): a confirmed view only when the question says its name, a condition only when the question says it, and the confirmed views the question did not
-name each with their own number beside it. Every answer is stored with the definitions it used (their version and who confirmed
+why, and who could confirm it; there is no answer from the old definition. Two things about which rows a number covers
+are decided by code (see "which rows a question's number covers" below): a view the question names is applied by its confirmed conditions, and when the question
+names no view and the model applies one view or nothing, the number covers every row with the confirmed views beside it. Every answer is stored with the definitions it used (their version and who confirmed
 them) and the dataset versions it read; reopened later it says whether a dataset has a newer version and whether the asker may still see every type it used.
 """
 from __future__ import annotations
@@ -28,8 +28,7 @@ from ontology_poc_generator.object_types import (
 from ontology_poc_generator.ontopoc_query import QueryError, canonical as canonical_query, compile_query, is_graph, parse as parse_query, to_text
 from ontology_poc_generator.object_views import describe, kept_positions, view_visible, view_waiting_for_viewer
 from ontology_poc_generator.agent_harness import ask_model
-from ontology_poc_generator.ontology_questions import RANGES, _catalog, _resolve_field, answer_query, ask_questions, graph_objects, value_said
-from ontology_poc_generator.pipeline_expr import NUMBER_TYPES
+from ontology_poc_generator.ontology_questions import _catalog, _resolve_field, answer_query, ask_questions, graph_objects, value_said
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal
 from ontology_poc_generator.recognition import model_failure_text
 from ontology_poc_generator.relation_checks import unmatched_answer, with_relation_gaps
@@ -444,8 +443,8 @@ def _engine_views(conn, sc: dict, alias: dict, sources: dict) -> list[dict]:
 
 def _catalog_for_model(conn, sc: dict, parts: dict, question: str | None = None) -> tuple[dict, list[dict]]:
     """(the catalog the model reads, the definitions it is told). Names, typed properties, meaning labels, relation keys and the values of columns with few
-    values; the key columns' values (they identify objects) and every value and meaning of a column marked "don't send values" are left out. Of the views, only
-    those the question names: one it does not name is not applied, so the model is not asked to choose it."""
+    values; the key columns' values (they identify objects) and every value and meaning of a column marked "don't send values" are left out. A view whose
+    conditions read such a column is told only by its name, and only when the question names it, so the model can say how the question uses it."""
     ontology, bundle, alias = parts['ontology'], parts['bundle'], parts['alias']
     hidden = {f'{alias[t["dataset"]["name"]]}.{c}' for k, t in sc['types'].items() for c in hidden_values(conn, type_id(k))}
     sent = {f: m for f, m in bundle['meanings'].items() if f not in hidden}
@@ -463,7 +462,7 @@ def _catalog_for_model(conn, sc: dict, parts: dict, question: str | None = None)
             if f'{alias[t["dataset"]["name"]]}.{a["path"]}' in hidden or a['path'] in t['content']['key']:
                 a.pop('values', None)
                 a.pop('meanings', None)
-    named = [v for v in parts['views'] if question is not None and _named(question, v['name']) or question is None and not v['kept_back']]
+    named = [v for v in parts['views'] if not v['kept_back'] or question is not None and _named(question, v['name'])]
     withheld = tr('一个确认过的视图；它的条件读的列不把取值发给模型，所以这里不写它留下哪些行', 'A confirmed view; its conditions read a column whose values are not sent to the model, so which rows it keeps is not said here')
     return catalog, definition_catalog(sent, [{**v, 'from': withheld} if v['kept_back'] else v for v in named])
 
@@ -597,7 +596,7 @@ def _finish(conn, user: dict | None, sc: dict, parts: dict, item: dict, applied:
     query = item.get('query') if isinstance(item.get('query'), dict) and item['query'].get('start') in sc['types'] else None
     read, walked, fields = _reads(sc, parts, query, item.get('definitions_used') or [], spec) if item['status'] in ('answered', 'no_data') else ([], [], set())
     lines, types, datasets = _used_definitions(conn, sc, parts, read, walked, fields, applied if item['status'] in ('answered', 'no_data') else [])
-    result = {key: item[key] for key in ('status', 'answer', 'path', 'reason', 'reasoning', 'query', 'evidence', 'understood', 'unmet', 'definitions_used', 'beside', 'not_applied') if item.get(key) is not None}
+    result = {key: item[key] for key in ('status', 'answer', 'path', 'reason', 'reasoning', 'query', 'evidence', 'understood', 'unmet', 'definitions_used', 'beside') if item.get(key) is not None}
     if item['status'] in ('ontology_gap', 'query_limit') and not item.get('from_relation_check'):
         result['refusal'] = {'kind': 'not_in_scope', 'in_scope': [t['content']['name'] for t in sc['types'].values()], 'left_out': [*_unsettled(conn, user), *_unwalkable(sc)]}
     elif item['status'] == 'definition_unmet':
@@ -619,10 +618,10 @@ def _answered(conn, gateway, user: dict | None, question: str, sc: dict) -> dict
     spoken = {}   # what the model said the question asks of a relation, kept for the definitions an answer from the relation check stands on
 
     def answerer(query, asked, used):
-        """The model's query as code lets it stand (_keep_asked), run by the engine; the query and definitions kept with the answer are those it ran."""
-        query, used, dropped, unmet = _keep_asked(question, sc, parts, query, used)
+        """The model's query as code lets it stand (_one_view), run by the engine; the query and definitions kept with the answer are those it ran."""
+        query, used, unmet, every_row = _one_view(question, sc, parts, query, used)
         got = refusal(unmet) if unmet else answer(query, asked, used)
-        return {**got, 'query': query, 'definitions_used': used, **({'not_applied': dropped} if dropped else {})}
+        return {**got, 'query': query, 'definitions_used': used, 'every_row': every_row}
 
     def unmatched(spec):
         spoken['spec'] = spec
@@ -638,7 +637,7 @@ def _answered(conn, gateway, user: dict | None, question: str, sc: dict) -> dict
         item = {'question': question, 'reasoning': '', 'query': None, 'status': 'no_query', 'reason': _no_query_reason(sc)}
         return {**_finish(conn, user, sc, parts, item, []), 'model': asked['model']}
     item, applied = asked['items'][0], list(answer.applied)
-    item = {**item, 'beside': _beside(sc, parts, answer, item, question, applied)}
+    item = {**item, 'beside': _beside(sc, parts, answer, item, question, applied) if item.get('every_row') else None}
     return {**_finish(conn, user, sc, parts, item, applied, spoken.get('spec')), 'model': asked['model']}
 
 
@@ -650,149 +649,107 @@ def _no_query_reason(sc: dict) -> str:
               f'No query that could be run came back this time, so there is no answer and no number. The question may be too broad: say what to count or add up, and by which definition, and ask again. Object types you can ask about: {types}' + (f'; confirmed views: {views}' if views else '') + '.')
 
 
-# --- one question, one number ------------------------------------------------------------------------------------------------------------------------------
-# Code, not the model, decides which rows a question's number covers, so the same question on the same data gives the same number every time:
-#   - a confirmed view is applied only when the question says its name (_named, as a refusal hears a name: a whole word for a name in letters, with its plural or
-#     singular; a substring, whatever the case, for a name with Chinese in it). A named view is applied when the model says the question includes it, or when
-#     the conditions the model wrote on the view's columns go the view's way (they leave out only what the view leaves out, or keep only what it keeps): the
-#     view's own conditions then stand in place of the model's. With no word on it either way it is refused as before: code does not read the question for
-#     negation ("不属于有效订单的" asks for the other rows);
-#   - a condition the model wrote (an "equals" or "not equals") is applied only when the question says it in its own words: its value (value_said), or, for a
-#     code column, one of its confirmed meanings by name (also without a leading 已: 取消 for 已取消). Any other is not applied and is listed in `not_applied`.
-#     When the model says the question asks for a confirmed meaning or view and quotes words of the question that code cannot match because the name is
-#     written in another language than the question (已取消 for Cancelled), the answer is refused, saying the confirmed name to ask with, never answered
-#     with the model's own reading. Ranges (dates, amounts) are applied as the model wrote them;
-#   - when the question names no view, the number covers every row the asker may read, and each confirmed view on the type it counts that the asker may see
-#     (scope: never one they may not see) gets its own number beside it, worked out by code (`beside`, at most BESIDE_LIMIT, the rest by name); a grouped or
-#     top-N answer lists the names only;
-#   - a plain question (the names of one type, of one of its number properties and of views on it, and words that only ask for the number) is read by code
-#     with no model at all (_code_reading).
+# --- which rows a question's number covers --------------------------------------------------------------------------------------------------------------
+# Two things code decides, on top of how the model's query is otherwise run and checked:
+#   1. The question names no view, and the model's reply applies exactly one confirmed view on the type it counts (by its name, or by writing exactly that
+#      view's conditions) or no condition at all: the number covers every row the asker may read, and each confirmed view on that type the asker may see has
+#      its own number beside it (`beside`, at most BESIDE_LIMIT, the rest by name; names only for a grouped or top-N answer). When the question itself says a
+#      meaning the view's conditions use ("不算已取消的…"), the view is what was asked for and is applied as the model wrote it.
+#   2. The question names a confirmed view (_named, the match a refusal uses) and the model's reply includes it or writes conditions that go the view's way:
+#      the view's confirmed conditions are applied in place of the model's. Code never applies a view on its name alone, so a view called "All" is not applied
+#      to "all orders" because the word is there; a named view the model says nothing about, or goes against, is refused.
+# Any other condition the model writes, a range included, is applied as the model wrote it, and the line under the answer says it is the model's filter.
 
 BESIDE_LIMIT = 5
-_FILLER = sorted({'是多少', '有多少', '多少个', '一共有', '一共', '总共', '总计', '合计', '加起来', '数量', '几个', '多少', '请问', '全部', '所有', '现在', '目前',
-                  '的', '是', '有', '个', '共', '总', '吗', '呢', '了',
-                  "what's", 'whats', 'what', 'is', 'are', 'was', 'the', 'a', 'an', 'total', 'sum', 'of', 'how', 'many', 'much', 'all', 'there', 'number',
-                  'count', 'overall', 'in', 'do', 'we', 'have', 'tell', 'me', 'please', 'our'}, key=len, reverse=True)   # words that only ask for the number
-_COUNT_WORDS = ('有多少', '多少个', '几个', '数量', 'how many', 'number of', 'count')
-_SCRIPTS = (('latin', re.compile('[A-Za-z]')), ('cjk', re.compile('[㐀-鿿]')))
-
-
-def _scripts(text) -> set:
-    return {name for name, letters in _SCRIPTS if letters.search(str(text))}
-
-
-def _cut(text: str, name: str) -> str:
-    """The text with each place that says this name (as _named hears it) blanked out."""
-    return re.sub(_name_pattern(name), ' ', text, flags=re.I) if name else text
-
-
-def _leftover(text: str) -> str:
-    """What the text says besides the words that only ask for the number ("是多少", "what is the total"), without spaces and punctuation: '' when nothing."""
-    out = text.casefold()
-    for word in _FILLER:
-        out = re.sub(rf'(?<![a-z0-9]){re.escape(word)}(?![a-z0-9])', ' ', out) if word.isascii() else out.replace(word, ' ')
-    return re.sub(r'[\W_]+', '', out)
 
 
 def _says_label(question: str, label) -> bool:
-    label = str(label)
-    return value_said(question, label) or _named(question, label) or (label.startswith('已') and len(label) > 2 and value_said(question, label[1:]))
+    return value_said(question, str(label)) or _named(question, str(label))
 
 
-def _quoted(question: str, basis) -> bool:
-    """The model's words for a definition are a part of the question, and the question says something besides them (so they are not the whole question,
-    such as "销售额" in "销售额是多少", which names what is measured)."""
-    words = str(basis or '').strip()
-    at = question.casefold().find(words.casefold()) if len(words) >= 2 else -1
-    return at >= 0 and bool(_leftover(question[:at] + ' ' + question[at + len(words):]))
+def _written(start: dict, meanings: dict, w) -> tuple | None:
+    """(column, 'is' | 'is_not', {labels}) for an "equals" or "not equals" condition on a code column of the type counted, else None."""
+    key = 'equals' if isinstance(w, dict) and 'equals' in w else 'not_equals' if isinstance(w, dict) and 'not_equals' in w else None
+    field = _resolve_field(start, w.get('field')) if key else None
+    labels = (meanings.get(field) or {}).get('labels') if field else None
+    if not labels:
+        return None
+    values = w[key] if isinstance(w[key], list) else [w[key]]
+    if not all(isinstance(v, (str, int)) and not isinstance(v, bool) for v in values):
+        return None
+    return field, 'is' if key == 'equals' else 'is_not', {labels.get(str(v), str(v)) for v in values}
 
 
-def _other_language(question: str, name: str, basis) -> bool:
-    """The model says the question asks for this confirmed name with words of the question, and the name is written in letters the question does not use, so
-    code cannot hear it: the question is refused, saying the name, not answered with the model's reading."""
-    return not _scripts(name) <= _scripts(question) and _quoted(question, basis)
+def _leaning(start: dict, meanings: dict, view: dict, where: list) -> list[int] | None:
+    """The positions of the conditions the model wrote on this view's columns, when there are some and each goes the view's way ("not" only labels the view
+    leaves out, "equals" only labels it keeps by an "is" condition); None when there are none or one goes another way."""
+    if not view.get('filters') or view.get('latest'):
+        return None
+    found = []
+    for i, w in enumerate(where):
+        got = _written(start, meanings, w)
+        if got is None or got[0] != f'{view["source"]}.{got[0].partition(".")[2]}' or not any(f['column'] == got[0].partition('.')[2] for f in view['filters']):
+            continue
+        column = got[0].partition('.')[2]
+        theirs = {f['label'] for f in view['filters'] if f['column'] == column and f['op'] == got[1]}
+        if not got[2] <= theirs:
+            return None
+        found.append(i)
+    return found or None
 
 
-def _not_named(question: str, sc: dict, start: str | None, name: str, kind: str, basis) -> dict:
-    views = tr('、', ', ').join(sorted((n for n, v in sc['views'].items() if v['content']['type'] == start), key=str.casefold))
-    more = tr(f'；这个类型上确认过的视图有：{views}，问题里说出它的名字就按它回答', f'. The confirmed views on this type are: {views}; say one by its name to have it applied') if views else ''
-    what = tr('确认过的视图', 'the confirmed view') if kind == 'view' else tr('确认过的含义', 'the confirmed meaning')
-    return {'definition': name, 'kind': kind, 'unasked': True,
-            'why': tr(f'模型把问题里的「{basis}」读成了{what}「{name}」，但问题里没有说这个名字。代码只在问题说出确认过的名字时才用它，请用「{name}」再问一次{more}',
-                      f'the model read "{basis}" in the question as {what} "{name}", but the question does not say that name. Code applies a confirmed definition only when the question says its name: ask again with "{name}"{more}')}
-
-
-def _keep_asked(question: str, sc: dict, parts: dict, query, used) -> tuple:
-    """(query, used, not_applied, unmet): the model's query and its `definitions_used` as code lets them stand for this question (see the top of this section).
-    `used` None: the model gave no words for its conditions (it wrote OntoPoc Query text), so none is refused, only left out."""
+def _one_view(question: str, sc: dict, parts: dict, query, used) -> tuple:
+    """(query, used, unmet, every_row) for the model's reply under the two moves at the top of this section: the query and its `definitions_used` as they are run,
+    the refusal for a named view the reply says nothing about or goes against, and whether the number covers every row with the views beside it."""
     if not isinstance(query, dict):
-        return query, used, [], []
+        return query, used, [], False
     ontology = normalize_proposal(parts['ontology'])
     start = next((t for t in ontology['object_types'] if t['key'] == query.get('start')), None)
-    given = [u for u in used or [] if isinstance(u, dict)]
+    if start is None:
+        return query, used, [], False
     meanings = parts['bundle']['meanings']
     views = {v['name']: v for v in parts['views'] if v['definition'] is not None}
+    given = [u for u in used or [] if isinstance(u, dict)]
+    said = lambda n: [u for u in given if str(u.get('id')) == n]
+    where = list(query.get('where') or [])
     named = sorted((n for n in views if _named(question, n)), key=str.casefold)
-    leaning = [n for n in named if _goes_the_views_way(start, meanings, views[n], query.get('where') or [])] if start else []
-    where, dropped, unmet, asked_for = [], [], [], {}
-    for w in (query.get('where') or []) if start else []:
-        key = 'equals' if isinstance(w, dict) and 'equals' in w else 'not_equals' if isinstance(w, dict) and 'not_equals' in w else None
-        field = _resolve_field(start, w.get('field')) if key else None
-        values = (w[key] if isinstance(w[key], list) else [w[key]]) if field else []
-        if field is None or set(w) & set(RANGES) or not all(isinstance(v, (str, int, float)) and not isinstance(v, bool) for v in values):
-            where.append(w)   # a range, or what the engine will say it cannot read (a field it lacks, a value that is no value): as the model wrote it
-            continue
-        labels = (meanings.get(field) or {}).get('labels') or {}
-        heard = {label for label in labels.values() if label and _says_label(question, label)}
-        kept = [v for v in values if value_said(question, v) or labels.get(str(v)) in heard or str(v) in heard]
-        if kept and len(kept) < len(values):
-            w = {**w, key: kept}
-        elif not kept and not (key == 'not_equals' and heard):   # "none of the other codes" keeps the meanings the question says: that one stands
-            dropped.append({'kind': 'condition', 'name': field.partition('.')[2], 'values': values, 'why': tr('问题里没有说这个条件，没有按它算', 'The question does not say this condition, so it is not applied')})
-            continue
-        where.append(w)
-        asked_for.setdefault(field, set()).update(heard | {labels.get(str(v), str(v)) for v in kept})
-    out = []
-    for u in given:
-        ident = str(u.get('id'))
-        field, eq, label = ident.rpartition('=')
-        if ident in views and u.get('direction') == 'include' and ident not in named:   # a view the question does not name is not applied
-            if _other_language(question, ident, u.get('basis')):
-                unmet.append(_not_named(question, sc, query.get('start'), ident, 'view', u.get('basis')))
-            dropped.append({'kind': 'view', 'name': ident, 'why': tr('问题里没有说这个视图的名字，没有按它算', 'The question does not name this view, so it is not applied')})
-            continue
-        if eq and field in meanings and u.get('direction') in ('include', 'exclude') and label not in asked_for.get(field, set()) and not _says_label(question, label):
-            if _other_language(question, label, u.get('basis')):
-                unmet.append(_not_named(question, sc, query.get('start'), label, 'meaning', u.get('basis')))
-            continue   # a meaning the question does not say: the model's word for it is not taken (a view that leaves it out is not read in its place)
-        out.append(u)
-    out += [{'id': n, 'direction': 'include', 'basis': n} for n in leaning if all(str(u.get('id')) != n for u in out)]   # the view's conditions in place of the model's
-    unmet += [{'definition': n, 'kind': 'view', 'why': tr('问题里说了它，但模型没有说明它是怎么用的，这条查询也没有读它', 'The question names it, but the model did not say how it is used, and the query does not read it')}
-              for n in named if used is not None and all(str(u.get('id')) != n for u in out)]   # never the number over every row for a question that names a view
-    unmet = list({u['definition']: u for u in unmet}.values())
-    return ({**query, 'where': where} if start else query), (out if used is not None or leaning else used), dropped, unmet
-
-
-def _goes_the_views_way(start: dict, meanings: dict, view: dict, where: list) -> bool:
-    """The model wrote conditions on this view's columns, and each goes the view's way: "not" only codes the view leaves out, or "equals" only codes it keeps."""
-    if not view.get('filters') or view.get('latest'):
-        return False
-    found = False
-    for w in where:
-        key = 'equals' if isinstance(w, dict) and 'equals' in w else 'not_equals' if isinstance(w, dict) and 'not_equals' in w else None
-        field = _resolve_field(start, w.get('field')) if key else None
-        source, _, column = (field or '').partition('.')
-        conditions = [f for f in view['filters'] if f['column'] == column] if source == view['source'] else []
-        if not conditions:
-            continue
-        labels = (meanings.get(field) or {}).get('labels') or {}
-        said = {labels.get(str(v), str(v)) for v in (w[key] if isinstance(w[key], list) else [w[key]])}
-        left_out = {f['label'] for f in conditions if f['op'] == 'is_not'}
-        kept = {f['label'] for f in conditions if f['op'] == 'is'} or set(labels.values()) - left_out
-        if not (said <= left_out if key == 'not_equals' else said <= kept):
-            return False
-        found = True
-    return found
+    if named:   # 2: the view's own conditions in place of the model's
+        out, unmet, gone = list(given), [], set()
+        for n in named:
+            at = _leaning(start, meanings, views[n], where)
+            if at:
+                gone |= set(at)
+                out += [] if said(n) else [{'id': n, 'direction': 'include', 'basis': n}]
+            elif not said(n):
+                unmet.append({'definition': n, 'kind': 'view', 'why': tr('问题里说了它，但模型没有说明它是怎么用的，这条查询也没有读它', 'The question names it, but the model did not say how it is used, and the query does not read it')})
+        if gone:
+            replaced = {(f, label) for i in gone for f, _, labels in [_written(start, meanings, where[i])] for label in labels}
+            out = [u for u in out if (str(u.get('id')).rpartition('=')[0], str(u.get('id')).rpartition('=')[2]) not in replaced or u.get('direction') == 'mention']
+        return {**query, 'where': [w for i, w in enumerate(where) if i not in gone]}, out, unmet, False
+    on = {n: v for n, v in views.items() if n in sc['views'] and sc['views'][n]['content']['type'] == query['start']}   # 1: the views the asker may see on the type counted
+    includes = [u for u in given if u.get('direction') == 'include' and str(u.get('id')) in views]
+    declared = [u for u in given if u.get('direction') in ('include', 'exclude') and str(u.get('id')).rpartition('=')[0] in meanings]
+    if not where and not includes and not declared:
+        return query, used, [], True
+    if len(includes) == 1 and str(includes[0]['id']) in on and not where and not declared:
+        view = on[str(includes[0]['id'])]
+        conditions = set()
+    else:
+        if includes:
+            return query, used, [], False
+        written = [_written(start, meanings, w) for w in where]
+        if where and None in written:
+            return query, used, [], False
+        conditions = {(f.partition('.')[2], op, label) for f, op, labels in written for label in labels} if where else \
+            {(str(u['id']).rpartition('=')[0].partition('.')[2], 'is' if u['direction'] == 'include' else 'is_not', str(u['id']).rpartition('=')[2]) for u in declared}
+        exact = [v for v in on.values() if not v.get('latest') and v.get('filters') and {(f['column'], f['op'], f['label']) for f in v['filters']} == conditions]
+        if len(exact) != 1:
+            return query, used, [], False
+        view = exact[0]
+    if any(_says_label(question, f['label']) for f in view.get('filters') or []):   # the question says what the view keeps or leaves out: it was asked for
+        return query, used, [], False
+    rest = [u for u in given if u not in includes and u not in declared]
+    return {**query, 'where': []}, rest, [], True
 
 
 def _beside(sc: dict, parts: dict, answer, item: dict, asked: str, applied: list) -> dict | None:
@@ -818,54 +775,6 @@ def _beside(sc: dict, parts: dict, answer, item: dict, asked: str, applied: list
                 line.update({'answer': got['answer']} if isinstance(got.get('answer'), dict) else {'no_data': True})
         out.append(line)
     return {'views': out, 'more': names[BESIDE_LIMIT:]} if out else None
-
-
-def _code_reading(question: str, sc: dict) -> dict | None:
-    """{'query', 'views', 'said'} for a plain question, read by code with no model: it says the names of views on one type, of one number property of that
-    type (added up) or of the type alone with a word that asks how many (counted), and nothing else besides words that only ask for the number. None otherwise."""
-    rest, said = question, []
-    views = sorted((n for n in sc['views'] if _named(question, n)), key=len, reverse=True)
-    for n in views:
-        rest = _cut(rest, n)
-    props = []
-    for k, t in sc['types'].items():
-        for p in t['content']['properties']:
-            if p['type'] in NUMBER_TYPES and not p['enum'] and p['column'] not in t['content']['key']:
-                names = [x for x in dict.fromkeys((p.get('name') or p['column'], p['column'])) if _named(rest, x)]
-                if names:
-                    props.append((k, p, names))
-    if len(props) > 1:
-        return None
-    for _, p, names in props:
-        for x in sorted(names, key=len, reverse=True):
-            rest = _cut(rest, x)
-        said.append(p.get('name') or p['column'])
-    types = []
-    for k, t in sorted(sc['types'].items(), key=lambda kt: -max(len(kt[1]['content']['name']), len(kt[1]['content']['english_name'] or ''))):
-        names = [x for x in dict.fromkeys((t['content']['name'], t['content']['english_name'])) if x and _named(rest, x)]
-        for x in sorted(names, key=len, reverse=True):
-            rest = _cut(rest, x)
-        if names:
-            types.append(k)
-            said.append(t['content']['name'])
-    on = {sc['views'][n]['content']['type'] for n in views} | {k for k, _, _ in props} | set(types)
-    if _leftover(rest) or len(on) != 1 or (not props and not any(w in question.casefold() for w in _COUNT_WORDS)):
-        return None
-    measure = {'field': props[0][1]['column'], 'op': 'sum'} if props else None
-    return {'query': {'start': on.pop(), 'where': [], 'via': [], 'group_by': None, 'share': None, 'measure': measure}, 'views': sorted(views, key=str.casefold), 'said': [*sorted(views, key=str.casefold), *said]}
-
-
-def _answered_by_code(conn, user: dict | None, question: str, sc: dict, reading: dict) -> dict:
-    """A plain question (_code_reading) answered by the engine as the model's query would be, with no model."""
-    parts = _inputs(conn, sc)
-    answer = _engine(sc, parts, _checked_relations(conn, sc, parts))
-    used = [{'id': n, 'direction': 'include', 'basis': n} for n in reading['views']]
-    names = tr('、', ', ').join(reading['said'])
-    item = {**answer(reading['query'], question, used), 'query': reading['query'], 'definitions_used': used,
-            'reasoning': tr(f'代码直接读了这个问题：它只说了 {names}，没有别的条件，所以没有问模型。', f'Read by code: the question says only {names} and no condition, so no model was asked.')}
-    applied = list(answer.applied)
-    item['beside'] = _beside(sc, parts, answer, item, question, applied)
-    return {**_finish(conn, user, sc, parts, item, applied), 'model': None}
 
 
 # --- OntoPoc Query ---------------------------------------------------------------------------------------------------------------------------------
@@ -940,7 +849,7 @@ def run_text(conn, user: dict | None, text, params=None, beside: bool = False) -
     if blockers:
         result = {**_refused_unsettled(blockers), 'definitions': [], 'types': [], 'datasets': {}, 'steps': [{'name': tr('核对定义', 'Check definitions'), 'text': tr('查询用到的定义还没有确认，没有计算', 'A definition the query uses is not confirmed, so nothing was calculated'), 'failed': True}]}
     else:
-        result = _run_compiled(conn, user, sc, query, beside=beside)
+        result = _run_compiled(conn, user, sc, query, beside=beside and not query['where'])   # a written condition is the writer's: no view beside it
         if result['status'] == 'query_limit':   # what the writer wrote and the engine cannot run (a bound that is no number or date): theirs to fix, said as such
             raise QaRefused(result['reason'])
         result['text'] = to_text(query, query_catalog(sc))
@@ -1077,9 +986,7 @@ def _answered_in_text(conn, gateway, user: dict | None, question: str, sc: dict)
     if is_graph(text):   # a question is answered with a number; a graph is for 写查询
         item = {'status': 'query_limit', 'reason': tr('模型写了 SELECT GRAPH：问答只回答数，要看对象和关系，请在“写查询”里写', 'The model wrote SELECT GRAPH. Questions only answer with numbers. To see objects and relations, write the query yourself'), 'reasoning': reasoning}
         return {**_finish(conn, user, sc, parts, item, []), **said, 'written': text}
-    listed = [v for v in (reply['views'] if isinstance(reply.get('views'), list) else []) if isinstance(v, str) and v in known]
-    views = tuple(sorted((v for v in known if _named(question, v)), key=str.casefold))   # code applies the views the question names, and no other
-    ignored = [{'kind': 'view', 'name': v, 'why': tr('问题里没有说这个视图的名字，没有按它算', 'The question does not name this view, so it is not applied')} for v in dict.fromkeys(listed) if v not in views]
+    listed = [{'id': v, 'direction': 'include', 'basis': v} for v in dict.fromkeys(reply['views'] if isinstance(reply.get('views'), list) else []) if isinstance(v, str) and v in known]
     try:
         query = compile_query(text, query_catalog(sc))
     except QueryError as exc:
@@ -1088,10 +995,12 @@ def _answered_in_text(conn, gateway, user: dict | None, question: str, sc: dict)
     except (KeyError, TypeError, AttributeError):
         item = {'status': 'query_limit', 'reason': tr('模型写的查询读不了', 'The query the model wrote cannot be read'), 'reasoning': reasoning}
         return {**_finish(conn, user, sc, parts, item, []), **said, 'written': text}
-    query, _, dropped, _ = _keep_asked(question, sc, parts, query, None)
-    result = _run_compiled(conn, user, sc, query, question, views, beside=True)
-    dropped += ignored
-    return {**result, **said, 'written': text, **({'not_applied': dropped} if dropped else {}), **({'query_text': to_text(query, query_catalog(sc))} if result['status'] in ('answered', 'no_data') else {})}
+    query, listed, unmet, every_row = _one_view(question, sc, parts, query, listed)
+    if unmet:
+        return {**_finish(conn, user, sc, parts, {**refusal(unmet), 'query': query, 'reasoning': reasoning}, []), **said, 'written': text}
+    views = tuple(str(u['id']) for u in listed if u.get('direction') == 'include')
+    result = _run_compiled(conn, user, sc, query, question, views, beside=every_row)
+    return {**result, **said, 'written': text, **({'query_text': to_text(query, query_catalog(sc))} if result['status'] in ('answered', 'no_data') else {})}
 
 
 def _query_text_of(sc: dict, query) -> str | None:
@@ -1208,14 +1117,10 @@ def ask(conn, gateway, user: dict | None, question, writes='json') -> dict:
     else:
         if gateway is None:
             raise QaRefused(tr('本机服务没有模型凭据：设置 DEEPSEEK_API_KEY 或 OPENROUTER_API_KEY 后重启 ontology_server。', 'This server has no model credentials. Set DEEPSEEK_API_KEY or OPENROUTER_API_KEY and restart ontology_server.'), 503)
-        reading = _code_reading(question, sc)
-        if reading:
-            result = _answered_by_code(conn, user, question, sc, reading)
-        elif writes == 'query':
+        if writes == 'query':
             result = _answered_in_text(conn, gateway, user, question, sc)
         else:
             result = _answered(conn, gateway, user, question, sc)
-        if reading or writes != 'query':
             text = _query_text_of(sc, result.get('query')) if result['status'] in ('answered', 'no_data') else None
             if text:   # the question as a query a person can read, check and edit (docs/QUERY.md)
                 result['query_text'] = text

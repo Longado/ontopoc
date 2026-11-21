@@ -47,9 +47,6 @@ export function besideView(record) {
   return { title: t(numbers ? "ask.beside.title" : "ask.beside.names"), lines, more: more.length ? t("ask.beside.more", { n: more.length, names: more.join(t("ask.sep")) }) : "", hint: numbers ? t("ask.beside.hint") : "" };
 }
 
-/** What the model wrote that code did not apply, because the question does not say it: one line each. */
-export const notAppliedLines = (record) => (record.not_applied ?? []).map((n) => `${n.name}${n.values?.length ? ` = ${n.values.join(t("ask.sep"))}` : ""}${t("ask.colon")}${n.why}`);
-
 /** The answer, or the refusal, in one word for the history list. */
 export const statusText = (status) => t(status === "answered" ? "ask.status.answered" : status === "no_data" ? "ask.status.noData" : "ask.status.refused");
 export const isAnswer = (record) => record.status === "answered" || record.status === "no_data";

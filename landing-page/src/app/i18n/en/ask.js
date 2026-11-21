@@ -100,8 +100,6 @@ export default {
   "beside.by": "confirmed by {by}",
   "beside.more": "and {n} more confirmed views: {names}",
   "beside.hint": "The number above covers every row you may read. Name a view in the question to answer from it.",
-  "basis.notApplied": "Not applied",
-  "colon": ": ",
   "basis.limited": "Only rows you can see",
   "basis.limitedLine": "{name}: a row rule limits the rows ({rule}); the number is computed from those rows",
   "basis.steps": "Show steps",

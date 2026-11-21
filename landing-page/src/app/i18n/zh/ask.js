@@ -100,8 +100,6 @@ export default {
   "beside.by": "{by} 确认",
   "beside.more": "还有 {n} 个确认过的视图：{names}",
   "beside.hint": "上面的数算的是你能看到的全部行；问题里说出视图的名字，就按那个视图回答。",
-  "basis.notApplied": "没有按它算",
-  "colon": "：",
   "basis.limited": "只算了你看得到的行",
   "basis.limitedLine": "{name}：行规则限制了行（{rule}），数是按这些行算的",
   "basis.steps": "查看步骤",
