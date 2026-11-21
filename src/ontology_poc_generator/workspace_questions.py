@@ -28,7 +28,7 @@ from ontology_poc_generator.object_types import (
 from ontology_poc_generator.ontopoc_query import QueryError, canonical as canonical_query, compile_query, is_graph, parse as parse_query, to_text
 from ontology_poc_generator.object_views import describe, kept_positions, view_visible, view_waiting_for_viewer
 from ontology_poc_generator.agent_harness import ask_model
-from ontology_poc_generator.ontology_questions import _catalog, _resolve_field, answer_query, ask_questions, graph_objects, value_said
+from ontology_poc_generator.ontology_questions import RANGES, _catalog, _resolve_field, answer_query, ask_questions, graph_objects, value_said
 from ontology_poc_generator.pipeline_expr import NUMBER_TYPES
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal
 from ontology_poc_generator.recognition import model_failure_text
@@ -736,12 +736,12 @@ def _keep_asked(question: str, sc: dict, parts: dict, query, used) -> tuple:
     for w in (query.get('where') or []) if start else []:
         key = 'equals' if isinstance(w, dict) and 'equals' in w else 'not_equals' if isinstance(w, dict) and 'not_equals' in w else None
         field = _resolve_field(start, w.get('field')) if key else None
-        if field is None:   # a range, or a field the engine will say it cannot read: as the model wrote it
-            where.append(w)
+        values = (w[key] if isinstance(w[key], list) else [w[key]]) if field else []
+        if field is None or set(w) & set(RANGES) or not all(isinstance(v, (str, int, float)) and not isinstance(v, bool) for v in values):
+            where.append(w)   # a range, or what the engine will say it cannot read (a field it lacks, a value that is no value): as the model wrote it
             continue
         labels = (meanings.get(field) or {}).get('labels') or {}
         heard = {label for label in labels.values() if label and _says_label(question, label)}
-        values = w[key] if isinstance(w[key], list) else [w[key]]
         kept = [v for v in values if value_said(question, v) or labels.get(str(v)) in heard or str(v) in heard]
         if kept and len(kept) < len(values):
             w = {**w, key: kept}
