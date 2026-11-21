@@ -215,6 +215,7 @@ Page code: the team app is in `landing-page/src/app/` and uses only `/api/worksp
 | [docs/MCP.md](docs/MCP.md) | The MCP tools |
 | [docs/AGENTS.md](docs/AGENTS.md) | Every model call: its definition card and the call log |
 | [docs/DEVELOPMENT_GUARDRAILS.md](docs/DEVELOPMENT_GUARDRAILS.md) | Red lines, and directions waiting for a trigger |
+| [docs/archive/](docs/archive/README.md) | Earlier plans, hand-offs and retros, kept as history |
 
 ## License
 

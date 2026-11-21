@@ -217,6 +217,7 @@ PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp
 | [docs/MCP.md](docs/MCP.md) | MCP 工具清单 |
 | [docs/AGENTS.md](docs/AGENTS.md) | 每一次模型调用的定义卡与调用记录 |
 | [docs/DEVELOPMENT_GUARDRAILS.md](docs/DEVELOPMENT_GUARDRAILS.md) | 开发红线与待触发的方向 |
+| [docs/archive/](docs/archive/README.md) | 早期的计划、交接和复盘，作为历史保留 |
 
 ## 许可证
 
