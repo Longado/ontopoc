@@ -364,6 +364,32 @@ class PlantedTests(Planted):
             self.assertEqual((body['status'], body['answer']['total']), ('answered', 160))
             self.assertEqual([(v['name'], v['answer']['total']) for v in body['beside']['views']], [('有效订单', 144)])
 
+    def test_a_named_view_on_a_column_whose_values_are_kept_from_the_model_is_applied_by_code_or_refused_never_all_rows(self):
+        """状态码 is marked "don't send values": the model is never told its codes or meanings, nor what 有效订单 keeps. A question that names 有效订单 gets the
+        view's own number (code applies its stored conditions, as a board does), for a builder and a viewer, or a refusal that says why; never all 160 orders."""
+        include = [{'id': '有效订单', 'direction': 'include', 'basis': '有效订单'}]
+        model = Scripted(item(ALL_ORDERS, include))
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            self.with_valid(team)
+            self.assertEqual(team['ann'].post('/api/workspace/types/privacy', {'id': 'order', 'column': '状态码', 'hide_values': True})[0], 200)
+            for who in ('ann', 'vera'):
+                model.replies = [item(ALL_ORDERS, include)]
+                status, body = self.ask(team[who], '有效订单一共下了几单？')
+                self.assertEqual((status, body['status'], body['answer']['total']), (200, 'answered', 144), (who, body))
+                self.assertEqual([d['name'] for d in body['definitions'] if d['kind'] == 'view'], ['有效订单'])
+                self.assertIsNone(body.get('beside'))
+                told = json.dumps(model.requests[-1], ensure_ascii=False)
+                self.assertIn('有效订单', told)   # by its name, so the model can say how the question uses it
+                for secret in ('已取消', '已交付', '生产中'):
+                    self.assertNotIn(secret, told)
+                for said in (item(ALL_ORDERS, []), item(ALL_ORDERS, [{'id': '有效订单', 'direction': 'exclude', 'basis': '不属于有效订单'}])):
+                    model.replies = [said]
+                    status, body = self.ask(team[who], '有效订单一共下了几单？')
+                    self.assertEqual((status, body['status']), (200, 'definition_unmet'), (who, body))
+                    self.assertNotIn('answer', body)
+                    self.assertIn('有效订单', body['reason'])
+
     def test_a_saved_answer_says_when_a_view_beside_it_has_changed(self):
         with self.service(gateway=Scripted('not json')) as (base, out):
             team = self.team(base)
