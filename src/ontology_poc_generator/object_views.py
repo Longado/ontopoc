@@ -23,6 +23,7 @@ import json
 
 from ontology_poc_generator.named_views import NUMERIC, orderable
 from ontology_poc_generator.object_types import (
+    token_edit,
     limited_note, MAX_DESCRIPTION, MAX_NAME, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _content, _edit_names, _label, _state_view, _text, _type_row, _visible,
     dataset_columns, element_row, enum_id, log_entries, refuse_if_limited, type_id, waiting_for_viewer, was_confirmed, whole_type_row, write_confirmation, write_elements)
 from ontology_poc_generator.public_ontology import normalize_value
@@ -283,13 +284,13 @@ def create_view(conn, payload: dict, who: str | None, user: dict | None) -> dict
 
 def update_view(conn, payload: dict, who: str | None, user: dict | None) -> dict:
     """{id, version, ...the fields of create}: a change to the type, conditions or latest rule puts it forward again as this person's (a confirmed one that
-    changes stops being confirmed); so does saving one that was sent back; the description keeps the state. 409 when the version has moved."""
+    changes stops being confirmed); so does saving one that was sent back; the description keeps the state (made by a person signed in; made with a token, a confirmed one is put forward again: object_types.token_edit). 409 when the version has moved."""
     row = _view_row(conn, payload.get('id'), user)
     if payload.get('version') != row['version']:
         raise TypeRefused(tr('这个视图在你打开之后被改了，请刷新后再改', 'This view was changed after you opened it. Refresh and edit again'), 409)
     old = _content(row)
     content = check_definition(conn, payload, user, old['name'])
-    reset = reset_reasons(old, content)
+    reset = reset_reasons(old, content) or token_edit(row, user, old['description'] != content['description'])
     if reset or row['state'] in ('proposed', 'rejected'):
         summary = view_summary(conn, content)
         if summary['problems']:

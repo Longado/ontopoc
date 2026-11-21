@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 import unittest
 
-from ontology_poc_generator.nhtsa_sources import bundle_content_hash
+from ontology_poc_generator.public_ontology import bundle_content_hash
 from ontology_poc_generator.recognition import ModelCompletion, RecognitionError
 
 FIXTURES = Path(__file__).resolve().parent / 'fixtures/nhtsa'

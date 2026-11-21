@@ -23,6 +23,7 @@ button.bh-info { background: none; border: 0; padding: 2px; font: inherit; font-
 .page .board-card.kind-table, .page .board-card.kind-rows, .page .board-card.kind-query { grid-column: 1 / -1; }
 .page .board-card .item-title { margin: 0; font-size: var(--small); font-weight: 500; line-height: 20px; color: var(--muted); }
 .page .board-card .chart { display: flex; flex-direction: column; gap: 4px; }
+.page .board-card.kind-rows .chart { max-width: none; }
 .page .board-card .metric { margin: 0; font-size: 40px; line-height: 48px; font-weight: 600; letter-spacing: -0.025em; font-variant-numeric: tabular-nums; color: var(--ink); }
 .page .board-card .is-grey .metric { color: var(--faint); }
 .bh-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }   /* stays under the figure: when a neighbour opens its basis the row grows, and the lines still line up across cards */

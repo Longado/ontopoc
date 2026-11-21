@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { SourceValue } from "./SourceValue.jsx";
 import { actionFits, rowKey } from "./actionModel.js";
 import { Standing } from "./ChartView.jsx";
 import { getActions, getExploreObject } from "./api.js";
@@ -46,7 +47,7 @@ export function ObjectPage({ route }) {
               return (
                 <React.Fragment key={c.column}>
                   <dt>{c.name}{c.derived && <span className={c.confirmed ? " small" : " muted small"}>{c.confirmed ? t("objects.page.derived") : t("objects.page.derivedUnconfirmed")}</span>}</dt>
-                  <dd>{o.row[i] == null || o.row[i] === "" ? <span className="faint" title={o.outside?.includes(i) ? outsideNote() : undefined}>—{o.outside?.includes(i) && <span className="small"> {outsideNote()}</span>}</span> : <>{cell.value}{o.enums[c.column] && cell.note && <span className="muted small"> {cell.note}</span>}</>}</dd>
+                  <dd>{o.row[i] == null || o.row[i] === "" ? <span className="faint" title={o.outside?.includes(i) ? outsideNote() : undefined}>—{o.outside?.includes(i) && <span className="small"> {outsideNote()}</span>}</span> : <><SourceValue value={cell.value} />{o.enums[c.column] && cell.note && <span className="muted small"> {cell.note}</span>}</>}</dd>
                 </React.Fragment>
               );
             })}

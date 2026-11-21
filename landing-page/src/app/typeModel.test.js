@@ -34,6 +34,9 @@ test("the log reads as sentences, with the reason a confirmation was sent back a
   assert.match(logText({ element: "type", change: "confirmed", who: "root", self_confirmed: true }).text, /两人确认没有生效/);
   assert.deepEqual(logText({ element: "dataset", change: "import v2: 160 rows in the file, 160 stored, 0 dropped", who: "Ann" }), { who: "Ann", text: "上传了第 2 版" });
   assert.deepEqual(logText({ element: "type", change: "checked", who: "Ann" }), { who: "Ann", text: "提出了对象类型" });
+  assert.deepEqual(logText({ element: "type", change: "checked", who: "Ann", with_token: "客服助手" }), { who: "Ann", text: "提出了对象类型（用令牌“客服助手”）" });   // a write made with a token says so, on every kind of line
+  assert.equal(logText({ element: "type", change: "needs_look", reason: "取值变了", with_token: "" }).text, "对象类型需再看：取值变了（用令牌）");
+  assert.equal(logText({ element: "type", change: "checked", who: "Ann", with_token: null }).text, "提出了对象类型");
   assert.deepEqual(logText({ element: "relation", change: "confirmed_together", who: "Bob", text: "和另外 3 项一起确认" }), { who: "Bob", text: "和另外 3 项一起确认" });
   assert.deepEqual(logText({ element: "type", change: "meanings_retired", who: "Bob", reason: "不再是代码列", text: "状态码" }), { who: "Bob", text: "去掉了这些列的含义（不再是代码列）：状态码" });
 });

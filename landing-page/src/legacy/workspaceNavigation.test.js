@@ -18,8 +18,8 @@ function shell(open = null) {
   let slot = 0;
   const updates = [];
   const dependencies = { element, fragment: "fragment", sectionsFor, useEffect: () => {}, useCallback: (fn) => fn,
-    useState: (initial) => { const key = slot++; return [key === 4 ? open : initial, (value) => updates.push({ key, value })]; },
-    RecallWorkspace: "recall", PublicRecallReview: "public", OntologyStudio: "studio", OntologyLibrary: "library",
+    useState: (initial) => { const key = slot++; return [key === 3 ? open : initial, (value) => updates.push({ key, value })]; },
+    OntologyStudio: "studio", OntologyLibrary: "library",
     folderLabel: (name) => name, groupRuns: () => [], runLabel: () => "", localTime: () => "" };
   const module = { exports: {} };
   new Function("module", ...Object.keys(dependencies), compiled)(module, ...Object.values(dependencies));
@@ -42,7 +42,7 @@ test("data access without a workspace opens the upload flow rather than an empty
   const s = shell();
   assert.ok(s.button("数据接入"));
   s.button("数据接入").props.onClick();
-  assert.equal(s.updates.find((change) => change.key === 7)?.value.kind, "new");
+  assert.equal(s.updates.find((change) => change.key === 6)?.value.kind, "new");
 });
 
 test("an opened table enables its modules and keeps their existing navigation", () => {
@@ -50,7 +50,7 @@ test("an opened table enables its modules and keeps their existing navigation", 
   assert.equal(s.buttons.length, 8);
   assert.ok(s.buttons.every((button) => !button.props.disabled));
   s.button("本体管理").props.onClick();
-  assert.equal(s.updates.find((change) => change.key === 5)?.value, "objects");
+  assert.equal(s.updates.find((change) => change.key === 4)?.value, "objects");
 });
 
 test("document workspaces keep only their supported modules", () => {

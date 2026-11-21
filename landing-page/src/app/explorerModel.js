@@ -15,12 +15,12 @@ const pair = (value, key) => {
   return a;
 };
 
-export const OPS = worded(["eq", "ne", "contains", "gt", "ge", "lt", "le", "empty", "filled"], "objects.op");
+export const OPS = worded(["eq", "ne", "contains", "name_is", "gt", "ge", "lt", "le", "empty", "filled"], "objects.op");
 export const CHART_KINDS = ["number", "bar", "pie", "histogram", "table"].map((k) => pair(k, `objects.chart.${k}`));
 const NUMERIC_ONLY = ["sum", "avg", "median", "p25", "p75"];
 
 /** The ways a filter on this field may compare: size only where the service can put the values in order (numbers, years-months, dates). */
-export const opsFor = (field) => [...["eq", "ne", "contains", "empty", "filled"], ...(field?.ordered ? ["gt", "ge", "lt", "le"] : [])];
+export const opsFor = (field) => [...["eq", "ne", "contains"], ...(field?.type === "text" ? ["name_is"] : []), ...["empty", "filled"], ...(field?.ordered ? ["gt", "ge", "lt", "le"] : [])];
 
 export const emptyFilter = (fields) => ({ field: fields[0]?.key ?? "", op: "eq", value: "" });
 
@@ -29,7 +29,7 @@ export const readyFilters = (filters) =>
   filters.filter((f) => f.field && (f.op === "empty" || f.op === "filled" || String(f.value).trim() !== "")).map((f) => ({ field: f.field, op: f.op, value: f.op === "empty" || f.op === "filled" ? "" : String(f.value) }));
 
 /** The query the service reads. `pivot` is {relation, side, source} or null. */
-export const queryOf = ({ type, view = "", filters = [], pivot = null, search = "" }) => ({ type, view: view || null, filters: readyFilters(filters), rows: null, pivot, ...(String(search).trim() ? { search: String(search).trim() } : {}) });
+export const queryOf = ({ type, view = "", filters = [], rows = null, pivot = null, search = "" }) => ({ type, view: view || null, filters: readyFilters(filters), rows, pivot, ...(String(search).trim() ? { search: String(search).trim() } : {}) });
 
 /** The search word a query carries ("" when none): the box over the table shows it. */
 export const searchWord = (query) => query?.search ?? "";

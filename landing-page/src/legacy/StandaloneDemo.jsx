@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { RecallWorkspace } from "./RecallWorkspace.jsx";
-import { PublicRecallReview } from "./PublicRecallReview.jsx";
+import "./shared.css";   // first, where the removed example pages used to bring it in: the component styles after it must keep winning ties
 import { OntologyStudio } from "./OntologyStudio.jsx";
 import { OntologyLibrary } from "./OntologyLibrary.jsx";
 import { folderLabel, groupRuns, runLabel } from "./runLibraryModel.js";
@@ -9,16 +8,12 @@ import { localTime } from "./ontologyStudioModel.js";
 import { sectionsFor } from "./workspaceModel.js";
 
 const copy = {
-  zh: { nav: "工作台导航", landing: "产品首页", lang: "EN", more: "更多示例", create: "新建", library: "运行记录", modules: "模块", space: "空间", pick: "选一次运行", tools: "工具",
+  zh: { nav: "工作台导航", landing: "产品首页", lang: "EN", create: "新建", library: "运行记录", modules: "模块", space: "空间", pick: "选一次运行", tools: "工具",
         empty: "还没有运行记录。传一份文件，结果会一直留在这里。", offline: "建模服务没连上，看不到运行记录。",
-        needRun: "请先上传文件，或在下方“空间”打开已有运行。",
-        tabs: { public: "汽车召回范围研判", recall: "食品召回事件 95876" },
-        hints: { public: "NHTSA 公开数据", recall: "openFDA · 需本机服务" } },
-  en: { nav: "Workbench", landing: "Product home", lang: "中文", more: "More examples", create: "New", library: "Runs", modules: "Modules", space: "Space", pick: "Pick a run", tools: "Tools",
+        needRun: "请先上传文件，或在下方“空间”打开已有运行。" },
+  en: { nav: "Workbench", landing: "Product home", lang: "中文", create: "New", library: "Runs", modules: "Modules", space: "Space", pick: "Pick a run", tools: "Tools",
         empty: "No runs yet. Upload a file and its result stays here.", offline: "The modelling service is not reachable, so runs cannot be listed.",
-        needRun: "Upload a file or open a saved run under Space below.",
-        tabs: { public: "Vehicle recall scope", recall: "Food recall event 95876" },
-        hints: { public: "NHTSA public data", recall: "openFDA · local service" } },
+        needRun: "Upload a file or open a saved run under Space below." },
 };
 
 const ICONS = {   // one stroke each, drawn on a 24 grid, like the platform's own sidebar
@@ -34,7 +29,6 @@ const ICONS = {   // one stroke each, drawn on a 24 grid, like the platform's ow
 export function StandaloneDemo() {
   const [language, setLanguage] = useState("zh");
   const [scenario, setScenario] = useState("studio");
-  const [recallBusy, setRecallBusy] = useState(false);
   const [runs, setRuns] = useState(null);   // null: not loaded, "offline": service not reachable
   const [open, setOpen] = useState(null);   // the run shown in the studio: the workspace the modules act on
   const [section, setSection] = useState(null);
@@ -52,10 +46,6 @@ export function StandaloneDemo() {
 
   const ask = (next) => { setScenario("studio"); setRequest({ ...next, nonce: Date.now() }); };
   const go = (key) => { setScenario("studio"); setSection(key); setNav((n) => n + 1); };
-  const entry = (key) => <button key={key} type="button" disabled={recallBusy}
-    aria-current={scenario === key ? "page" : undefined} onClick={() => setScenario(key)}>
-    <i aria-hidden="true" /><span>{t.tabs[key]}<small>{t.hints[key]}</small></span>
-  </button>;
 
   const zhOnly = language === "en" && <p className="pr-note app-zh-only" lang="en">The workbench is in Chinese only for now; only the sidebar is in English.</p>;
 
@@ -77,11 +67,6 @@ export function StandaloneDemo() {
         {!open && <p className="app-empty">{t.needRun}</p>}
       </nav>
       <nav className="app-nav" aria-label={t.nav}>
-        <details className="app-more" open={scenario === "public" || scenario === "recall" || undefined}>
-          <summary>{t.more}</summary>
-          {entry("public")}
-          {entry("recall")}
-        </details>
         <a href="/landing"><i aria-hidden="true" /><span>{t.landing}</span></a>
       </nav>
       <details className="app-space">
@@ -99,12 +84,11 @@ export function StandaloneDemo() {
       </details>
       <button type="button" className="app-lang" onClick={() => setLanguage(language === "zh" ? "en" : "zh")}>{t.lang}</button>
     </aside>
-    <section className="app-main" aria-label={scenario === "studio" ? "OntoPoc" : scenario === "library" ? "本体库" : t.tabs[scenario]}>
+    <section className="app-main" aria-label={scenario === "library" ? "本体库" : "OntoPoc"}>
       <div className="app-lib-pane" hidden={scenario !== "library"}>{zhOnly}<OntologyLibrary active={scenario === "library"} /></div>
       <div hidden={scenario === "library"}>
         {scenario === "studio" && zhOnly}
-        {scenario === "studio" || scenario === "library" ? <OntologyStudio request={request} runs={runs} section={section} nav={nav} onSection={setSection} onRunsChanged={refresh} onCurrent={setOpen} />
-          : scenario === "public" ? <PublicRecallReview language={language} /> : <RecallWorkspace language={language} onBusyChange={setRecallBusy} />}
+        <OntologyStudio request={request} runs={runs} section={section} nav={nav} onSection={setSection} onRunsChanged={refresh} onCurrent={setOpen} />
       </div>
     </section>
   </main>;

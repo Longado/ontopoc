@@ -44,7 +44,7 @@ section[id] { scroll-margin-top: 78px; }
 
 /* The workbench palette. Scoped to the shell so the product home keeps its own look.
    One primary (the logo's indigo), cool neutrals, and three status colours that are never used as decoration.
-   Every text/ground pair here reaches WCAG AA; the numbers are in docs/archive/PRD_ITERATION_6.md. */
+   Every text/ground pair here reaches WCAG AA. */
 .app-shell {
   --primary: #4b4fd8; --primary-soft: #ebebfc; --primary-ink: #3a3eb8;
   --blue: var(--primary); --blue-soft: var(--primary-soft); --indigo: var(--primary); --indigo-soft: var(--primary-soft);
@@ -78,18 +78,11 @@ section[id] { scroll-margin-top: 78px; }
 .app-folder button[aria-current="page"] { color: var(--primary-ink); background: var(--primary-soft); font-weight: 700; }
 .app-folder button[aria-current="page"] small { color: var(--primary-ink); opacity: 1; }
 .app-nav { display: grid; gap: 2px; padding-top: 10px; border-top: 1px solid var(--edge); }
-.app-nav button, .app-nav a { display: flex; align-items: flex-start; gap: 12px; width: 100%; padding: 8px 10px; border: 0; border-radius: 8px; color: var(--text-2); background: transparent; font-size: 13px; text-align: left; }
+.app-nav a { display: flex; align-items: flex-start; gap: 12px; width: 100%; padding: 8px 10px; border: 0; border-radius: 8px; color: var(--text-2); background: transparent; font-size: 13px; text-align: left; }
 .app-nav i { flex: none; width: 6px; height: 6px; margin-top: 7px; border-radius: 50%; background: var(--edge-strong); }
 .app-nav span { display: grid; gap: 2px; }
-.app-nav small { font-size: 11px; color: var(--text-2); }
-.app-nav button:hover, .app-nav a:hover { color: var(--ink); background: rgba(20, 22, 31, 0.04); }
-.app-nav [aria-current="page"] { color: var(--primary-ink); background: var(--primary-soft); font-weight: 700; }
-.app-nav [aria-current="page"] i { background: var(--primary); }
-.app-nav button:disabled { opacity: 0.5; cursor: not-allowed; }
-.app-more { display: grid; gap: 2px; }
-.app-more summary { padding: 6px 10px; border-radius: 8px; color: var(--text-2); font-size: 12px; font-weight: 600; cursor: pointer; }
-.app-more summary:hover, .app-more[open] summary { color: var(--ink); }
-.app-more summary:focus-visible, .app-nav button:focus-visible, .app-nav a:focus-visible, .app-lang:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.app-nav a:hover { color: var(--ink); background: rgba(20, 22, 31, 0.04); }
+.app-nav a:focus-visible, .app-lang:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .app-lang { align-self: flex-start; padding: 5px 10px; border: 1px solid var(--edge-strong); border-radius: 6px; color: var(--text-2); background: var(--surface); font-size: 12px; font-weight: 700; letter-spacing: 0.06em; }
 .app-main { min-width: 0; min-height: 0; overflow-y: auto; display: flex; }
 .app-main > * { flex: 1; }
@@ -104,9 +97,7 @@ section[id] { scroll-margin-top: 78px; }
   .app-brand { padding: 0; border: 0; }
   .app-brand img { width: 120px; }
   .app-nav { order: 3; width: 100%; display: flex; flex-wrap: wrap; gap: 4px; }
-  .app-nav button, .app-nav a { width: auto; padding: 8px 10px; }
-  .app-nav small { display: none; }
-  .app-more { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+  .app-nav a { width: auto; padding: 8px 10px; }
   .app-lang { margin: 0 0 0 auto; }
   .app-new { width: auto; padding: 6px 12px; }
   .app-library { order: 4; width: 100%; max-height: 168px; padding-bottom: 4px; border-bottom: 1px solid var(--edge); }   /* the run list must not push the run itself off a phone screen */
