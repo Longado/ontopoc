@@ -1,5 +1,6 @@
 """The public recall example (NHTSA vehicle recalls, openFDA event 95876) is gone; the shared ontology core it was built on stays."""
 import importlib
+import os
 import re
 import subprocess
 import tomllib
@@ -24,6 +25,19 @@ GONE = re.compile(r'\b(?:' + '|'.join(MODULES + SCRIPTS) + r')\b|PublicRecallRev
 HISTORY = re.compile(r'^docs/(?:archive/|superpowers/|PRD_ITERATION_\d\.md|FEATURES_2026-|HANDOFF_|RETRO_|SEMANTIC_MODELING_|'
                      r'NHTSA_AUTO_ONTOLOGY_PLAN\.md|PLAYGROUND_INTERNALIZATION\.md)')
 TEXT = {'.md', '.html', '.css', '.js', '.jsx', '.mjs', '.py', '.json', '.toml', '.yml', '.yaml', '.txt', '.xml', '.sh', ''}
+
+
+def files():
+    """The tracked files; outside a git checkout (an unpacked source archive), every file but build output and installs."""
+    listed = subprocess.run(['git', 'ls-files', '-z'], cwd=ROOT, capture_output=True, text=True)
+    if listed.returncode == 0 and listed.stdout:
+        return [name for name in listed.stdout.split('\0') if name]
+    skip = {'.git', 'node_modules', 'dist', '.venv', '__pycache__', 'output', 'build'}
+    found = []
+    for top, dirs, names in os.walk(ROOT):
+        dirs[:] = [d for d in dirs if d not in skip]
+        found += [str((Path(top) / name).relative_to(ROOT)) for name in names]
+    return found
 
 
 class RecallLineRemovedTests(unittest.TestCase):
@@ -51,12 +65,13 @@ class RecallLineRemovedTests(unittest.TestCase):
         core = importlib.import_module('ontology_poc_generator.public_ontology')
         for name in ('build_graph', 'normalize_proposal', 'resolve', 'verify_proposal', 'auto_build_ontology', 'bundle_content_hash'):
             self.assertTrue(callable(getattr(core, name)), name)
-        for name in ('ALIAS_SYSTEM_PROMPT', 'ALIAS_PROMPT_VERSION', 'alias_catalog', 'propose_value_aliases'):   # only the recall run asked for name pairs
+        for name in ('ALIAS_SYSTEM_PROMPT', 'ALIAS_PROMPT_VERSION', 'alias_catalog', 'propose_value_aliases',   # only the recall run asked for name pairs
+                     'ontology_content_hash'):   # only the recall pack and scope pinned an ontology by hash
             self.assertFalse(hasattr(core, name), name)
         self.assertEqual(core.resolve({'a': [{'b': 1}, {'b': 2}]}, 'a[].b'), [1, 2])
 
     def test_no_doc_page_or_code_outside_the_history_names_the_recall_line(self):
-        names = subprocess.run(['git', 'ls-files'], cwd=ROOT, capture_output=True, text=True, check=True).stdout.splitlines()
+        names = files()
         here = Path(__file__).resolve()
         found = []
         for name in names:

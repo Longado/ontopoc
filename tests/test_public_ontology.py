@@ -172,5 +172,34 @@ class SharedCoreStandsAloneTests(unittest.TestCase):
         self.assertEqual([name for name in imported if 'nhtsa' in (name or '')], [])
 
 
+class ValueAliasGraphTests(unittest.TestCase):
+    """A confirmed name pair (value_aliases) makes two spellings one object, for the rows that describe it and for relation ends."""
+    BUNDLE = {'sources': {'depts': {'records': [{'dept': 'PLANNING'}]}, 'ledger': {'records': [{'row': '1', 'dept': 'PLAN & DEV'}]}}}
+    PROPOSAL = {'object_types': [
+        {'key': 'dept', 'label': '部门', 'populated_from': [{'source': 'depts', 'identity': {'name': 'dept'}},
+                                                           {'source': 'ledger', 'identity': {'name': 'dept'}}]},
+        {'key': 'entry', 'label': '支出行', 'populated_from': [{'source': 'ledger', 'identity': {'row': 'row'}}]}],
+        'relations': [{'key': 'entry_dept', 'from': 'entry', 'to': 'dept', 'source': 'ledger', 'to_identity': {'name': 'dept'}}]}
+    ALIAS = {'type': 'dept', 'source': 'ledger', 'value': 'PLAN & DEV', 'target_source': 'depts', 'target_value': 'PLANNING'}
+
+    def graph(self, aliases):
+        return importlib.import_module('ontology_poc_generator.public_ontology').build_graph({**self.PROPOSAL, 'value_aliases': aliases}, self.BUNDLE)
+
+    def test_without_a_pair_the_two_spellings_stay_two_objects(self):
+        g = self.graph([])
+        self.assertEqual(g['sources_of'][('dept', (('name', 'PLAN & DEV'),))], {'ledger'})
+        self.assertEqual(g['sources_of'][('dept', (('name', 'PLANNING'),))], {'depts'})
+        self.assertEqual(g['aliased'], set())
+
+    def test_a_pair_makes_one_object_from_both_sources_and_the_relation_reaches_it(self):
+        g = self.graph([self.ALIAS])
+        planning = ('dept', (('name', 'PLANNING'),))
+        self.assertEqual(g['sources_of'][planning], {'depts', 'ledger'})
+        self.assertNotIn(('dept', (('name', 'PLAN & DEV'),)), g['sources_of'])
+        self.assertEqual(g['aliased'], {('ledger', 0, planning)})
+        self.assertEqual({(a, b) for a, b, _ in g['edges']['entry_dept']}, {(('entry', (('row', '1'),)), planning)})
+        self.assertEqual(g['missing_references'], [])
+
+
 if __name__ == '__main__':
     unittest.main()
