@@ -2,7 +2,7 @@
 
 Passwords are hashed with scrypt from the standard library. A session is a random token in a cookie; only its SHA-256 is stored, so
 the table cannot be replayed and a row can be deleted to sign someone out at once. API tokens (for scripts and the MCP server) work the
-same way and never exceed their owner's role. The first admin is made on the host with `python -m ontology_poc_generator.accounts
+same way and never exceed their owner's role; the service's gate also keeps confirming, approving and checked numbers for the person (access.PERSON_ONLY_POSTS). The first admin is made on the host with `python -m ontology_poc_generator.accounts
 create-admin`: there is no default account and no setup page on the network.
 
 Everything here takes a workspace connection and returns plain dicts; HTTP lives in auth_http.py.

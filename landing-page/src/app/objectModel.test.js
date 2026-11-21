@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { objectName, relatedCard, unconfirmedNote } from "./objectModel.js";
+import { objectName, objectNameIndex, relatedCard, sourceHref, unconfirmedNote } from "./objectModel.js";
 import { setLocale } from "./i18n/index.js";
 
 setLocale("zh");   // these tests pin the Chinese wording; the English is in modelingEnglish.test.js
@@ -19,6 +19,21 @@ const related = [
   { id: "order_product", name: "订单用产品", other: "product", other_name: "产品", count: 12, confirmed: false, objects: [{ n: 1, text: "CP03", name: null }, { n: 2, text: "CP04", name: "吸尘器" }] },
   { id: "order_task", name: "订单有工单", other: "task", other_name: "工单", count: 0, confirmed: true, objects: [] },
 ];
+
+test("source URLs keep their time or page locator and ordinary values stay plain text", () => {
+  for (const u of ["https://example.org/video?t=478", "https://example.org/report.pdf#page=3"]) {
+    assert.equal(sourceHref(u), u);
+  }
+  for (const value of [null, 42, "/report.pdf", "See https://example.org", "https://", "file:///local/report", "javascript:void(0)"]) {
+    assert.equal(sourceHref(value), null);
+  }
+});
+
+test("a board row can open from its visible name with the original key as fallback", () => {
+  const cols = [{ name: "ID", key: true }, { name: "Company name" }, { name: "Source" }];
+  assert.equal(objectNameIndex(cols, ["opaque-12", "North Pier", ""]), 1);
+  assert.equal(objectNameIndex(cols, ["opaque-12", "", ""]), -1);
+});
 
 test("a related object shows its name beside the key, and only the key when the type has no name column (W3)", () => {
   const card = relatedCard(related[1]);

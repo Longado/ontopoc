@@ -53,7 +53,7 @@ export const specOf = (draft) => ({
     id: c.id, title: c.title.trim(), query: { type: c.type, view: c.view || null, filters: readyFilters(c.filters ?? []), rows: null, pivot: null },
     chart: c.kind === "rows" ? { kind: "rows" } : chartSpec(c),
   })),
-  filters: draft.filters.filter((f) => f.field).map((f) => ({ field: f.field, label: (f.label || f.field).trim() })),
+  filters: draft.filters.filter((f) => f.field).map((f) => ({ field: f.field, label: (f.label || f.field).trim(), ...(f.op === "name_is" ? { op: f.op } : {}) })),
   params: (draft.params ?? []).map(cleanParam),
 });
 

@@ -15,7 +15,7 @@ export default {
   "password.done": "密码已改，其他地方的登录已经退出。",
   "password.submit": "改密码",
   "tokens.heading": "令牌",
-  "tokens.intro": "给脚本和 MCP 用：令牌的权限和你的角色一样，用它做的事记在你的名下。只在创建时显示一次。",
+  "tokens.intro": "给脚本和 MCP 用：令牌在你的角色范围内办事，用它做的事记在你的名下。在团队应用里它不能确认、批准，也不能记核对过的数：这些要你本人登录页面来做。只在创建时显示一次。",
   "tokens.label": "用来做什么，例如 MCP",
   "tokens.labelAria": "令牌用途",
   "tokens.create": "创建令牌",

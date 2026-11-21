@@ -28,7 +28,7 @@ class RouteTableTests(unittest.TestCase):
         literals = set()
         for name in ('ontology_server.py', 'auth_http.py', 'use_layer.py'):
             literals |= set(re.findall(r"""['"](/api/[A-Za-z0-9_/-]*)['"]""", (SOURCES / name).read_text(encoding='utf-8')))
-        literals -= {'/api/recall', '/api/ontology', '/api/workspace', '/api/auth/', '/api/users/', '/api/workspace/', '/api/ontology/runs/', '/api/ontology/library/',
+        literals -= {'/api/ontology', '/api/workspace', '/api/auth/', '/api/users/', '/api/workspace/', '/api/ontology/runs/', '/api/ontology/library/',
                      '/api/ontology/jobs/', '/api/workspace/datasets/', '/api/workspace/types/', '/api/workspace/relations/', '/api/workspace/ask/', '/api/workspace/actions/', '/api/workspace/pipelines/',
                      '/api/workspace/explore'}   # prefixes the code compares against; their routes are checked below
         self.assertGreater(len(literals), 25)
