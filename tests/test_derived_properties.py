@@ -211,6 +211,24 @@ class AcceptanceTests(DerivedTestCase):
             self.assertIn('不是每一行都正好连上一个对象', answer['reason'])
             self.assertNotIn('也没有读只算它的派生属性', answer['reason'])
 
+    def test_one_object_s_count_through_a_hop_toward_the_one_side_is_refused_because_its_rows_are_counted_more_than_once(self):
+        """Stock rows reach their product, and the product's orders: every cancelled order of CP01 is counted once for each stock row of CP01. Picking CP01 does not
+        make those counts add up to CP01's cancelled orders, so the per-object answer is refused, not 6 where there is 1."""
+        per_stock = {'type': 'stock', 'english_name': 'product_cancelled', 'name': '产品已取消订单数', 'kind': 'statistic', 'path': ['stock_product', 'order_product'],
+                     'measure': {'column': None}, 'fn': 'count', 'conditions': [{'column': '状态码', 'op': 'is', 'label': '已取消'}]}
+        query = {'start': 'stock', 'where': [{'field': '产品编号', 'equals': 'CP01'}], 'via': [], 'group_by': None, 'share': None, 'measure': {'field': '产品已取消订单数', 'op': 'sum'}}
+        model = AskModel({'reasoning': '产品的已取消订单数', 'query': query, 'definitions_used': INCLUDES_CANCELLED})
+        self.assertGreater(sum(r['产品编号'] == 'CP01' for r in STOCKS), 1)   # more than one stock row reaches CP01
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            self.foundation(team)
+            ann, bob = team['ann'], team['bob']
+            self.assertEqual(ann.post('/api/workspace/types/derived', per_stock)[0], 200)
+            self.assertEqual(self.confirm(bob, per_stock)[0], 200)
+            status, answer = ann.post('/api/workspace/ask', {'question': '产品 CP01 的已取消订单有多少？'})
+            self.assertEqual((status, answer['status']), (200, 'definition_unmet'), answer)
+            self.assertIn('不是每一行都正好连上一个对象', answer['reason'])
+
     def test_a_confirmed_property_the_model_writes_as_a_derived_measure_is_still_cited(self):
         query = {'start': 'customer', 'where': [{'field': '客户编号', 'equals': 'KH026'}], 'via': [], 'group_by': None, 'share': None,
                  'measure': {'derived': '已取消订单数', 'op': 'sum'}}   # how DeepSeek V4.1 Flash wrote it in a real run
