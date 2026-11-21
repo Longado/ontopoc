@@ -272,6 +272,28 @@ class AcceptanceTests(DerivedTestCase):
         self.assertEqual(answer['status'], 'answered', answer)
         self.assertEqual(answer['answer']['measure']['value'], sum(n for k, n in mine.items() if k in known and k != moved))
 
+    def test_a_filter_that_leaves_out_customers_whose_amounts_cancel_out_is_still_a_total(self):
+        """KH905 (+100) and KH906 (-100) are US and the rest CN: leaving them out leaves rows out, but not their total, so the number is the total over every
+        customer and the orders that reach no customer would be left out without a word."""
+        amount = {**CANCELLED, 'english_name': 'cancelled_amount', 'name': '已取消订单金额', 'measure': {'column': '金额'}, 'fn': 'sum'}
+        rows = [{**r, '国家': 'CN'} for r in {r['客户编号']: r for r in reversed(CUSTOMERS)}.values()]
+        customers = table_csv('客户.csv', [*rows, *({**rows[0], '客户编号': k, '客户名称': k, '国家': 'US'} for k in ('KH905', 'KH906'))], target='客户', mode='overwrite')
+        orders = table_csv('订单.csv', [*ORDERS, *({**ORDERS[0], '订单号': f'O-{k}', '客户编号': k, '状态码': '2', '金额': v} for k, v in (('KH905', '100'), ('KH906', '-100')))],
+                           target='订单', mode='overwrite')
+        customer = {**CUSTOMER, 'properties': [*CUSTOMER['properties'], {'column': '国家'}]}
+        total = {'start': 'customer', 'where': [{'field': '国家', 'equals': 'CN'}], 'via': [], 'group_by': None, 'share': None, 'measure': {'field': '已取消订单金额', 'op': 'sum'}}
+        model = AskModel({'reasoning': '中国客户的已取消订单金额加起来', 'query': total, 'definitions_used': INCLUDES_CANCELLED})
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [customers, orders]})[0], 200)
+            self.foundation(team, types=(ORDER, customer, PRODUCT, STOCK, COMMIT, TICKET))
+            self.assertEqual(ann.post('/api/workspace/types/derived', amount)[0], 200)
+            self.assertEqual(self.confirm(bob, amount)[0], 200)
+            status, answer = ann.post('/api/workspace/ask', {'question': '已取消订单金额一共多少？'})
+            self.assertEqual((status, answer['status']), (200, 'definition_unmet'), answer)
+            self.assertIn('不是每一行都正好连上一个对象', answer['reason'])
+
     def test_a_filter_the_query_language_cannot_read_is_said_so_not_a_failure(self):
         """The model's reply is not trusted: a value that is a dict or a nested list, or a range that is not a number, is a query the language cannot read."""
         model = AskModel({})
@@ -281,7 +303,7 @@ class AcceptanceTests(DerivedTestCase):
             ann = team['ann']
             for where in ([{'field': '状态码', 'equals': {'a': 1}}], [{'field': '状态码', 'equals': ['2', ['3']]}],
                           [{'field': '状态码', 'equals': '2'}, {'field': '状态码', 'not_equals': {'a': 1}}], [{'field': '交付天数', 'equals': '1', 'at_least': 'abc'}]):
-                model.item = {'reasoning': '订单', 'query': {'start': 'order', 'where': where, 'via': [], 'group_by': None, 'share': None, 'measure': None}, 'definitions_used': []}
+                model.item = {'reasoning': '订单', 'query': {'start': 'order', 'where': where, 'via': [], 'group_by': None, 'share': None, 'measure': {'field': '交付天数', 'op': 'sum'}}, 'definitions_used': []}
                 status, answer = ann.post('/api/workspace/ask', {'question': '订单有多少？'})
                 self.assertEqual((status, answer.get('status')), (200, 'query_limit'), (where, answer))
 
