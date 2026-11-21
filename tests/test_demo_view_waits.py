@@ -184,7 +184,7 @@ class ChangedViewTests(unittest.TestCase):
 
 
 class NotTheViewersViewTests(unittest.TestCase):
-    """D9: a changed view is named to a viewer only when it would be theirs to read once confirmed: not when it reads a column kept from them, not when its type
+    """A changed view is named to a viewer only when it would be theirs to read once confirmed: not when it reads a column kept from them, not when its type
     is not open to them."""
 
     def ask_after(self, change):
