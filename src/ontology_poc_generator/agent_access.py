@@ -101,6 +101,12 @@ def _last_confirmation(conn, element_id: str) -> dict:
     return {'confirmed_by': last[0] if last else None, 'confirmed_at': last[1] if last else None, 'data_versions': json.loads(last[2]) if last and last[2] else None}
 
 
+def _proposed_with_token(conn, element_id: str) -> str | None:
+    """The label of the token the definition was last put forward with ('' for one without a label), from the log; None when a person put it forward."""
+    last = conn.execute("SELECT via_token FROM log WHERE element_id = ? AND change IN ('proposed', 'checked') ORDER BY rowid DESC LIMIT 1", (element_id,)).fetchone()
+    return last[0] if last else None
+
+
 def _confirmed_rows(conn, sc: dict) -> list[tuple[dict, bool]]:
     """(row, whether what it says may be written out) for every confirmed definition in the scope: the same set `definitions` reads. A meaning of a column marked
     "don't send values", and a derived property that reads one, keep their standing and lose their sentence."""
@@ -121,7 +127,7 @@ def _standing(conn, user: dict | None) -> tuple[list[dict], dict]:
         says[row['element_id']] = _says(conn, sc, kind, _content(row)) if open_text else None
     for line in _not_confirmed(conn, user):
         entries.append({'id': line['id'], 'kind': line['kind'], 'name': line['name'], 'state': line['state'], 'confirmed': False, **_last_confirmation(conn, line['id']),
-                        **{k: line[k] for k in ('reason_hidden', 'cause_word', 'stale_word', 'who_can_confirm', 'proposed_by')},
+                        **{k: line[k] for k in ('reason_hidden', 'cause_word', 'stale_word', 'who_can_confirm', 'proposed_by')}, 'proposed_with_token': _proposed_with_token(conn, line['id']),
                         'reason': line['reason'] or (None if line['reason_hidden'] else _state_words(line['state']))})   # one that only waits: its state is the cause
     return sorted(entries, key=lambda e: (KINDS.index(e['kind']), e['id'])), says
 
@@ -143,7 +149,7 @@ def _says(conn, sc: dict, kind: str, content: dict) -> str:
 def standing(conn, user: dict | None, element_id: str | None = None) -> dict:
     """The gate as other tools read it, live: {'definitions': [...], 'note'}, each {'id', 'kind', 'name', 'state', 'confirmed', 'confirmed_by', 'confirmed_at', 'data_versions'}
     (for one not confirmed, the last confirmation it had, or None) and, when it is not confirmed, 'reason' (its state in words when that is all there is; None with 'reason_hidden' for a row-limited person), 'cause_word',
-    'stale_word', 'who_can_confirm' and 'proposed_by'. With `element_id`, that one entry; one this person may not see is not found, in the same words as one that does not exist."""
+    'stale_word', 'who_can_confirm', 'proposed_by' and 'proposed_with_token' (the label of the token it was put forward with, None for a person). With `element_id`, that one entry; one this person may not see is not found, in the same words as one that does not exist."""
     entries, _ = _standing(conn, user)
     if element_id is None:
         return {'definitions': entries, 'note': tr('这是现在的状态：只有 confirmed 为 true 的定义可以拿来回答；技能包是导出那天的快照，以这里为准。',

@@ -17,7 +17,7 @@ import re
 import sqlite3
 
 from ontology_poc_generator.accounts import SCHEMA as ACCOUNTS_SCHEMA, two_person
-from ontology_poc_generator.actor import actor_id_for
+from ontology_poc_generator.actor import actor_id_for, token_mark
 from ontology_poc_generator.public_ontology import normalize_proposal
 
 VALUE_COUNT_LIMIT = 20   # a column with more distinct values than this keeps no value counts
@@ -165,7 +165,7 @@ def open_workspace(path) -> sqlite3.Connection:
         os.chmod(path, 0o600)   # the file holds password hashes and sessions: this account only
     for table, column in (('dataset', 'dropped_json'), ('dataset', 'who'), ('dataset', 'mode'), ('dataset', 'changes_json'), ('check_result', 'dataset_id'), ('check_result', 'null_key_rows'),
                           ('element_state', 'content_json'), ('element_state', 'anchors_json'), ('element_state', 'proposed_by'), ('element_state', 'reason'),
-                          ('dataset', 'who_user_id'), ('element_state', 'confirmed_by_user_id'), ('element_state', 'proposed_by_user_id'), ('log', 'user_id'),
+                          ('dataset', 'who_user_id'), ('element_state', 'confirmed_by_user_id'), ('element_state', 'proposed_by_user_id'), ('log', 'user_id'), ('log', 'via_token'),
                           ('element_state', 'cause'), ('element_state', 'via'), ('confirmation', 'snapshot_json'), ('llm_review', 'distinct_rows'), ('llm_review', 'detail_json'),
                           ('api_token', 'scope'), ('api_token', 'expires_at'), ('action_record', 'undo_of'), ('action_record', 'op'),
                           ('data_source', 'tls'), ('data_source', 'ca_pem'), ('refresh_run', 'error_public'), ('schedule', 'created_by_user_id'), ('user', 'attrs_json'), ('row_rule', 'user_attr')):
@@ -295,10 +295,11 @@ _ACTOR = object()
 
 
 def _log(conn, who: str, element_id: str | None, change: str, before=None, after=None, user_id=_ACTOR) -> None:
-    """One line of the log. user_id: the account behind `who`; by default the actor's own when `who` is their name."""
-    conn.execute('INSERT INTO log(time, who, element_id, change, before_json, after_json, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    """One line of the log. user_id: the account behind `who`; by default the actor's own when `who` is their name. via_token: the label of the token the request
+    that wrote it carried (actor.token_mark), None for a person signed in."""
+    conn.execute('INSERT INTO log(time, who, element_id, change, before_json, after_json, user_id, via_token) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
                  (_now(), who, element_id, change, None if before is None else json.dumps(before, ensure_ascii=False),
-                  None if after is None else json.dumps(after, ensure_ascii=False), actor_id_for(who) if user_id is _ACTOR else user_id))
+                  None if after is None else json.dumps(after, ensure_ascii=False), actor_id_for(who) if user_id is _ACTOR else user_id, token_mark()))
 
 
 log_line = _log   # for the modules that also record what was before

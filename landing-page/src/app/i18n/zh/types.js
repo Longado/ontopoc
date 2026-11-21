@@ -181,6 +181,8 @@ export default {
   "log.retired": "去掉了这些列的含义（{reason}）：{text}",
   "log.edited": "改了名称或说明：{text}",
   "log.proposed": "提出了{what}",
+  "log.withToken": "（用令牌“{label}”）",
+  "log.withTokenNoLabel": "（用令牌）",
   "dbt.open": "从 dbt 导入",
   "dbt.title": "从 dbt manifest 导入",
   "dbt.intro": "选 dbt 写在 target/ 下的 manifest.json（dbt parse 或 dbt compile 会生成它）。",
