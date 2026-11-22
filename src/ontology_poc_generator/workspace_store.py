@@ -129,6 +129,19 @@ CREATE TABLE IF NOT EXISTS checked_number (
     id INTEGER PRIMARY KEY AUTOINCREMENT, dashboard_id INTEGER, component_id TEXT, component_json TEXT, question_id INTEGER,
     trusted REAL NOT NULL, computed REAL NOT NULL, note TEXT NOT NULL, by_user_id INTEGER, by_name TEXT NOT NULL, at TEXT NOT NULL,
     datasets_json TEXT NOT NULL, definitions_json TEXT NOT NULL);
+-- questions we need (needed_questions): the team's list of questions, each with what it should give (a number, or that it must be refused), proposed by one person and
+-- confirmed by another; every run of the list (who, how many asks, how many model calls) and what each question came back as in it
+CREATE TABLE IF NOT EXISTS needed_question (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, question TEXT NOT NULL, expect_kind TEXT CHECK (expect_kind IN ('number', 'refused')), expect_value REAL, note TEXT,
+    state TEXT NOT NULL CHECK (state IN ('none', 'proposed', 'confirmed', 'needs_look')), version INTEGER NOT NULL,
+    written_by TEXT, written_by_user_id INTEGER, written_at TEXT NOT NULL, confirmed_by TEXT, confirmed_by_user_id INTEGER, confirmed_at TEXT, self_confirmed INTEGER NOT NULL DEFAULT 0,
+    basis_json TEXT, look_json TEXT);
+CREATE TABLE IF NOT EXISTS needed_run (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, by_name TEXT NOT NULL, by_user_id INTEGER, started_at TEXT NOT NULL, finished_at TEXT,
+    status TEXT NOT NULL CHECK (status IN ('running', 'done', 'stopped')), repeats INTEGER NOT NULL, planned INTEGER NOT NULL, calls INTEGER NOT NULL DEFAULT 0,
+    model TEXT, prompt_version TEXT, note TEXT);
+CREATE TABLE IF NOT EXISTS needed_result (
+    run_id INTEGER NOT NULL, question_id INTEGER NOT NULL, question TEXT NOT NULL, outcome TEXT NOT NULL, result_json TEXT NOT NULL, PRIMARY KEY (run_id, question_id));
 '''
 
 

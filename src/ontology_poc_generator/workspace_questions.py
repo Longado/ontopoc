@@ -968,10 +968,11 @@ def _hidden_read(sc: dict, result: dict) -> dict:
     return {t['id']: sorted(sc['types'][t['id']]['hidden']) for t in result.get('types', []) if t['id'] in sc['types']}
 
 
-def ask(conn, gateway, user: dict | None, question, writes='json') -> dict:
+def ask(conn, gateway, user: dict | None, question, writes='json', keep: bool = True) -> dict:
     """Answer one question from what this person may see and what is confirmed, keep it with the definitions and dataset versions it used, and return it.
     QaRefused (503 without a model, 502 when it failed) when no answer could be worked out at all; a refusal to answer is an answer, saved like the rest.
-    `writes`: what the model writes, the JSON query ('json', the default) or OntoPoc Query text ('query')."""
+    `writes`: what the model writes, the JSON query ('json', the default) or OntoPoc Query text ('query'). `keep=False`: the same answer, not kept as one of
+    this person's questions (a run of the team's list of questions we need asks through here; its asks are the run's, not the person's, and have no id)."""
     if writes not in WRITES:
         raise QaRefused(tr('writes 只能是 "json"（模型写结构化查询，默认）或 "query"（模型写本体查询）', 'writes must be "json" (the model writes a structured query, the default) or "query" (the model writes an ontology query)'))
     question = _clean_question(question)
@@ -1003,6 +1004,8 @@ def ask(conn, gateway, user: dict | None, question, writes='json') -> dict:
     if user is not None and user['role'] == 'viewer':
         result = _strip_rows(result)
     now = _now()
+    if not keep:
+        return {'id': None, 'question': question, 'asked_at': now, **result}
     cursor = conn.execute('INSERT INTO qa_question(user_id, asked_by, question, asked_at, status, answer_json, definitions_json, dataset_versions_json, types_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
                           (user['id'] if user else None, user['display_name'] if user else None, question, now, result['status'], json.dumps({**result, 'named': _named_ids(result, sc), 'rules': _rules_read(sc, result), 'hidden_columns': _hidden_read(sc, result)}, ensure_ascii=False),
                            json.dumps(result['definitions'], ensure_ascii=False), json.dumps(result['datasets'], ensure_ascii=False), json.dumps(result['types'], ensure_ascii=False)))
