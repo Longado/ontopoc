@@ -516,10 +516,11 @@ def _refresh_view_reasons(conn, english_name: str, column: str) -> None:
 
 # --- checks: now, and again when the data moves ---------------------------------------------------------------------------------------------------
 
-def _type_problems(conn, content: dict, record: bool = True) -> tuple[list[str], int | None, int | None]:
+def _type_problems(conn, content: dict, record: bool = True, ahead: dict | None = None) -> tuple[list[str], int | None, int | None]:
     """(what is wrong now, the id of the key check that ran, the id of the value rules' check) for a type, read from the current version of its dataset. Each value
     rule that some row breaks is a problem of its own, saying which rule and how many rows. `record=False`: the checks are not kept (a page asking whether it can
-    be confirmed now)."""
+    be confirmed now). `ahead`: the rules already counted on this version before a write lock was taken (_rules_ahead), used only when it was counted on the same
+    version, the same rules and the same codes."""
     dataset = current_dataset(conn, content['dataset'])
     if dataset is None:
         return [tr(f'数据集“{content["dataset"]}”已经不在了', f'The dataset "{content["dataset"]}" is gone')], None, None
@@ -536,17 +537,42 @@ def _type_problems(conn, content: dict, record: bool = True) -> tuple[list[str],
         problems.append(tr(f'主键“{" + ".join(content["key"])}”现在不唯一或有空值：{_key_failure(conn, key_check)[0]}', f'The key "{" + ".join(content["key"])}" is no longer unique or has empty values: {_key_failure(conn, key_check)[0]}'))
     if not content.get('rules'):
         return problems, key_check['id'], None
-    found = _rule_pass(conn, content, dataset, content['rules'], REASON_EXAMPLES)
+    codes = _rule_codes(conn, content, content['rules'])
+    same = ahead is not None and (ahead['dataset_id'], ahead['rules'], ahead['codes']) == (dataset['id'], content['rules'], codes)
+    found = ahead['found'] if same else _rule_pass(conn, content, dataset, content['rules'], REASON_EXAMPLES)
     names = {p['column']: p['name'] for p in content['properties']}
     problems += [broken_text(rule_says(rule, names), result['broken'], found['rows_checked'], result['examples']) for rule, result in zip(content['rules'], found['rules']) if result['broken']]
     return problems, key_check['id'], _record_rules(conn, content, dataset, found) if record else None
 
 
+def _rule_codes(conn, content: dict, rules: list[dict]) -> dict[str, list[str]]:
+    """The values each code rule allows: the values its column's meanings give a meaning to."""
+    return {r['column']: [e['value'] for e in _kept_meanings(conn, content['english_name'], r['column'])] for r in rules if r['check'] == 'in_codes'}
+
+
 def _rule_pass(conn, content: dict, dataset: dict, rules: list[dict], examples: int, only: str | None = None) -> dict:
     """The value rules counted on the current version of the type's dataset, in one pass (value_rules.run): a code rule reads the values its column's meanings name."""
     kinds = {p['column']: p['type'] for p in content['properties']}
-    codes = {r['column']: [e['value'] for e in _kept_meanings(conn, content['english_name'], r['column'])] for r in rules if r['check'] == 'in_codes'}
-    return run_rules(conn, dataset['table_name'], rules, kinds, codes, content['key'], examples, only)
+    return run_rules(conn, dataset['table_name'], rules, kinds, _rule_codes(conn, content, rules), content['key'], examples, only)
+
+
+def _rules_ahead(conn, readers) -> dict[str, dict]:
+    """The value rules of each confirmed type among these readers, counted on the current version of its dataset before the recheck takes the write lock, so the
+    lock is held no longer than the key check needs: a stored version never changes, and the recheck uses a count only when the version, the rules and the codes
+    are still the ones it was made on (otherwise it counts again, inside)."""
+    ahead = {}
+    for element_id in sorted(r for r in readers if r.startswith(TYPE_PREFIX)):
+        row = element_row(conn, element_id)
+        content = _content(row) if row is not None and row['state'] == 'confirmed' else {}
+        dataset = current_dataset(conn, content['dataset']) if content.get('rules') else None
+        if dataset is None:
+            continue
+        cols = dataset_columns(conn, dataset['id'])
+        if any(c not in cols for c in [*content['key'], *(p['column'] for p in content['properties'])]):   # the check inside stops at the missing column
+            continue
+        ahead[element_id] = {'dataset_id': dataset['id'], 'rules': content['rules'], 'codes': _rule_codes(conn, content, content['rules']),
+                             'found': _rule_pass(conn, content, dataset, content['rules'], REASON_EXAMPLES)}
+    return ahead
 
 
 def _record_rules(conn, content: dict, dataset: dict, found: dict) -> int:
@@ -772,6 +798,7 @@ def recheck_dependents(conn, dataset_name: str, caused_by: str | None = None) ->
     from ontology_poc_generator.object_views import view_problems
     from ontology_poc_generator.workspace_pipelines import pipeline_problems
     order = lambda e: (0 if e.startswith(ENUM_PREFIX) else 2 if e.startswith((RELATION_PREFIX, VIEW_PREFIX, DERIVED_PREFIX)) else 1, e)   # meanings, then types and pipelines (which move with their meanings), then relations, views and derived properties (which move with their types and relations)
+    ahead = _rules_ahead(conn, readers)   # read before the lock: the value rules' pass is the slow part
     conn.execute('BEGIN IMMEDIATE')
     try:
         for element_id in sorted(readers, key=order):
@@ -781,7 +808,7 @@ def recheck_dependents(conn, dataset_name: str, caused_by: str | None = None) ->
             problems = (_enum_problems(conn, row) if element_id.startswith(ENUM_PREFIX) else relation_problems(conn, row) if element_id.startswith(RELATION_PREFIX)
                         else view_problems(conn, row) if element_id.startswith(VIEW_PREFIX) else pipeline_problems(conn, row) if element_id.startswith(PIPELINE_PREFIX)
                         else derived_problems(conn, row) if element_id.startswith(DERIVED_PREFIX)
-                        else _type_problems(conn, _content(row))[0])
+                        else _type_problems(conn, _content(row), ahead=ahead.get(element_id))[0])
             if problems:
                 _flag(conn, element_id, tr('；', '; ').join(problems), caused_by, moved, 'data')
         conn.execute('COMMIT')
