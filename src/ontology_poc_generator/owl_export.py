@@ -223,13 +223,19 @@ def files(conn, user: dict | None, now: datetime | None = None) -> dict[str, str
     onto += [_statement(f'op:{term}', ['owl:AnnotationProperty'], [('rdfs:comment', _both(words))]) for term, words in VOCAB_TERMS.items()]
     onto.append(''.join(f'{term} a {kind} .\n' for term, kind in SKOS_KINDS))
     declared = len(onto) - 1   # where altLabel is declared too, once one is written
+    wrote = []   # every other name written as an alternative label: what decides the declaration, never the file's text
+
+    def alt(names):
+        wrote.extend(names)
+        return _alt(names)
+
     shapes = {}   # type name -> property shapes
     keys = []     # (type name, key property): a key of one column, whose repeats SHACL can see
     for name, t in types.items():
         content = t['content']
         cls = n.type(name)
         columns = {p['column'] for p in content['properties']}
-        facts = [('rdfs:label', literal(content['name']))] + _alt(other_names.of(content)) + ([('rdfs:comment', literal(content['description']))] if content['description'] else [])
+        facts = [('rdfs:label', literal(content['name']))] + alt(other_names.of(content)) + ([('rdfs:comment', literal(content['description']))] if content['description'] else [])
         facts += [('op:dataset', literal(content['dataset']))] + _stamp(conn, t['row']['element_id'])
         if set(content['key']) <= columns:   # a key column kept from this person: no key rather than half of one
             facts.append(('owl:hasKey', '( ' + ' '.join(n.column(name, c) for c in content['key']) + ' )'))
@@ -241,7 +247,7 @@ def files(conn, user: dict | None, now: datetime | None = None) -> dict[str, str
         meanings = sc['meanings'].get(name, {})
         kept = hidden_values(conn, type_id(name))
         for p in content['properties']:
-            facts = [('rdfs:label', literal(p['name'])), *_alt(other_names.of(p)), ('op:column', literal(p['column'])), ('rdfs:domain', cls)]
+            facts = [('rdfs:label', literal(p['name'])), *alt(other_names.of(p)), ('op:column', literal(p['column'])), ('rdfs:domain', cls)]
             facts += [('rdfs:range', RANGES[p['type']])] if p['type'] in RANGES else []
             facts += [('op:note', _both(TYPE_NOTES[p['type']]))] if p['type'] in TYPE_NOTES else []
             if p['column'] in meanings:
@@ -256,6 +262,7 @@ def files(conn, user: dict | None, now: datetime | None = None) -> dict[str, str
                 facts += _said(_says(conn, sc, 'meaning', _content(m['row'])))
                 kind = next(p['type'] for p in content['properties'] if p['column'] == column)
                 also = other_names.meaning_names(_content(m['row'])['values'])
+                wrote.extend(n for label in m['labels'].values() for n in also.get(label, []))
                 facts += [('skos:hasTopConcept', f'[ a skos:Concept ; skos:inScheme {scheme} ; skos:notation {literal(v)} ; skos:prefLabel {literal(label)}'
                            + ''.join(f' ; skos:altLabel {literal(n)}' for n in also.get(label, [])) + ' ]') for v, label in m['labels'].items()]
                 if m['labels']:
@@ -275,18 +282,18 @@ def files(conn, user: dict | None, now: datetime | None = None) -> dict[str, str
             shapes.setdefault(c['to'], []).append(f'[ sh:path [ sh:inversePath {rel} ] ; sh:maxCount 1 ]')
     for name, v in sc['views'].items():
         c = v['content']
-        facts = [('rdfs:subClassOf', n.type(c['type'])), ('rdfs:label', literal(c['name']))] + _alt(other_names.of(c)) + ([('rdfs:comment', literal(c['description']))] if c.get('description') else [])
+        facts = [('rdfs:subClassOf', n.type(c['type'])), ('rdfs:label', literal(c['name']))] + alt(other_names.of(c)) + ([('rdfs:comment', literal(c['description']))] if c.get('description') else [])
         facts += _said(_says(conn, sc, 'view', c)) + _stamp(conn, v['row']['element_id']) + [('op:note', _both(NOT_AN_AXIOM))]
         onto.append(_statement(n.view(name), ['owl:Class'], facts))
     derived = [(element_id, d, True) for element_id, d in sc['derived'].items()] + [(element_id, d, False) for element_id, d in sc['derived_kept_back'].items()]
     for element_id, d, open_text in sorted(derived, key=lambda x: x[0]):
         c = d['content']
-        facts = [('rdfs:label', literal(c['name'])), *_alt(other_names.of(c)), ('rdfs:domain', n.type(c['type']))] + ([('rdfs:range', RANGES[c['output_type']])] if c.get('output_type') in RANGES else [])
+        facts = [('rdfs:label', literal(c['name'])), *alt(other_names.of(c)), ('rdfs:domain', n.type(c['type']))] + ([('rdfs:range', RANGES[c['output_type']])] if c.get('output_type') in RANGES else [])
         facts += (_said(_says(conn, sc, 'derived', c)) if open_text else []) + _stamp(conn, element_id)
         facts.append(('op:note', _both(NOT_AN_AXIOM if open_text else KEPT_FROM_MODELS)))
         onto.append(_statement(n.derived(c['type'], c['english_name']), ['owl:DatatypeProperty'], facts))
 
-    if any('skos:altLabel' in part for part in onto[declared + 1:]):
+    if wrote:
         onto[declared] += f'{ALT_LABEL[0]} a {ALT_LABEL[1]} .\n'
     out = [_header(made, root, ('SHACL shapes for what OntoPoc checks on the confirmed definitions (schema only).', '已确认定义里 OntoPoc 会检查的规则，写成 SHACL（只有结构）。'),
                    [('No other tool has read the shapes.', '别的工具没有读过规则文件。'), (SEVERAL_COLUMNS_NOTE[1], SEVERAL_COLUMNS_NOTE[0])]), PREFIXES]
