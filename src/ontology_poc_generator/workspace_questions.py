@@ -492,7 +492,7 @@ def _catalog_for_model(conn, sc: dict, parts: dict) -> tuple[dict, list[dict]]:
             if f'{alias[t["dataset"]["name"]]}.{a["path"]}' in hidden or a['path'] in t['content']['key']:
                 a.pop('values', None)
                 a.pop('meanings', None)
-    told = {'views': parts['also']['views'], 'meanings': {i: n for i, n in parts['also']['meanings'].items() if i.rpartition('=')[0] in sent}}   # not the meanings of a column whose values are kept from the model
+    told = {'views': parts['also']['views'], 'meanings': {i: n for i, n in parts['also']['meanings'].items() if any(i.startswith(f'{f}=') for f in sent)}}   # not the meanings of a column whose values are kept from the model
     return catalog, definition_catalog(sent, parts['views'], told)
 
 
