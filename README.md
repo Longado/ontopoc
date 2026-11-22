@@ -141,7 +141,7 @@ claude mcp add ontopoc -- env ONTOPOC_TOKEN=<你的令牌> ONTOPOC_TOOLSET=read 
 
 | 部分 | 做什么 |
 |---|---|
-| 账号与权限 | 本机账号，管理员、建设者、查看者三种角色，服务端会话。查看者只看已确认的定义。管理员可按对象类型限定人、按行限定人（只有允许清单）、隐藏列、让某列的值不发给模型 |
+| 账号与权限 | 本机账号，管理员、建设者、查看者三种角色，服务端会话。查看者只看已确认的定义。管理员可按对象类型限定人、按行限定人（只有允许清单）、隐藏列；建设者可以让某列的值不发给模型 |
 | 数据 | 上传 CSV / Excel，按主键更新或覆盖，每次一个新版本，导入时核对行数。只读连接 PostgreSQL、MySQL：拉取是把表**复制**成一个新版本，每次最多 50 万行、约 200 MB，超过就拒绝，不会截断。只支持 PostgreSQL 和 MySQL；在你的数据库里就地检查还没有做。调度按小时、每天、每周拉取或运行管道 |
 | 定义 | 对象类型（主键、属性、代码列的含义）、关系（连上多少行、声明的基数是否成立）、视图、派生属性（同一行的公式，或经关系的统计） |
 | 确认 | 提出 → 代码检查 → 另一位建设者确认，存下数据版本和锚点。数据或定义一变，对不上的回到“需再看”，能确认它的人和上次确认它的人在“消息”里各收到一条。关系有一个例外：确认时每一行都连上、键没有重复的，只要现在仍然如此就保持已确认，行数变了也一样。一次上传动到的几项可以在一个页面里一起确认 |
@@ -153,7 +153,7 @@ claude mcp add ontopoc -- env ONTOPOC_TOKEN=<你的令牌> ONTOPOC_TOOLSET=read 
 ## 隐私
 
 - 上传的文件、拉来的表和全部结果只存在运行服务的这台机器上。
-- 模型看对象类型、属性的名字和类型、已确认的代码含义、关系和派生属性的说明，以及取值种类不多的列（如城市、等级）的全部取值；主键列和管理员标为“不发取值”的列不发取值。不发行数据。
+- 模型看对象类型、属性的名字和类型、已确认的代码含义、关系和派生属性的说明，以及取值种类不多的列（如城市、等级）的全部取值；主键列和建设者标为“不发取值”的列不发取值。不发行数据。
 - 每次模型调用在 `model_calls.jsonl` 记录一行（哪个 Agent、耗时、成功与否），不记录调用内容。
 - 早期界面发给模型的内容见 [docs/LEGACY_SCREEN.md](docs/LEGACY_SCREEN.md#发给模型的内容)。
 
@@ -178,6 +178,10 @@ Ontology 先约定「有哪些对象、怎么识别、对象之间可以有什�
 ### 这和 semantic layer（语义层）是什么关系？
 
 你们的指标可能已经在数仓的语义层里定义好了。谁签过字？底下的数据变了，谁会知道？OntoPoc 管的就是这一段：每个定义带着确认人和数据版本，数据一动就回到“需再看”，在有人重新确认之前，AI 不会拿它回答。它用自己复制的一份数据。已经用 dbt 的，可以在对象类型页上传 `manifest.json`：OntoPoc 读其中的模型测试（unique、not_null、relationships、accepted_values），提出对象类型和关系，一次最多 50 个，写入前先给出预览；每一个仍要另一位建设者对着数据确认。复合主键、dbt 的 constraints、metrics、语义层和 dbt Cloud 都不读，manifest 之后的改动也不会跟着同步，导入本身不确认任何东西。目前也还不能导出到某个具体的语义层。
+
+### OntoPoc 用 OWL 或 RDF 吗？
+
+内部不用。团队应用用自己的对象模型，也不运行 OWL 推理机：OWL 按开放世界读数据，主键相同的两个对象会被读成同一个，而 OntoPoc 会拒绝重复的主键。登录的人（包括查看者）都可以从 `GET /api/workspace/agent/schema` 把自己能看到的已确认定义下载成两个 Turtle 文件（建设者和管理员在“AI 工具接入”页上也有下载链接）：OWL 写对象类型、主键、属性和关系，SKOS 写代码含义，SHACL 规则写主键、代码和基数的检查。视图和派生属性在里面是文字，不是 OWL 公理，也不含任何数据行。OntoPoc 的测试里用 rdflib 和 pyshacl 读它们；ROBOT 和 HermiT 推理机在一个样例上手工跑过一次，不声称下载的文件属于哪个 OWL 语言子集。什么对应什么、哪些放不进去，见 [docs/STANDARDS.md](docs/STANDARDS.md)。早期界面另有一个自己的 Turtle 导出。
 
 ### 什么是 ontology MCP？可以怎么用？
 
@@ -204,8 +208,8 @@ Ontology 先约定「有哪些对象、怎么识别、对象之间可以有什�
 ## 开发
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # 后端测试（2026-11-21 共 2,399 个；先 pip install -e ".[check,sources]"，否则 TTL 校验等会跳过）
-npm --prefix landing-page run test:unit                       # 前端测试（2026-11-21 共 797 个）
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # 后端测试（2026-11-22 共 2,416 个；先 pip install -e ".[check,sources]"，否则 Turtle、OWL 和 SHACL 的测试等会跳过）
+npm --prefix landing-page run test:unit                       # 前端测试（2026-11-22 共 798 个）
 PYTHONPATH=src:. python3 scripts/real_model_check.py --out /tmp/check   # 真实模型对照 SQL 的检查（要模型 key；只有错数才算失败）
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # 试跑用另一个数据目录
 ```
@@ -219,6 +223,7 @@ PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp
 | [docs/MCP.md](docs/MCP.md) | MCP 工具清单 |
 | [docs/AGENTS.md](docs/AGENTS.md) | 每一次模型调用的定义卡与调用记录 |
 | [docs/DEVELOPMENT_GUARDRAILS.md](docs/DEVELOPMENT_GUARDRAILS.md) | 开发红线与待触发的方向 |
+| [docs/STANDARDS.md](docs/STANDARDS.md) | OWL、SHACL 和 SKOS：已确认定义的下载里有什么，哪些放不进去 |
 
 ## 许可证
 
