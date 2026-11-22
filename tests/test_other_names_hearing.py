@@ -236,7 +236,8 @@ class ColumnTests(Planted):
 
 
 class MainNameInsideAnOtherNameTests(pilot.PilotFoundation):
-    """The pilot's type 客户 (its name, not an other name) inside the other name 客户号 of 订单's customer_id: not heard there, heard on its own."""
+    """The pilot's type 客户 (its name, not an other name) inside the other name 客户号 of 订单's customer_id: a name is never muted, so it is heard there as main
+    hears it inside a longer name, and the question is refused while Customer waits."""
 
     def test_the_customer_type_waits(self):
         model = Scripted(item(A))
@@ -252,10 +253,10 @@ class MainNameInsideAnOtherNameTests(pilot.PilotFoundation):
             status, body = ann.post('/api/workspace/types/update', {**pilot.CUSTOMER, 'id': 'customer', 'version': now['version'], 'description': 'changed'}, **bearer(token))
             self.assertEqual((status, body.get('state')), (200, 'checked'), body)
             model.replies = [item({'start': 'order', 'where': [{'field': 'customer_id', 'equals': 'C015'}], 'via': [], 'group_by': None, 'share': None, 'measure': None})]
-            self.assertEqual(ann.post('/api/workspace/ask', {'question': '客户号C015的订单有几笔？'})[1]['status'], 'answered')
+            self.assertEqual(ann.post('/api/workspace/ask', {'question': '客户号C015的订单有几笔？'})[1]['status'], 'refused')   # 客户 is the type's name: heard, as on main
             self.assertEqual(ann.post('/api/workspace/ask', {'question': '客户号C015的客户在哪个城市？'})[1]['status'], 'refused')
             with mock.patch.object(other_names, 'HEARD', False):
-                self.assertEqual(ann.post('/api/workspace/ask', {'question': '客户号C015的订单有几笔？'})[1]['status'], 'refused')   # not heard: 客户 is found as it is on main
+                self.assertEqual(ann.post('/api/workspace/ask', {'question': '客户号C015的订单有几笔？'})[1]['status'], 'refused')
 
 
 class SaveTests(Planted):
