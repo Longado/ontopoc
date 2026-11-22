@@ -82,7 +82,7 @@ test("a page not built yet has an address of its own and says what it will do", 
 
 test("the sidebar groups what the product has, and marks what is built: the gate's daily work (定义) before the data that feeds it", () => {
   assert.deepEqual(NAV.map((g) => g.label ?? null), [null, "定义", "数据", "智能体"]);
-  assert.deepEqual(NAV.flatMap((g) => g.items.map((i) => i.label)), ["首页", "助手", "看板", "消息", "待确认", "对象类型", "关系", "血缘", "数据集", "数据源", "管道", "调度", "AI 工具接入"]);
+  assert.deepEqual(NAV.flatMap((g) => g.items.map((i) => i.label)), ["首页", "助手", "看板", "消息", "待确认", "要回答的问题", "对象类型", "关系", "血缘", "数据集", "数据源", "管道", "调度", "AI 工具接入"]);
   for (const g of [...NAV, ...ADMIN_NAV].filter((g) => g.label)) assert.ok(g.hint && g.icon, g.label);   // a one-line grey explainer and an icon under each group
   for (const i of [...NAV, ...ADMIN_NAV].flatMap((g) => g.items)) assert.ok(i.icon, i.key);
   assert.equal(navKeyOf({ page: "dataset", name: "x" }), "datasets");
