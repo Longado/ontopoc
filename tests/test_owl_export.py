@@ -20,9 +20,10 @@ from ontology_poc_generator.accounts import get_user
 from ontology_poc_generator.workspace_store import open_workspace
 from tests.test_access import Client
 from tests.test_agent_access import AgentCase
-from tests.test_derived_properties import GROSS
+from tests.test_derived_properties import CANCELLED, COMMIT, CUSTOMER, GROSS, ORDER, PRODUCT, RELATIONS, STOCK, TICKET
 from tests.test_explorer import CUSTOMERS, ORDERS
 from tests.test_object_relations import table_csv
+from tests.test_object_types import LATEST_STOCK, VALID, shifted_orders_csv
 from tests.test_workspace_questions import AskModel, cancelled
 
 try:
@@ -87,6 +88,15 @@ class SchemaCase(AgentCase):
         target.commit()
         target.close()
         return copy
+
+    @staticmethod
+    def waiting(out) -> dict[str, str]:
+        """{definition id: state} of every definition that is not confirmed now."""
+        conn = sqlite3.connect(out / 'workspace.sqlite')
+        try:
+            return dict(conn.execute("SELECT element_id, state FROM element_state WHERE state != 'confirmed'").fetchall())
+        finally:
+            conn.close()
 
     @staticmethod
     def on_type(out, name: str) -> set[str]:
@@ -324,6 +334,81 @@ class WhoGetsWhatTests(SchemaCase):
                 for text in made.values():
                     for word in ('售后工单', 'ticket', '含税金额', 'gross'):
                         self.assertNotIn(word, text)
+
+    def test_a_type_a_relation_a_view_a_derived_property_and_meanings_that_wait_are_absent_as_if_they_never_existed(self):
+        with self.service(gateway=AskModel(cancelled())) as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            later = next(r for r in RELATIONS if r['english_name'] == 'order_product')
+            self.foundation(team, types=(ORDER, CUSTOMER, PRODUCT, STOCK, COMMIT), relations=[r for r in RELATIONS if r is not later])
+            self.assertEqual(ann.post('/api/workspace/types/views', VALID)[0], 200)
+            shown = bob.get('/api/workspace/types/order/views')[1]['views'][0]
+            self.assertEqual(bob.post('/api/workspace/types/views/confirm', {'id': VALID['name'], 'version': shown['version'], 'seen': shown['seen']})[0], 200)
+            self.assertEqual(ann.post('/api/workspace/types/derived', CANCELLED)[0], 200)
+            self.assertEqual(self.confirm(bob, CANCELLED)[0], 200)
+            before = self.files(out, 'bob')
+            # put forward and not confirmed: a type, a relation, a view, a derived property, and a code column's meanings on a confirmed type
+            self.assertEqual(ann.post('/api/workspace/types', TICKET)[0], 200)
+            self.assertEqual(ann.post('/api/workspace/relations', later)[0], 200)
+            self.assertEqual(ann.post('/api/workspace/types/views', LATEST_STOCK)[0], 200)
+            self.assertEqual(ann.post('/api/workspace/types/derived', GROSS)[0], 200)
+            # confirmed, then changed in what it says (its cardinality): it waits for a confirmation again
+            stock_product = next(r for r in RELATIONS if r['english_name'] == 'stock_product')
+            detail = bob.get('/api/workspace/relations/stock_product')[1]
+            status, body = ann.post('/api/workspace/relations/update', {**stock_product, 'id': 'stock_product', 'version': detail['version'], 'cardinality': 'one_to_one'})
+            self.assertEqual(status, 200, body)
+            conn = sqlite3.connect(out / 'workspace.sqlite')   # one put forward by a model and not yet checked: the same as any other that waits
+            conn.execute("UPDATE element_state SET state = 'proposed' WHERE element_id = 'relation:order_product'")
+            conn.commit()
+            conn.close()
+            waiting = self.waiting(out)
+            self.assertEqual({k: waiting.get(k) for k in ('objtype:ticket', 'relation:order_product', 'objview:最新快照', 'derived:order:gross', 'relation:stock_product')},
+                             {'objtype:ticket': 'checked', 'relation:order_product': 'proposed', 'objview:最新快照': 'checked', 'derived:order:gross': 'checked',
+                              'relation:stock_product': waiting.get('relation:stock_product')})
+            self.assertIn(waiting['relation:stock_product'], ('proposed', 'checked', 'needs_look'))
+            elsewhere = self.without(out, set(waiting))
+            for person in ('bob', 'vera'):
+                made = self.files(out, person)
+                self.assertEqual(made, self.files(out, person, elsewhere), person)
+                for text in made.values():
+                    for word in ('售后工单', 'ticket', '订单买的产品', 'order_product', '最新快照', '含税金额', 'gross', '库存属于产品', 'stock_product'):
+                        self.assertNotIn(word, text)
+            self.assertIn('库存属于产品', before['ontology.ttl'])   # it was in the file while it was confirmed
+
+    def test_meanings_that_need_another_look_after_the_data_moved_are_absent_with_everything_that_stands_on_them(self):
+        with self.service(gateway=AskModel(cancelled())) as (base, out):
+            team = self.team(base)
+            self.world(team)
+            self.assertIn('已取消', self.files(out, 'bob')['ontology.ttl'])
+            self.assertEqual(team['ann'].post('/api/workspace/datasets/upload', {'files': [shifted_orders_csv()]})[0], 200)   # the codes move
+            waiting = self.waiting(out)
+            self.assertEqual(waiting['enum:order:状态码'], 'needs_look')
+            elsewhere = self.without(out, set(waiting))
+            for person in ('bob', 'vera'):
+                made = self.files(out, person)
+                self.assertEqual(made, self.files(out, person, elsewhere), person)
+                for text in made.values():
+                    self.assertNotIn('已取消', text)
+                    self.assertNotIn('enum:order', text)
+
+    def test_meanings_that_wait_on_a_type_that_stays_confirmed_are_absent(self):
+        """The pages do not leave a type confirmed while its meanings wait (rewriting them sends the type back too); the file does not rely on that."""
+        with self.service(gateway=AskModel(cancelled())) as (base, out):
+            team = self.team(base)
+            self.world(team)
+            conn = sqlite3.connect(out / 'workspace.sqlite')
+            conn.execute("UPDATE element_state SET state = 'checked' WHERE element_id = 'enum:order:状态码'")
+            conn.commit()
+            conn.close()
+            self.assertEqual(self.waiting(out), {'enum:order:状态码': 'checked'})
+            elsewhere = self.without(out, {'enum:order:状态码'})
+            for person in ('bob', 'vera'):
+                made = self.files(out, person)
+                self.assertEqual(made, self.files(out, person, elsewhere), person)
+                for text in made.values():
+                    self.assertNotIn('已交付', text)
+                    self.assertNotIn('enum:order', text)
+                    self.assertNotIn('sh:in (', text)
 
     def test_a_column_kept_from_a_person_is_absent_as_if_the_type_never_had_it(self):
         with self.service(gateway=AskModel(cancelled())) as (base, out):
