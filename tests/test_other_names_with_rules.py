@@ -119,6 +119,22 @@ class AltLabelTests(SchemaCase):
             order = next(onto.subjects(SKOS.altLabel, Literal('销售单')))
             self.assertIn((order, RDF.type, OWL.Class), onto)
 
+    def test_words_in_a_description_do_not_make_the_file_declare_altlabel(self):
+        from rdflib.namespace import SKOS
+        with self.service(gateway=AskModel(cancelled())) as (base, out):
+            team = self.team(base)
+            self.world(team)
+            ann = team['ann']
+            now = ann.get('/api/workspace/types/order')[1]
+            props = [{'column': p['column'], **({'enum': True} if p['enum'] else {})} for p in now['properties']]
+            status, body = ann.post('/api/workspace/types/update', {'id': 'order', 'version': now['version'], 'name': now['name'], 'description': 'see skos:altLabel for names',
+                                                                    'dataset': now['dataset'], 'key': now['key'], 'properties': props})
+            self.assertEqual(status, 200, body)
+            text = self.files(out, 'bob')['ontology.ttl']
+            self.assertIn('see skos:altLabel for names', text)   # the description is there, as text
+            self.assertNotIn('skos:altLabel a ', text)           # and nothing is declared: no other name was written
+            self.assertEqual(list(graph(text).subject_objects(SKOS.altLabel)), [])
+
     def test_hidden_and_waiting_definitions_other_names_are_absent_byte_for_byte(self):
         with self.service(gateway=AskModel(cancelled())) as (base, out):
             team = self.team(base)
