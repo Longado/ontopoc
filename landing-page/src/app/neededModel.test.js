@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { adoptable, blockingText, canConfirm, confirmHint, distinctText, expectPayload, expectText, outcomeWord, planText, resultLines, runAllowed, stateText } from "./neededModel.js";
+import { adoptable, blockingText, canConfirm, confirmHint, distinctText, exactNumber, expectPayload, expectText, outcomeWord, planText, resultLines, runAllowed, runningText, stateText } from "./neededModel.js";
 import { setLocale } from "./i18n/index.js";
 
 const LISTING = { questions: [{}, {}, {}], limits: { questions: 30, repeats: 5 }, budget: { calls: 300, hours: 24, used: 12, left: 288 }, can_run: { ok: true, why: null } };
@@ -97,4 +97,54 @@ test("the form's expectation becomes what the service reads", () => {
   assert.equal(expectPayload({ kind: "none", value: "" }), null);
   assert.deepEqual(expectPayload({ kind: "number", value: "1,234" }), { kind: "number", value: "1,234" });
   assert.deepEqual(expectPayload({ kind: "refused", value: "9" }), { kind: "refused" });
+});
+
+test("a question with no expectation that gave two answers shows both with their counts, and offers none to adopt", () => {
+  setLocale("zh");
+  const result = { outcome: "no_expectation", asked: 5, right: null, expected: null, answer: { status: "answered", number: 119810, query_text: "SELECT sum(o.金额) FROM (o:订单)" },
+    distinct: [{ number: 119810, status: "answered", times: 4 }, { number: 162960, status: "answered", times: 1 }] };
+  assert.deepEqual(resultLines(result), ["同一个问题给出了不同的回答：119,810（4 次）、162,960（1 次）。先弄清哪种读法对，再写它应该给出什么。"]);
+  assert.equal(adoptable(result), null);
+  setLocale("en");
+  assert.deepEqual(resultLines(result), ["One question gave different answers: 119,810 (4 times), 162,960 (once). Find out which reading is right before writing what it should give."]);
+});
+
+test("numbers are shown as exactly as they are compared", () => {
+  assert.equal(exactNumber(1234.5678), "1,234.5678");
+  assert.equal(exactNumber(0.30000000000000004), "0.30000000000000004");
+  assert.equal(exactNumber(-119810), "-119,810");
+  assert.equal(exactNumber(16), "16");
+  setLocale("en");
+  assert.equal(expectText({ kind: "number", value: 1234.5678 }), "Should be 1,234.5678");
+  assert.equal(distinctText([{ number: 0.30000000000000004, status: "answered", times: 1 }]), "0.30000000000000004 (once)");
+});
+
+test("no answer is its own outcome, and a refusal can be expected to name one definition", () => {
+  setLocale("en");
+  assert.equal(outcomeWord("no_answer"), "No answer");
+  assert.deepEqual(resultLines({ outcome: "no_answer", asked: 2, right: 0, expected: { kind: "refused" }, reason: "The model did not return JSON", distinct: [{ number: null, status: "no_query", times: 2 }] }),
+    ["No answer, which is neither a pass nor a refusal: The model did not return JSON"]);
+  assert.equal(expectText({ kind: "refused", blocker: "有效订单" }), "Should be refused because of “有效订单”");
+  assert.deepEqual(resultLines({ outcome: "refused", asked: 1, right: 0, expected: { kind: "refused", blocker: "客户" }, distinct: [], blocking: [{ kind: "view", name: "有效订单", state: "checked", who_can_confirm: [] }] }),
+    ["Refused, not a wrong number. What blocks it: View “有效订单”: waiting for a second person to confirm", "It should have been refused because of “客户”."]);
+  assert.equal(blockingText({ kind: "unmet", name: "已取消", why: "the query did not use it" }), "“已取消”: the query did not use it");
+  assert.deepEqual(expectPayload({ kind: "refused", value: "", blocker: " 有效订单 " }), { kind: "refused", blocker: "有效订单" });
+  setLocale("zh");
+  assert.equal(outcomeWord("no_answer"), "没有回答");
+  assert.equal(expectText({ kind: "refused", blocker: "有效订单" }), "应该因为「有效订单」拒答");
+});
+
+test("an answer that reads other definitions than the confirmed one did says so on its own line", () => {
+  setLocale("en");
+  const result = { outcome: "differs", asked: 1, right: 0, expected: { kind: "number", value: 160 }, moved: [], distinct: [{ number: 144, status: "answered", times: 1 }],
+    reads_otherwise: { now: ["有效订单"], not_now: ["订单.状态码"] } };
+  assert.deepEqual(resultLines(result), ["0 of 1 gave the expected number.", "Should be 160; the answers: 144 (once).",
+    "It reads other definitions than the answer it was confirmed on: now also 有效订单; no longer 订单.状态码."]);
+});
+
+test("while a run goes the page says how far it is", () => {
+  setLocale("en");
+  assert.equal(runningText({ by: "Ann", calls: 4, planned: 18 }), "Ann's run is going: 4 of at most 18 model calls made. The list updates when it is done.");
+  setLocale("zh");
+  assert.equal(runningText({ by: "Ann", calls: 4, planned: 18 }), "Ann 的运行正在跑：已经调用模型 4 次，最多 18 次。跑完后清单会更新。");
 });

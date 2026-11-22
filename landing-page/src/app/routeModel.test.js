@@ -257,3 +257,10 @@ test("the questions we need have their own address, for builders and admins", ()
   assert.equal(navKeyOf({ page: "needed" }), "needed");
   assert.deepEqual([mayOpen("needed", { role: "viewer" }), mayOpen("needed", { role: "builder" }), mayOpen("needed", { role: "admin" })], [false, true, true]);
 });
+
+test("a builder a rule limits is not offered the questions we need, which the service would refuse them", () => {
+  const keys = (user) => navFor(user).flatMap((g) => g.items.map((i) => i.key));
+  assert.ok(keys({ role: "builder" }).includes("needed"));
+  assert.ok(!keys({ role: "builder", limited: true }).includes("needed"));
+  assert.ok(keys({ role: "builder", limited: true }).includes("confirm"));
+});
