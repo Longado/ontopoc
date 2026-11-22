@@ -212,7 +212,7 @@ export const setColumnAccess = (type, column, visibleTo) => send("/api/workspace
 
 // Q&A: the scope line with the person's own history, one saved answer as it stands now, a new question
 export const getAsk = () => request("/api/workspace/ask");
-export const getAnswer = (id) => request(`/api/workspace/ask/${id}`);
+export const getAnswer = (id, page = 1) => request(`/api/workspace/ask/${id}${page > 1 ? `?page=${page}` : ""}`);   // a page of a kept list is worked out again
 // The team's questions counted by outcome over the last 7 days and the 7 before (builders and admins): no question text, no asker
 export const getAskTally = () => request("/api/workspace/ask/tally");
 // The assistant's builder-mode turns (query, model, pipeline, ...): the person's own, kept with a compact card; one is read back as it may be seen now
@@ -254,7 +254,7 @@ export const getExploreMeta = (type) => request(`/api/workspace/explore/${encode
 export const exploreTable = (query, page = 1) => readPost("/api/workspace/explore/table", { query, page });
 export const exploreChart = (query, chart) => readPost("/api/workspace/explore/chart", { query, chart });
 /** OntoPoc Query: run a text as this person (no model, nothing kept). A text that cannot be read is an error saying what can be written. */
-export const runQuery = (text, params) => readPost("/api/workspace/query", params ? { text, params } : { text });
+export const runQuery = (text, params, page) => readPost("/api/workspace/query", { text, ...(params ? { params } : {}), ...(page > 1 ? { page } : {}) });
 export const getExploreObject = (type, n) => request(`/api/workspace/explore/${encodeURIComponent(type)}/object/${n}`);
 
 export const getBoards = () => request("/api/workspace/dashboards");

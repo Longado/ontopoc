@@ -11,7 +11,7 @@ import { MeaningsCard, NoModel, PlanCard, ProposalCard } from "./AssistantCards.
 import { filterByMode, filterModes, pastTurn, railItems, scopeOf } from "./assistantHistoryModel.js";
 import { PastTurn, modeLabel } from "./PastTurn.jsx";
 import { timeText } from "./format.js";
-import { answerView, besideView, criteriaLine, dataAsOf, definitionHref, historyView, namedLines, isAnswer, isThenAnswer, paramsIn, queryExample, queryParams, queryRecord, rangeNotes, readText, staleHeading, staleLines, standingText, timeWarning } from "./qaModel.js";
+import { answerView, besideView, criteriaLine, dataAsOf, definitionHref, historyView, namedLines, isAnswer, isThenAnswer, objectsView, paramsIn, queryExample, queryParams, queryRecord, rangeNotes, readText, staleHeading, staleLines, standingText, timeWarning, todayNote } from "./qaModel.js";
 import { groupByDay, isThinking, newTurn, savedTurn, sendsOn, settle, suggestions, threadTitle } from "./chatModel.js";
 import { ObjectGraph } from "./ObjectGraph.jsx";
 import { State } from "./TypesPage.jsx";
@@ -104,6 +104,8 @@ export function Answer({ record }) {
         </div>
       )}
       {view.graph && <ObjectGraph graph={view.graph} />}
+      {view.objects && <ObjectsTable record={record} view={view.objects} />}
+      {todayNote(record) && <p className="muted small">{todayNote(record)}</p>}
       {view.table && (
         <div className="table-wrap">
           <table>
@@ -115,6 +117,44 @@ export function Answer({ record }) {
       )}
       {rangeNotes(record).map((n) => <p className="warn" key={n}>{n}</p>)}
       {notes.length > 0 && <p className="warn">{then ? notes.join(t("ask.stale.sep")) : t("ask.stale.withHeading", { heading: staleHeading(record), notes: notes.join(t("ask.stale.sep")) })}</p>}
+    </div>
+  );
+}
+
+/** The objects of a list, or the one object a key found: a table, one page at a time. Another page is worked out again by the service (a kept answer by its id,
+ * a written query by its text): no row is kept with an answer. */
+function ObjectsTable({ record, view }) {
+  const t = useT();
+  const [loaded, setLoaded] = useState(null);   // another page read here: {view} or {view, error}
+  const [busy, setBusy] = useState(false);
+  const current = loaded?.view ?? view;
+  const canPage = record.id != null || Boolean(record.text);
+  const go = async (page) => {
+    setBusy(true);
+    try {
+      const next = record.id != null ? await getAnswer(record.id, page) : await runQuery(record.text, null, page);
+      const shown = objectsView(next.answer);
+      setLoaded(shown ? { view: shown } : { view: current, error: next.reason ?? "" });
+    } catch (e) {
+      setLoaded({ view: current, error: e.message });
+    }
+    setBusy(false);
+  };
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead><tr>{current.head.map((h, i) => <th key={i}>{h}</th>)}</tr></thead>
+        <tbody>{current.rows.map((row, i) => <tr key={i}>{row.map((v, j) => <td key={j}>{current.keys[j] ? <strong>{v}</strong> : v}</td>)}</tr>)}</tbody>
+      </table>
+      {(current.order || current.pageText) && <p className="muted small table-note">{[current.order, current.pageText].filter(Boolean).join(t("ask.sep"))}</p>}
+      {canPage && current.pages > 1 && (
+        <p className="pager">
+          <button className="plain" disabled={busy || !current.hasPrev} onClick={() => go(current.page - 1)}>{t("ask.objects.prev")}</button>{" "}
+          <button className="plain" disabled={busy || !current.hasNext} onClick={() => go(current.page + 1)}>{t("ask.objects.next")}</button>
+        </p>
+      )}
+      {busy && <p className="muted small" role="status">{t("ask.objects.loading")}</p>}
+      {loaded?.error && <p className="warn">{loaded.error}</p>}
     </div>
   );
 }

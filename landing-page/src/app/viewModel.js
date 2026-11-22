@@ -6,19 +6,27 @@ import { joinList } from "./typeModel.js";
 export const OP_LABEL = {};
 for (const k of ["is", "is_not"]) Object.defineProperty(OP_LABEL, k, { get: () => t(`types.view.op.${k}`), enumerable: true });
 
+/** How a per-row formula is compared with a number: the service's names and the signs shown for them. */
+export const FORMULA_OP = { equals: "=", more_than: ">", at_least: ">=", less_than: "<", at_most: "<=" };
+
+/** The formula rows of the form that are whole: a derived property, how it is compared, and a number. */
+const formulasOf = (form) => (form.derived ?? []).filter((d) => d.property && d.op && String(d.value).trim() !== "" && Number.isFinite(Number(d.value)));
+
 /** The payload that makes a view, from the form: `form.filters` [{column, op, label}] (a row left without a meaning is not a condition), `form.latest` {on, key: [], order}. */
 export function viewPayload(type, form) {
   const filters = form.filters.filter((f) => f.column && f.label).map(({ column, op, label }) => ({ column, op, label }));
+  const derived = formulasOf(form).map(({ property, op, value }) => ({ property, op, value: Number(value) }));
   return {
     name: form.name.trim(), type, description: form.description.trim(), filters,
     latest: form.latest.on ? { key: form.latest.key, order: form.latest.order } : null,
+    ...(derived.length ? { derived } : {}),   // a per-row formula, compared with a number
   };
 }
 
 /** The first thing missing before the form can be sent; "" when it can. */
 export function viewProblem(form) {
   if (!form.name.trim()) return t("types.view.needName");
-  const conditions = form.filters.some((f) => f.column && f.label);
+  const conditions = form.filters.some((f) => f.column && f.label) || formulasOf(form).length > 0;
   if (!conditions && !form.latest.on) return t("types.view.needCondition");
   if (form.latest.on && !form.latest.key.length) return t("types.view.needKey");
   if (form.latest.on && !form.latest.order) return t("types.view.needOrder");
@@ -33,7 +41,10 @@ export const rowsText = (view) => (view.rows == null ? t("types.view.unreadable"
 export const viewWaitingText = (view) => (view.waiting_on?.length ? t("types.view.waiting", { names: joinList(view.waiting_on.map((w) => `“${w.name}”`)) }) : "");
 
 /** A fresh form: one empty condition row, "latest" off. */
-export const emptyViewForm = () => ({ name: "", description: "", filters: [{ column: "", op: "is_not", label: "" }], latest: { on: false, key: [], order: "" } });
+export const emptyViewForm = () => ({ name: "", description: "", filters: [{ column: "", op: "is_not", label: "" }], latest: { on: false, key: [], order: "" }, derived: [] });
+
+/** One formula the form offers, as its option reads: its name, and that it is not confirmed yet when it is not (the view then waits for it). */
+export const formulaOption = (f) => (f.state === "confirmed" ? f.name : t("types.view.formulaWaits", { name: f.name }));
 
 /** One new value a view has to be told about: the question as the card puts it. */
 export const newValueText = (v) => t("types.view.newValue", { column: v.column, value: v.value, label: v.label ? t("types.view.labelParen", { label: v.label }) : "", rows: v.rows });
