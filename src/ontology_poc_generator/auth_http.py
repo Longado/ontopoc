@@ -44,7 +44,10 @@ def not_here() -> str:
 def no_token() -> str:
     return tr('这个操作要用登录后的页面做，不能用令牌', 'This needs the signed-in page; a token cannot do it')
 def person_only(path: str) -> str:
-    """Why a token is refused one of access.PERSON_ONLY_POSTS, and where a person does it instead."""
+    """Why a token is refused one of access.PERSON_ONLY_POSTS or access.SIGNED_IN_POSTS, and where a person does it instead."""
+    if path.startswith('/api/workspace/needed'):
+        return tr('要回答的问题由本人登录页面来写、确认和运行，令牌不能做（不论令牌的范围）。请登录团队应用，打开“要回答的问题”。',
+                  'Questions we need are written, confirmed and run by a person signed in to the page, not with a token (whatever its scope). Sign in to the team app and open Questions we need.')
     if path == '/api/workspace/checked':
         return tr('核对过的数要由本人登录页面来记，令牌不能记（不论令牌的范围）。请登录团队应用，在看板卡片上或自己存下的回答上点“核对过”。',
                   'A checked number is recorded by a person signed in to the page, not with a token (whatever its scope). Sign in to the team app and choose Mark as checked on the board card or on your saved answer.')

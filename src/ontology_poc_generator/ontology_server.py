@@ -96,7 +96,7 @@ from ontology_poc_generator.object_relations import (
 from ontology_poc_generator.ontology_graph import lineage_graph, relation_graph, type_uses
 from ontology_poc_generator.batch_confirm import confirm_group, group_detail, queue_with_groups
 from ontology_poc_generator.review_queue import confirm_item, send_back
-from ontology_poc_generator import ask_budget, lang, use_layer
+from ontology_poc_generator import ask_budget, lang, needed_questions, use_layer
 from ontology_poc_generator.dashboards import DashboardRefused
 from ontology_poc_generator.type_access import AccessRefused, access_table, dataset_hidden, hidden_columns, set_access, set_column_access, set_values_hidden
 
@@ -1683,6 +1683,38 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             self.reply(200, body)
 
+        def needed_route(self, method: str):
+            """GET /api/workspace/needed: the team's questions we need, their expectations and the last run's results. POST /needed {question, expect?, note?},
+            /needed/update, /needed/delete, /needed/confirm {id, version}, /needed/run {repeats?} (see needed_questions.py). A run asks the model without a lock;
+            what it keeps is written in transactions of its own."""
+            path = urlsplit(self.path).path
+            try:
+                payload = self.read_json(USE_BODY) if method == 'POST' else {}
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            if payload is None:
+                return
+            acts = {'/api/workspace/needed': needed_questions.write, '/api/workspace/needed/update': needed_questions.update, '/api/workspace/needed/delete': needed_questions.delete,
+                    '/api/workspace/needed/confirm': needed_questions.confirm}
+            conn = open_workspace(output_dir / 'workspace.sqlite')
+            try:
+                if method == 'GET' and path == '/api/workspace/needed':
+                    body = needed_questions.listing(conn, self.user, gateway is not None)
+                elif method == 'POST' and path == '/api/workspace/needed/run':
+                    body = needed_questions.run(conn, gateway, self.user, payload)
+                elif method == 'POST' and path in acts:
+                    body = acts[path](conn, self.user, payload)
+                else:
+                    self.reply(404, {'error': lang.unknown_endpoint()})
+                    return
+            except (QaRefused, TypeRefused) as exc:
+                self.reply(exc.status, {'error': str(exc)})
+                return
+            finally:
+                conn.close()
+            self.reply(200, body)
+
         def query_post(self):
             """POST /api/workspace/query {text, params?}: an OntoPoc Query run as this person, by the Q&A engine, with no model (see ontopoc_query.py).
             POST /api/workspace/query/text {query}: a structured query as OntoPoc Query text in this person's names."""
@@ -1862,6 +1894,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             if self.path.split('?')[0].startswith('/api/workspace/assistant/turns'):
                 self.assistant_get()
+                return
+            if urlsplit(self.path).path == '/api/workspace/needed':
+                self.needed_route('GET')
                 return
             if self.path.split('?')[0] == '/api/workspace/actions' or self.path.startswith('/api/workspace/actions/'):
                 self.actions_get()
@@ -2113,6 +2148,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             if self.path in ('/api/workspace/query', '/api/workspace/query/text'):
                 self.query_post()
+                return
+            if self.path in ('/api/workspace/needed', '/api/workspace/needed/update', '/api/workspace/needed/delete', '/api/workspace/needed/confirm', '/api/workspace/needed/run'):
+                self.needed_route('POST')
                 return
             if self.path in ('/api/workspace/relations', '/api/workspace/relations/update', '/api/workspace/relations/preview', '/api/workspace/relations/confirm', '/api/workspace/queue/confirm',
                              '/api/workspace/queue/confirm-group', '/api/workspace/queue/send-back', '/api/workspace/permissions', '/api/workspace/row-rules', '/api/workspace/column-access'):
