@@ -440,8 +440,8 @@ class ValueRuleTests(SigningTestCase):
             self.confirm(bob, 'ledger')
             zh = next(t for t in vera.get('/api/workspace/agent/definitions')[1]['types'] if t['id'] == 'ledger')
             en = next(t for t in vera.get('/api/workspace/agent/definitions', headers=EN)[1]['types'] if t['id'] == 'ledger')
-            self.assertEqual(zh['rules'], ['“编号”不能为空', '“金额”要至少是 -3', '“金额”要最多是 1000.5', '“数量”要在 0 到 101 之间（含两端）', '“状态”要是写了含义的代码之一', '“奇"怪”要小于 3'])
-            self.assertEqual(en['rules'], ['"编号" must not be empty', '"金额" must be at least -3', '"金额" must be at most 1000.5', '"数量" must be between 0 and 101, both included',
+            self.assertEqual(zh['value_rules'], ['“编号”不能为空', '“金额”要至少是 -3', '“金额”要最多是 1000.5', '“数量”要在 0 到 101 之间（含两端）', '“状态”要是写了含义的代码之一', '“奇"怪”要小于 3'])
+            self.assertEqual(en['value_rules'], ['"编号" must not be empty', '"金额" must be at least -3', '"金额" must be at most 1000.5', '"数量" must be between 0 and 101, both included',
                                            '"状态" must be one of the codes that have a meaning', '"奇"怪" must be less than 3'])
             self.assertEqual(self.page(vera)['rules'][0]['says'], '“编号”不能为空')
             self.assertIn('空着的格子', self.page(vera)['rules_note'])
