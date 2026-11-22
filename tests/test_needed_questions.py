@@ -666,7 +666,6 @@ class JudgedAgainstTests(NeededCase):
             found = self.item(ann, Q_ALL)   # and one goes from the list while the run goes
             self.assertEqual(ann.post(f'{NEEDED}/delete', {'id': found['id'], 'version': found['version']})[0], 200)
             hold.set()
-            body = self.run_list(bob, wait=False)
             for _ in range(500):
                 body = self.listing(bob)
                 if body['running'] is None:
