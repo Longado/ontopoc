@@ -42,8 +42,11 @@ Q_VALID = '有效订单有多少？'
 Q_VALID_AMOUNT = '有效订单的金额合计是多少？'
 Q_MAKING = '生产中的订单有多少？'
 Q_DELIVERED = '已交付的订单有多少？'
-SCRIPT = {Q_CANCELLED: [cancelled()], Q_ALL: [said(ALL_ORDERS)], Q_MAKING: [said(code_query('1'), '生产中')],
-          Q_DELIVERED: [said(code_query('0'), '已交付'), said(ALL_ORDERS), said(code_query('0'), '已交付')]}   # one question, two numbers in three asks
+Q_HOW_MUCH = '订单有多少？'   # how many, or how much: read one way, then the other
+AMOUNT = {**ALL_ORDERS, 'measure': {'field': '金额', 'op': 'sum'}}
+TOTAL_AMOUNT = sum(float(r['金额']) for r in ORDERS)
+SCRIPT = {Q_CANCELLED: [cancelled()], Q_ALL: [said(ALL_ORDERS)], Q_MAKING: [said(code_query('1'), '生产中')], Q_DELIVERED: [said(code_query('0'), '已交付')],
+          Q_HOW_MUCH: [said(ALL_ORDERS), said(AMOUNT), said(ALL_ORDERS)]}   # one question, two numbers in three asks
 
 
 def one_more_cancelled(record, i):
@@ -107,7 +110,7 @@ class NeededCase(SigningTestCase):
         self.assertEqual(got, status, body)
         return body
 
-    def run(self, client, repeats=None, status=200, **more):
+    def run_list(self, client, repeats=None, status=200, **more):
         got, body = client.post(f'{NEEDED}/run', {'repeats': repeats} if repeats is not None else {}, **more)
         self.assertEqual(got, status, body)
         return body
@@ -137,21 +140,21 @@ class OutcomeTests(NeededCase):
             team = self.team(base)
             ann, bob = team['ann'], team['bob']
             for question, expect in ((Q_CANCELLED, number(CANCELLED)), (Q_ALL, number('999')), (Q_VALID, number(144)), (Q_VALID_AMOUNT, REFUSED), (Q_MAKING, None),
-                                     (Q_DELIVERED, number(DELIVERED))):
+                                     (Q_HOW_MUCH, number(len(ORDERS)))):
                 self.write(ann, question, expect, note='财务 10 月报表' if expect else None)
-            for question in (Q_CANCELLED, Q_ALL, Q_VALID, Q_VALID_AMOUNT, Q_DELIVERED):
+            for question in (Q_CANCELLED, Q_ALL, Q_VALID, Q_VALID_AMOUNT, Q_HOW_MUCH):
                 self.confirm(bob, question)
             before = self.listing(bob)
             self.assertEqual((before['limits'], before['budget']['left'], before['can_run']), ({'questions': 30, 'repeats': 5}, 300, {'ok': True, 'why': None}))
-            body = self.run(bob, 3)
+            body = self.run_list(bob, 3)
             results = self.results(body)
             self.assertEqual({q: r['outcome'] for q, r in results.items()},
-                             {Q_CANCELLED: 'passes', Q_ALL: 'differs', Q_VALID: 'refused', Q_VALID_AMOUNT: 'passes', Q_MAKING: 'no_expectation', Q_DELIVERED: 'differs'})
+                             {Q_CANCELLED: 'passes', Q_ALL: 'differs', Q_VALID: 'refused', Q_VALID_AMOUNT: 'passes', Q_MAKING: 'no_expectation', Q_HOW_MUCH: 'differs'})
             self.assertEqual((results[Q_CANCELLED]['right'], results[Q_CANCELLED]['asked'], results[Q_CANCELLED]['distinct']), (3, 3, [{'number': CANCELLED, 'status': 'answered', 'times': 3}]))
             self.assertEqual((results[Q_ALL]['expected'], results[Q_ALL]['right'], results[Q_ALL]['distinct']), (number(999), 0, [{'number': len(ORDERS), 'status': 'answered', 'times': 3}]))
             # the question that gave two different numbers in three asks
-            self.assertEqual((results[Q_DELIVERED]['right'], results[Q_DELIVERED]['asked']), (2, 3))
-            self.assertEqual(results[Q_DELIVERED]['distinct'], [{'number': DELIVERED, 'status': 'answered', 'times': 2}, {'number': len(ORDERS), 'status': 'answered', 'times': 1}])
+            self.assertEqual((results[Q_HOW_MUCH]['right'], results[Q_HOW_MUCH]['asked']), (2, 3))
+            self.assertEqual(results[Q_HOW_MUCH]['distinct'], [{'number': len(ORDERS), 'status': 'answered', 'times': 2}, {'number': TOTAL_AMOUNT, 'status': 'answered', 'times': 1}])
             # an unexpected refusal is its own outcome: the definition that blocks it, its state and who can confirm it; never "differs"
             refused = results[Q_VALID]
             self.assertEqual([(b['kind'], b['name'], b['state'], b['who_can_confirm']) for b in refused['blocking']], [('view', '有效订单', 'checked', ['Bob', '管理员'])])
@@ -187,9 +190,9 @@ class OutcomeTests(NeededCase):
             self.write(ann, Q_ALL, number(len(ORDERS)))
             for question in (Q_CANCELLED, Q_ALL):
                 self.confirm(bob, question)
-            self.assertEqual({q: r['outcome'] for q, r in self.results(self.run(bob)).items()}, {Q_CANCELLED: 'passes', Q_ALL: 'passes'})
+            self.assertEqual({q: r['outcome'] for q, r in self.results(self.run_list(bob)).items()}, {Q_CANCELLED: 'passes', Q_ALL: 'passes'})
             self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [orders_upload(one_more_cancelled)]})[0], 200)   # one delivered order cancelled
-            body = self.run(bob)
+            body = self.run_list(bob)
             results = self.results(body)
             moved = results[Q_CANCELLED]
             self.assertEqual((moved['outcome'], moved['distinct'][0]['number'], moved['moved']), ('needs_look', CANCELLED + 1, [{'kind': 'dataset', 'name': '订单', 'from': 1, 'to': 2}]))
@@ -197,13 +200,13 @@ class OutcomeTests(NeededCase):
             item = next(q for q in body['questions'] if q['question'] == Q_CANCELLED)
             self.assertEqual((item['state'], item['look'], item['confirmed_by']), ('needs_look', [{'kind': 'dataset', 'name': '订单', 'from': 1, 'to': 2}], 'Bob'))
             # back for a person: the next run has no confirmed expectation to hold it against
-            self.assertEqual(self.results(self.run(bob))[Q_CANCELLED]['outcome'], 'no_expectation')
+            self.assertEqual(self.results(self.run_list(bob))[Q_CANCELLED]['outcome'], 'no_expectation')
             # Ann writes the new number, Bob confirms it on the new data, and it passes again
             found = self.item(ann, Q_CANCELLED)
             status, body = ann.post(f'{NEEDED}/update', {'id': found['id'], 'version': found['version'], 'expect': number(CANCELLED + 1)})
             self.assertEqual((status, body['state'], body['confirmed_by'], body['look']), (200, 'proposed', None, []))
             self.confirm(bob, Q_CANCELLED)
-            self.assertEqual(self.results(self.run(bob))[Q_CANCELLED]['outcome'], 'passes')
+            self.assertEqual(self.results(self.run_list(bob))[Q_CANCELLED]['outcome'], 'passes')
 
     def test_when_a_definition_the_expectation_was_confirmed_on_moves_a_number_that_no_longer_holds_needs_another_look(self):
         model = ByQuestion({Q_ALL: [said(ALL_ORDERS, None)]})
@@ -212,12 +215,11 @@ class OutcomeTests(NeededCase):
             ann, bob = team['ann'], team['bob']
             self.write(ann, Q_ALL, number(len(ORDERS) + 5))
             self.confirm(bob, Q_ALL)
-            self.assertEqual(self.results(self.run(bob))[Q_ALL]['outcome'], 'differs')   # nothing moved: the number never held
-            shown = bob.get('/api/workspace/types/order')[1]   # 订单 is put forward again with a new description and confirmed again
+            self.assertEqual(self.results(self.run_list(bob))[Q_ALL]['outcome'], 'differs')   # nothing moved: the number never held
+            shown = bob.get('/api/workspace/types/order')[1]   # 订单 gets a new description: it stays confirmed, at a new version
             self.assertEqual(ann.post('/api/workspace/types/update', {**ORDER, 'id': 'order', 'version': shown['version'], 'description': '一张订单'})[0], 200)
-            shown = bob.get('/api/workspace/types/order')[1]
-            self.assertEqual(bob.post('/api/workspace/types/confirm', {'id': 'order', 'version': shown['version'], 'seen': shown['seen']})[0], 200)
-            moved = self.results(self.run(bob))[Q_ALL]
+            self.assertEqual(bob.get('/api/workspace/types/order')[1]['state'], 'confirmed')
+            moved = self.results(self.run_list(bob))[Q_ALL]
             self.assertEqual(moved['outcome'], 'needs_look')
             self.assertEqual([(m['kind'], m['name']) for m in moved['moved']], [('definition', '订单')])
 
@@ -229,7 +231,7 @@ class OutcomeTests(NeededCase):
             for question in (Q_CANCELLED, Q_ALL, Q_MAKING):
                 self.write(ann, question, number(1))
                 self.confirm(bob, question)
-            body = self.run(bob, 2)
+            body = self.run_list(bob, 2)
             self.assertEqual({q: r['outcome'] for q, r in self.results(body).items()}, {Q_CANCELLED: 'differs', Q_ALL: 'not_run', Q_MAKING: 'not_run'})
             self.assertEqual((body['last_run']['status'], body['last_run']['calls']), ('stopped', 3))
             self.assertIn('connection refused', body['last_run']['note'])
@@ -242,14 +244,14 @@ class OutcomeTests(NeededCase):
             listing = self.listing(team['bob'])
             self.assertFalse(listing['can_run']['ok'])
             self.assertIn('模型', listing['can_run']['why'])
-            self.assertIn('model', self.run(team['bob'], status=503, **ENGLISH)['error'])
+            self.assertIn('model', self.run_list(team['bob'], status=503, **ENGLISH)['error'])
             self.assertIsNone(self.listing(team['bob'])['last_run'])
 
     def test_a_run_says_when_the_question_prompt_changed_since(self):
         with self.service(gateway=ByQuestion(SCRIPT)) as (base, out):
             team = self.team(base)
             self.write(team['ann'], Q_CANCELLED, number(CANCELLED))
-            self.run(team['bob'])
+            self.run_list(team['bob'])
             self.assertFalse(self.listing(team['bob'])['last_run']['stale_prompt'])
             with mock.patch.object(needed_questions, 'QUESTION_PROMPT_VERSION', 'company_questions.next'):
                 self.assertTrue(self.listing(team['bob'])['last_run']['stale_prompt'])
@@ -310,14 +312,14 @@ class ExpectationTests(NeededCase):
             self.assertIn('must be a number', self.write(ann, Q_CANCELLED, {'kind': 'number', 'value': True}, status=400, **ENGLISH)['error'])
             self.assertIn('refused', self.write(ann, Q_CANCELLED, {'kind': 'maybe'}, status=400, **ENGLISH)['error'])
             self.assertIn('120', self.write(ann, Q_CANCELLED, number(1), note='来' * 121, status=400)['error'])
-            self.assertIn('列表里还没有问题', self.run(bob, status=400)['error'])
-            self.assertIn('The list has no question', self.run(bob, status=400, **ENGLISH)['error'])
+            self.assertIn('列表里还没有问题', self.run_list(bob, status=400)['error'])
+            self.assertIn('The list has no question', self.run_list(bob, status=400, **ENGLISH)['error'])
             self.write(ann, Q_CANCELLED)
             self.assertIn('已经在', self.write(bob, Q_CANCELLED, status=400)['error'])
             self.assertIn('already', self.write(bob, Q_CANCELLED, status=400, **ENGLISH)['error'])
             for repeats in (0, 6, '2', True):
-                self.assertIn('1 to 5', self.run(bob, repeats, status=400, **ENGLISH)['error'])
-            self.assertIn('1 到 5', self.run(bob, 6, status=400)['error'])
+                self.assertIn('1 to 5', self.run_list(bob, repeats, status=400, **ENGLISH)['error'])
+            self.assertIn('1 到 5', self.run_list(bob, 6, status=400)['error'])
             for n in range(29):
                 self.write(ann, f'第 {n} 个问题有多少？')
             self.assertIn('30', self.write(ann, Q_ALL, status=400)['error'])   # at most 30 questions in the list
@@ -347,12 +349,12 @@ class BudgetTests(NeededCase):
             for question in (Q_CANCELLED, Q_ALL, Q_MAKING):
                 self.write(ann, question)
             self.assertEqual(self.listing(bob)['budget'], {'calls': 5, 'hours': 24, 'used': 0, 'left': 5})
-            refused = self.run(bob, 2, status=429, **ENGLISH)   # 3 questions x 2 asks could make 6 calls: refused before the first
+            refused = self.run_list(bob, 2, status=429, **ENGLISH)   # 3 questions x 2 asks could make 6 calls: refused before the first
             self.assertIn('6', refused['error'])
             self.assertIn('5', refused['error'])
             self.assertEqual(model.requests, [])
-            self.assertEqual(self.run(bob, 1)['budget'], {'calls': 5, 'hours': 24, 'used': 3, 'left': 2})
-            self.assertIn('模型调用', self.run(bob, 1, status=429)['error'])
+            self.assertEqual(self.run_list(bob, 1)['budget'], {'calls': 5, 'hours': 24, 'used': 3, 'left': 2})
+            self.assertIn('模型调用', self.run_list(bob, 1, status=429)['error'])
             conn = sqlite3.connect(out / 'workspace.sqlite')
             asked = conn.execute("SELECT name FROM sqlite_master WHERE name = 'ask_budget'").fetchone() and conn.execute('SELECT COUNT(*) FROM ask_budget').fetchone()[0]
             conn.close()
@@ -367,7 +369,7 @@ class BudgetTests(NeededCase):
             conn = open_workspace(out / 'workspace.sqlite')
             conn.execute("INSERT INTO needed_run(by_name, by_user_id, started_at, status, repeats, planned, calls) VALUES ('Ann', 2, ?, 'running', 1, 1, 0)", (workspace_store.now_text(),))
             conn.close()
-            self.assertIn('正在跑', self.run(team['bob'], status=409)['error'])
+            self.assertIn('正在跑', self.run_list(team['bob'], status=409)['error'])
             self.assertFalse(self.listing(team['bob'])['can_run']['ok'])
 
 
@@ -409,7 +411,7 @@ class WhoMayTests(NeededCase):
                     if filled:
                         self.write(team['ann'], Q_CANCELLED, number(CANCELLED))
                         self.confirm(team['bob'], Q_CANCELLED)
-                        self.run(team['bob'])
+                        self.run_list(team['bob'])
                     self.limit(team, out, how)
                     seen[how, filled] = answers(team)
                     if filled:   # a limited builder cannot run: nothing was asked
@@ -426,13 +428,17 @@ class WhoMayTests(NeededCase):
         self.assertIn('row rule', json.loads(first[5][1])['error'])
 
     def test_a_limited_builder_cannot_run_and_an_unlimited_one_can(self):
-        with self.service(gateway=ByQuestion(SCRIPT)) as (base, out):
-            team = self.team(base)
-            self.write(team['ann'], Q_CANCELLED, number(CANCELLED))
-            self.limit(team, out, 'rows')
-            self.assertIn('行规则', self.run(team['bob'], status=403)['error'])
-            self.assertEqual(self.results(self.run(team['ann']))[Q_CANCELLED]['outcome'], 'no_expectation')
-            self.assertEqual(self.results(self.run(team['admin']))[Q_CANCELLED]['outcome'], 'no_expectation')   # an admin is never limited
+        for how in ('rows', 'types'):
+            with self.service(gateway=ByQuestion(SCRIPT)) as (base, out):
+                team = self.team(base)
+                self.write(team['ann'], Q_CANCELLED, number(CANCELLED))
+                self.limit(team, out, how)
+                self.assertIn('行规则', self.run_list(team['bob'], status=403)['error'])
+                if how == 'types':   # a type list that names Ann leaves her every type; a row rule limits every builder it does not give all rows
+                    self.assertEqual(self.results(self.run_list(team['ann']))[Q_CANCELLED]['outcome'], 'no_expectation')
+                else:
+                    self.run_list(team['ann'], status=403)
+                self.assertEqual(self.results(self.run_list(team['admin']))[Q_CANCELLED]['outcome'], 'no_expectation')   # an admin is never limited
 
     def test_a_token_cannot_write_confirm_or_run_and_the_refusal_is_the_same_whether_the_question_exists(self):
         from tests.test_token_no_confirm import bearer
@@ -503,7 +509,7 @@ class UnchangedAnswersTests(NeededCase):
                     for question, expect in ((Q_CANCELLED, number(CANCELLED)), (Q_VALID, number(1)), (Q_DELIVERED, number(DELIVERED))):
                         self.write(ann, question, expect)
                         self.confirm(bob, question)
-                    self.run(bob, 3)
+                    self.run_list(bob, 3)
                 after = len(model.requests)
                 seen += [raw(ann, 'POST', '/api/workspace/ask', {'question': Q_VALID}), raw(vera, 'POST', '/api/workspace/ask', {'question': Q_DELIVERED}),
                          raw(ann, 'POST', '/api/workspace/ask', {'question': Q_DELIVERED}, headers={'Accept-Language': 'en'}),
