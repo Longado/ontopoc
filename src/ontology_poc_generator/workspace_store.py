@@ -132,7 +132,7 @@ CREATE TABLE IF NOT EXISTS checked_number (
 -- questions we need (needed_questions): the team's list of questions, each with what it should give (a number, or that it must be refused), proposed by one person and
 -- confirmed by another; every run of the list (who, how many asks, how many model calls) and what each question came back as in it
 CREATE TABLE IF NOT EXISTS needed_question (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, question TEXT NOT NULL, expect_kind TEXT CHECK (expect_kind IN ('number', 'refused')), expect_value REAL, expect_blocker TEXT, note TEXT,
+    id INTEGER PRIMARY KEY AUTOINCREMENT, question TEXT NOT NULL, expect_kind TEXT CHECK (expect_kind IN ('number', 'refused')), expect_value REAL, expect_blocker TEXT, expect_version INTEGER NOT NULL DEFAULT 1, note TEXT,
     state TEXT NOT NULL CHECK (state IN ('none', 'proposed', 'confirmed', 'needs_look')), version INTEGER NOT NULL,
     written_by TEXT, written_by_user_id INTEGER, written_at TEXT NOT NULL, confirmed_by TEXT, confirmed_by_user_id INTEGER, confirmed_at TEXT, self_confirmed INTEGER NOT NULL DEFAULT 0,
     basis_json TEXT, look_json TEXT);
@@ -185,6 +185,8 @@ def open_workspace(path) -> sqlite3.Connection:
                           ('needed_question', 'expect_blocker'), ('needed_run', 'owner')):
         if column not in {r[1] for r in conn.execute(f'PRAGMA table_info({table})')}:   # a file made before the column existed
             conn.execute(f'ALTER TABLE {table} ADD COLUMN {column} {"INTEGER" if column in ("dataset_id", "null_key_rows", "distinct_rows", "undo_of") or column.endswith("user_id") else "TEXT"}')
+    if 'expect_version' not in {r[1] for r in conn.execute('PRAGMA table_info(needed_question)')}:   # counts each new expectation and each confirmation of one: a result belongs to one
+        conn.execute('ALTER TABLE needed_question ADD COLUMN expect_version INTEGER NOT NULL DEFAULT 1')
     _never_reuse_ids(conn)
     _allow_needs_look(conn)
     conn.execute('INSERT OR IGNORE INTO current_dataset SELECT name, id FROM dataset WHERE version = '

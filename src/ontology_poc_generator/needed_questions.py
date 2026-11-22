@@ -23,6 +23,9 @@ waiting, nothing in scope, a relation that cannot be followed, a query that left
   no_answer       no ask gave an answer or a refusal of the gate: never a pass and never a refusal
   no_expectation  nothing confirmed to hold it against: every answer is shown, for a person to check against the data and adopt
   not_run         the run stopped (the model could not be reached, or an error) before this question
+A result belongs to the expectation it was judged against (its words, its expectation and expect_version, which counts each new expectation and each
+confirmation). Once the question is worded otherwise, its expectation changes or it is confirmed again, the earlier result is shown only as what was answered
+then (not_run_since_change), never with its verdict, until the next run judges it again.
 with "N of M gave the expected number" and each distinct answer, since one question that gives two numbers is a fault this list exists to catch; and, when the
 answers now read other definitions than the expected answer did, which.
 
@@ -57,8 +60,9 @@ MAX_REPEATS = 5
 MAX_NOTE = 120
 SUITE_LIMIT = 300   # model calls all runs together may make in any SUITE_HOURS hours
 SUITE_HOURS = 24
-OUTCOMES = ('passes', 'differs', 'needs_look', 'refused', 'no_answer', 'no_expectation', 'not_run')
-COLUMNS = ('id, question, expect_kind, expect_value, expect_blocker, note, state, version, written_by, written_by_user_id, written_at, confirmed_by, confirmed_by_user_id, '
+OUTCOMES = ('passes', 'differs', 'needs_look', 'refused', 'no_answer', 'no_expectation', 'not_run')   # and, shown only: not_run_since_change
+DEFINITION_PREFIXES = ('objtype:', 'relation:', 'enum:', 'objview:', 'derived:')
+COLUMNS = ('id, question, expect_kind, expect_value, expect_blocker, expect_version, note, state, version, written_by, written_by_user_id, written_at, confirmed_by, confirmed_by_user_id, '
            'confirmed_at, self_confirmed, basis_json, look_json')
 _LIVE: set[str] = set()   # the runs this service is running now, by the token written on their row: a running row with another token was cut off
 _LIVE_LOCK = threading.Lock()
@@ -164,8 +168,24 @@ def _running_now(conn) -> dict | None:
     return dict(zip(('id', 'by', 'at', 'repeats', 'planned', 'calls'), found)) if found else None
 
 
-def _results(conn, run_id) -> dict:
-    return {qid: {**json.loads(stored), 'question': text} for qid, text, stored in conn.execute('SELECT question_id, question, result_json FROM needed_result WHERE run_id = ?', (run_id,))}
+def _results(conn, run: dict | None) -> dict:
+    if run is None:
+        return {}
+    return {qid: {**json.loads(stored), 'question': text, 'run_at': run['at']}
+            for qid, text, stored in conn.execute('SELECT question_id, question, result_json FROM needed_result WHERE run_id = ?', (run['id'],))}
+
+
+def _judged_against(row: dict) -> dict:
+    return {'question': row['question'], 'expect_version': row['expect_version'], 'expect': _expect_of(row) if row['state'] == 'confirmed' else None}
+
+
+def _shown(row: dict, result: dict) -> dict:
+    """A stored result as the question shows it now: its verdict while the question stands as it was judged (same words, same expectation, not confirmed again
+    since); otherwise only what was answered then, and when."""
+    then = result.get('judged_against') or {}
+    if then.get('question') == row['question'] and then.get('expect_version') == row['expect_version'] and result['question'] == row['question']:
+        return {k: v for k, v in result.items() if k not in ('question', 'asks', 'run_at', 'judged_against')}   # each ask's record is kept for confirming, not shown
+    return {'outcome': 'not_run_since_change', 'earlier': {'at': result['run_at'], 'question': result['question'], 'asked': result['asked'], 'distinct': result['distinct']}}
 
 
 def _view(row: dict, user: dict | None, result: dict | None) -> dict:
@@ -173,15 +193,13 @@ def _view(row: dict, user: dict | None, result: dict | None) -> dict:
            'written_by': row['written_by'], 'written_at': row['written_at'], 'confirmed_by': row['confirmed_by'], 'confirmed_at': row['confirmed_at'],
            'self_confirmed': bool(row['self_confirmed']), 'look': row['look'], 'mine': user is not None and row['written_by_user_id'] == user['id'], 'result': None}
     if result is not None:
-        shown = {k: v for k, v in result.items() if k not in ('question', 'asks')}   # each ask's record is kept for confirming, not shown
-        out['result'] = {**shown, 'reworded': result['question'] != row['question']}   # asked before the question was worded as it is now
+        out['result'] = _shown(row, result)
     return out
 
 
 def _one(conn, user: dict | None, qid: int) -> dict:
     row = _row(conn.execute(f'SELECT {COLUMNS} FROM needed_question WHERE id = ?', (qid,)).fetchone())
-    run = _last_run(conn)
-    return _view(row, user, _results(conn, run['id']).get(qid) if run else None)
+    return _view(row, user, _results(conn, _last_run(conn)).get(qid))
 
 
 def _since(hours: float) -> str:
@@ -237,7 +255,7 @@ def listing(conn, user: dict | None, model_ready: bool) -> dict:
     _close_cut_off(conn)
     rows = _rows(conn)
     run = _last_run(conn)
-    results = _results(conn, run['id']) if run else {}
+    results = _results(conn, run)
     why = _why_not(conn, user, model_ready, len(rows))
     return {'questions': [_view(r, user, results.get(r['id'])) for r in rows], 'limits': {'questions': MAX_QUESTIONS, 'repeats': MAX_REPEATS},
             'budget': _budget(conn), 'running': _running_now(conn), 'last_run': run, 'can_run': {'ok': why is None, 'why': why}, 'two_person': two_person(conn)['active']}
@@ -273,6 +291,23 @@ def _blocker(raw) -> str | None:
     if text is None or len(text) > MAX_NOTE or '\n' in text:
         raise QaRefused(tr(f'挡住它的定义写名字，一行，最多 {MAX_NOTE} 个字', f'Name the definition that must block it on one line, at most {MAX_NOTE} characters'))
     return text
+
+
+def _one_definition(conn, blocker: str) -> None:
+    """A blocker written by name must name one definition: a name two share (a view and a type, say) is refused, with the ids that tell them apart."""
+    from ontology_poc_generator.workspace_questions import _kind_and_name
+    if element_row(conn, blocker) is not None:
+        return
+    like = ' OR '.join('element_id LIKE ?' for _ in DEFINITION_PREFIXES)
+    ids = []
+    for (element_id,) in conn.execute(f'SELECT element_id FROM element_state WHERE {like} ORDER BY element_id', [p + '%' for p in DEFINITION_PREFIXES]).fetchall():
+        try:
+            if _kind_and_name(conn, element_row(conn, element_id))[1] == blocker:
+                ids.append(element_id)
+        except (KeyError, TypeError):   # a meaning whose type is gone has no name to match
+            continue
+    if len(ids) > 1:
+        raise QaRefused(tr(f'有 {len(ids)} 个定义都叫“{blocker}”：请写你指的那个的编号：{"、".join(ids)}', f'{len(ids)} definitions are called "{blocker}". Write the id of the one you mean: {", ".join(ids)}'))
 
 
 def _expect(raw) -> tuple[str | None, float | None, str | None]:
@@ -320,6 +355,8 @@ def write(conn, user: dict | None, payload: dict) -> dict:
         if conn.execute('SELECT COUNT(*) FROM needed_question').fetchone()[0] >= MAX_QUESTIONS:
             raise QaRefused(tr(f'列表最多 {MAX_QUESTIONS} 个问题：先删掉一个再加', f'The list holds at most {MAX_QUESTIONS} questions. Remove one first'))
         _not_twice(conn, question)
+        if blocker is not None:
+            _one_definition(conn, blocker)
         cursor = conn.execute('INSERT INTO needed_question(question, expect_kind, expect_value, expect_blocker, note, state, version, written_by, written_by_user_id, written_at) '
                               'VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)', (question, kind, value, blocker, note, 'proposed' if kind else 'none', _name(user), _uid(user), now_text()))
         qid = cursor.lastrowid
@@ -342,8 +379,11 @@ def update(conn, user: dict | None, payload: dict) -> dict:
             return _one(conn, user, row['id'])
         if question != row['question']:
             _not_twice(conn, question, row['id'])
+        if blocker is not None and blocker != row['expect_blocker']:
+            _one_definition(conn, blocker)
         if reworded:
-            conn.execute('UPDATE needed_question SET question = ?, expect_kind = ?, expect_value = ?, expect_blocker = ?, note = ?, state = ?, version = version + 1, written_by = ?, '
+            conn.execute('UPDATE needed_question SET question = ?, expect_kind = ?, expect_value = ?, expect_blocker = ?, note = ?, state = ?, version = version + 1, '
+                         'expect_version = expect_version + 1, written_by = ?, '
                          'written_by_user_id = ?, written_at = ?, confirmed_by = NULL, confirmed_by_user_id = NULL, confirmed_at = NULL, self_confirmed = 0, basis_json = NULL, look_json = NULL WHERE id = ?',
                          (question, kind, value, blocker, note, 'proposed' if kind else 'none', _name(user), _uid(user), now_text(), row['id']))
         else:
@@ -400,7 +440,7 @@ def confirm(conn, user: dict | None, payload: dict) -> dict:
         if own and two_person(conn)['active']:
             raise QaRefused(tr('这一条是你自己提的，要另一位来确认', 'You put this forward yourself, so someone else must confirm it'), 403)
         basis = _answered_basis(conn, row)
-        conn.execute("UPDATE needed_question SET state = 'confirmed', version = version + 1, confirmed_by = ?, confirmed_by_user_id = ?, confirmed_at = ?, self_confirmed = ?, "
+        conn.execute("UPDATE needed_question SET state = 'confirmed', version = version + 1, expect_version = expect_version + 1, confirmed_by = ?, confirmed_by_user_id = ?, confirmed_at = ?, self_confirmed = ?, "
                      'basis_json = ?, look_json = NULL WHERE id = ?', (_name(user), _uid(user), now_text(), int(own), json.dumps(basis, ensure_ascii=False) if basis else None, row['id']))
         _log(conn, user, row['id'], 'confirmed', before=_logged(row), after={**_logged({**row, 'state': 'confirmed'}), **({'self_confirmed': True} if own else {})})
     return _one(conn, user, row['id'])
@@ -538,7 +578,7 @@ def judge(conn, row: dict, asks: list[dict]) -> dict:
     classes = [_class(expect, a) for a in asks]
     gate = next((a for a, c in zip(asks, classes) if c == 'gate'), None)
     none = next((a for a, c in zip(asks, classes) if c == 'none'), None)
-    out = {'outcome': None, 'asked': len(asks), 'right': None, 'distinct': _distinct(asks), 'expected': expect, 'asks': asks}
+    out = {'outcome': None, 'asked': len(asks), 'right': None, 'distinct': _distinct(asks), 'expected': expect, 'asks': asks, 'judged_against': _judged_against(row)}
     if expect is None:
         return {**out, 'outcome': 'no_expectation', 'answer': {k: asks[0][k] for k in ('status', 'number', 'reason', 'query_text')}, 'blocking': asks[0]['blocking']}
     out['right'] = classes.count('right')
@@ -623,14 +663,14 @@ def _execute(conn, gateway, user: dict | None, run_id: int, owner: str, rows: li
                 model = model or said['model']
                 asks.append(said)
             if stopped is not None:
-                judged[row['id']] = (row, {'outcome': 'not_run', 'asked': 0, 'right': None, 'distinct': [], 'expected': _expect_of(row) if row['state'] == 'confirmed' else None})
+                judged[row['id']] = (row, _not_run(row))
             else:
                 judged[row['id']] = (row, judge(conn, row, asks))
     except Exception:   # whatever stopped it, the run is closed with what it asked, so the list is not left running
         traceback.print_exc()
         stopped = tr('这次运行出错停了，详情见服务日志', 'This run stopped on an error; see the service log')
         for row in rows:
-            judged.setdefault(row['id'], (row, {'outcome': 'not_run', 'asked': 0, 'right': None, 'distinct': [], 'expected': _expect_of(row) if row['state'] == 'confirmed' else None}))
+            judged.setdefault(row['id'], (row, _not_run(row)))
     finally:
         try:
             _finish(conn, user, run_id, counted.calls, model, stopped, judged)
@@ -639,13 +679,19 @@ def _execute(conn, gateway, user: dict | None, run_id: int, owner: str, rows: li
                 _LIVE.discard(owner)
 
 
+def _not_run(row: dict) -> dict:
+    return {'outcome': 'not_run', 'asked': 0, 'right': None, 'distinct': [], 'expected': _expect_of(row) if row['state'] == 'confirmed' else None, 'judged_against': _judged_against(row)}
+
+
 def _finish(conn, user: dict | None, run_id: int, calls: int, model, stopped, judged: dict) -> None:
     """Store the run once: what each question came back as; a passing question's expectation now stands on what this run read; every expectation that needs another
     look goes back for a person (unless it was changed meanwhile)."""
     with transaction(conn):
         for qid, (row, result) in judged.items():
-            conn.execute('INSERT INTO needed_result(run_id, question_id, question, outcome, result_json) VALUES (?, ?, ?, ?, ?)',
-                         (run_id, qid, row['question'], result['outcome'], json.dumps(result, ensure_ascii=False)))
+            kept = conn.execute('INSERT INTO needed_result(run_id, question_id, question, outcome, result_json) SELECT ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM needed_question WHERE id = ?)',
+                                (run_id, qid, row['question'], result['outcome'], json.dumps(result, ensure_ascii=False), qid)).rowcount
+            if not kept:   # it went from the list while the run went
+                continue
             if result['outcome'] == 'passes' and (basis := _reads(result['asks'])):
                 conn.execute("UPDATE needed_question SET basis_json = ? WHERE id = ? AND version = ? AND state = 'confirmed'", (json.dumps(basis, ensure_ascii=False), qid, row['version']))
             if result['outcome'] == 'needs_look':
