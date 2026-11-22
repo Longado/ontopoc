@@ -411,7 +411,7 @@ def _waiting_views(conn, sc: dict, content: dict) -> list[str]:
         row = element_row(conn, element_id)
         last = conn.execute('SELECT content_json FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1', (element_id,)).fetchone()
         was = json.loads(last[0]) if last else None
-        if was and was['type'] == content['types'][-1] and not was.get('latest') and {(f['column'], f['op'], f['label']) for f in was['filters']} == mine and view_visible(conn, row, sc['user']):
+        if was and was['type'] == content['types'][-1] and not was.get('latest') and not was.get('derived') and {(f['column'], f['op'], f['label']) for f in was['filters']} == mine and view_visible(conn, row, sc['user']):
             out.append(was['name'])
     return out
 
