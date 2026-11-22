@@ -139,7 +139,7 @@ The AI tool access page shows a JSON block for Claude Desktop, Cursor and other 
 
 | Part | What it does |
 |---|---|
-| Accounts and permissions | Local accounts with three roles (admin, builder, viewer) and server-side sessions. A viewer reads confirmed definitions only. An admin can limit an object type to named people, limit rows by rule (allow-lists only), hide a column, and keep a column's values from the model |
+| Accounts and permissions | Local accounts with three roles (admin, builder, viewer) and server-side sessions. A viewer reads confirmed definitions only. An admin can limit an object type to named people, limit rows by rule (allow-lists only), and hide a column; a builder can keep a column's values from the model |
 | Data | Upload CSV or Excel, update by key or overwrite, a new version each time, with the rows counted on the way in. Read-only PostgreSQL and MySQL: a pull **copies** the table into a new version, at most 500,000 rows and about 200 MB per pull; a larger table is refused, not cut short. Only PostgreSQL and MySQL; checking in place in your database is not built. Schedules pull or run pipelines hourly, daily, weekly |
 | Definitions | Object types (key, properties, what code columns mean), relations (how many rows connect, whether the declared cardinality holds), views, derived properties (a formula over a row, or a statistic through relations) |
 | Confirmation | Proposed → checked by code → confirmed by another builder, with the data version and anchors kept. When the data or a definition changes, what no longer holds goes back to "needs another look", and whoever can confirm it, and whoever confirmed it last, gets one notice in Notifications. One exception for relations: one confirmed with every row connected and no repeated key stays confirmed while that is still true, even when the row counts changed. What one upload moved can be confirmed together on one screen |
@@ -151,7 +151,7 @@ It does not do heavy orchestration, large data, live queries against your databa
 ## Privacy
 
 - Uploaded files, pulled tables and all results stay on the machine running the service.
-- The model sees the names and types of object types and properties, confirmed code meanings, relations, what derived properties say, and every value of columns with few distinct values (such as city or tier). Key columns and columns an admin marks "don't send values" send no values. No rows are sent.
+- The model sees the names and types of object types and properties, confirmed code meanings, relations, what derived properties say, and every value of columns with few distinct values (such as city or tier). Key columns and columns a builder marks "don't send values" send no values. No rows are sent.
 - Each model call leaves one line in `model_calls.jsonl` (which agent, how long, success or failure), never the content.
 - What the earlier screen sends to the model is in [docs/LEGACY_SCREEN.en.md](docs/LEGACY_SCREEN.en.md#what-the-model-sees).
 
