@@ -108,6 +108,20 @@ export function keyProblem(column) {
   return "";
 }
 
+/** Other names as one person types them in one box: split at commas (Latin or Chinese), the Chinese enumeration comma or semicolons, trimmed, each kept once. */
+export function otherNamesFrom(text) {
+  const names = String(text ?? "").split(/[,;\n\uff0c\u3001\uff1b]/).map((n) => n.trim()).filter(Boolean);
+  return names.filter((n, i) => names.findIndex((m) => m.toLowerCase() === n.toLowerCase()) === i);
+}
+
+/** Other names back in the box, joined as the language lists things. */
+export const otherNamesText = (names) => joinList(names ?? []);
+
+/** The line under a name that has other names: "Also called: …"; "" when it has none. */
+export const alsoCalled = (names) => (names?.length ? t("types.alsoCalled", { names: joinList(names) }) : "");
+
+const named = (text) => (text === undefined ? {} : { other_names: otherNamesFrom(text) });   // a form that has no box for them says nothing: the service keeps the ones on file
+
 /** The kinds of value rule, in the order the form offers them. */
 export const RULE_CHECKS = ["not_empty", "gt", "ge", "lt", "le", "between", "in_codes", "not_before"];
 const NUMBER_TYPES = ["integer", "decimal"];
@@ -156,13 +170,15 @@ export function ruleStanding(rule, ownRows) {
 /** The keys of the rows shown as examples of a broken rule, in one line. */
 export const ruleExamples = (rule) => (rule.examples ?? []).map((key) => key.join(" + ")).join(t("types.sep"));
 
-/** The payload that creates or changes a type, from the form. `form.columns`: {name, type, include, label, declared, enum, meanings: {value: label}} per dataset column. */
+/** The payload that creates or changes a type, from the form. `form.columns`: {name, type, include, label, otherNames, declared, enum, meanings: {value: label},
+ * meaningOthers: {value: other names}} per dataset column; `form.otherNames` and each `otherNames` are the text of a box. */
 export function typePayload(form) {
   const columns = form.columns.filter((c) => c.include || form.key.includes(c.name));
-  const enums = Object.fromEntries(columns.filter((c) => c.enum).map((c) => [c.name, Object.entries(c.meanings ?? {}).filter(([, label]) => label.trim()).map(([value, label]) => ({ value, label: label.trim() }))]).filter(([, v]) => v.length));
+  const enums = Object.fromEntries(columns.filter((c) => c.enum).map((c) => [c.name, Object.entries(c.meanings ?? {}).filter(([, label]) => label.trim())
+    .map(([value, label]) => ({ value, label: label.trim(), ...named(c.meaningOthers?.[value] ?? (c.meaningOthers ? "" : undefined)) }))]).filter(([, v]) => v.length));
   return {
-    english_name: form.english.trim(), name: form.name.trim(), description: form.description.trim(), dataset: form.dataset, key: form.key,
-    properties: columns.map((c) => ({ column: c.name, name: c.label.trim() || c.name, type: c.declared, enum: c.enum })), enums,
+    english_name: form.english.trim(), name: form.name.trim(), ...named(form.otherNames), description: form.description.trim(), dataset: form.dataset, key: form.key,
+    properties: columns.map((c) => ({ column: c.name, name: c.label.trim() || c.name, ...named(c.otherNames), type: c.declared, enum: c.enum })), enums,
     ...(form.rules ? { rules: form.rules.map(rulePayload) } : {}),
   };
 }

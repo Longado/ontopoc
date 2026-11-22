@@ -828,9 +828,10 @@ def _labels(meanings: dict | None, where: dict) -> dict:
     return {'labels': said} if said else {}
 
 
-def flag_unasked_filters(result: dict, question: str) -> dict:
+def flag_unasked_filters(result: dict, question: str, also: dict | None = None) -> dict:
     """Mark the filters whose value the question never says: the model added them on its own. A hint for the person
-    checking the answer, not a refusal. Compared upper-cased with spaces removed, and as a substring of the question."""
+    checking the answer, not a refusal. Compared upper-cased with spaces removed, and as a substring of the question. `also`: {column: {label: its other names}}
+    of the columns the filters can be on; a question that says one says the label of a filter on that column, and never of a filter on another."""
     filters = (result.get('evidence') or {}).get('filters')
     if not filters:
         return result
@@ -848,7 +849,7 @@ def flag_unasked_filters(result: dict, question: str) -> dict:
             return bool(v) and re.search(rf'(?<![{left}]){re.escape(v)}(?![{right}]){decimal}', words) is not None
         return v in said
     # a condition that leaves a value out is not marked: the path says it, and the workspace has already checked the model's word for the meaning it leaves out
-    marked = [f if f.get('not') or 'range' in f or named(f['equals']) or any(named(label) for label in f.get('labels', [])) else {**f, 'not_in_question': True} for f in filters]
+    marked = [f if f.get('not') or 'range' in f or named(f['equals']) or any(named(n) for label in f.get('labels', []) for n in (label, *(also or {}).get(f.get('field'), {}).get(label, ()))) else {**f, 'not_in_question': True} for f in filters]
     return {**result, 'evidence': {**result['evidence'], 'filters': marked}}
 
 
@@ -880,9 +881,10 @@ def _in_names(ontology: dict, result: dict) -> dict:
 
 
 def answer_query(ontology: dict, bundle: dict, query: dict, question: str, graph: dict | None = None, derived: list | None = None,
-                 card: dict | None = None) -> dict:
-    """One question's query run and read for a person: the filters the question never says are marked, and a reason is in names."""
-    return _in_names(ontology, flag_unasked_filters(run_query(ontology, bundle, query, graph, derived, card), question))
+                 card: dict | None = None, also: dict | None = None) -> dict:
+    """One question's query run and read for a person: the filters the question never says are marked (`also`: the other names of meanings, see
+    flag_unasked_filters), and a reason is in names."""
+    return _in_names(ontology, flag_unasked_filters(run_query(ontology, bundle, query, graph, derived, card), question, also))
 
 
 def _catalog(ontology: dict, bundle: dict, derived: list | None = None) -> dict:

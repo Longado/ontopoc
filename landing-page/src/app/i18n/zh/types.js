@@ -1,6 +1,10 @@
 // Object types: the list, a type's page (properties, derived, views, log), the form, and the type model's sentences.
 export default {
   "sep": "、",
+  "alsoCalled": "又称：{names}",
+  "otherNames": "另称（可以不写）",
+  "otherNamesHint": "同一个定义的别的叫法，例如中文名。用逗号或顿号分开，最多 5 个，每个最多 40 字。问题里用另称，和用名字一样。",
+  "otherNamesPlaceholder": "例如 订单、销售单",
   "colon": "：",
   "semi": "；",
   "comma": "，",
@@ -121,6 +125,10 @@ export default {
   "form.keyAria": "{name} 做主键",
   "form.useAria": "{name} 做属性",
   "form.labelAria": "{name} 的属性名称",
+  "form.col.other": "另称",
+  "form.otherAria": "{name} 的另称",
+  "form.meaningOthers": "另称",
+  "form.meaningOthersAria": "{column} 的取值 {value} 的另称",
   "form.typeAria": "{name} 的类型",
   "form.codeAria": "{name} 是代码列",
   "form.advancedHide": "收起高级设置",

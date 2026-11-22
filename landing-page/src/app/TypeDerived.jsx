@@ -6,7 +6,7 @@ import { OP_LABEL, derivedPayload, derivedProblem, emptyDerivedForm, fnOptions, 
 import { fieldRef, insertAt } from "./pipelineModel.js";
 import { Select } from "./Select.jsx";
 import { State } from "./TypesPage.jsx";
-import { confirmersText, joinList, stateLine } from "./typeModel.js";
+import { alsoCalled, confirmersText, joinList, stateLine } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
 import { confirmWords, newValueChoices, newValueText } from "./viewModel.js";
 
@@ -73,6 +73,7 @@ function DerivedCard({ line, mayBuild, onChanged, onEdit }) {
         <h2 className="item-title">{line.name} <span className="muted small">{t("types.derived.tag", { kind: line.kind_name })}</span></h2>
         <State item={line} />
       </div>
+      {alsoCalled(line.other_names) && <p className="muted small">{alsoCalled(line.other_names)}</p>}
       <p>{line.says}</p>
       <p className="facts">
         <span>{t("types.derived.output", { type: typeLabel(line.output_type) })}</span>
@@ -258,7 +259,7 @@ function Statistic({ type, options, form, setForm, shape }) {
 
 /** A new property, or (with `editing`) the change of a saved one: it is a new version and is put forward again as this person's. */
 function DerivedForm({ type, options, editing, onSaved, onCancel }) {
-  const [form, setForm] = useState(editing ? formFromLine(editing) : emptyDerivedForm());
+  const [form, setForm] = useState(editing ? formFromLine(editing) : { ...emptyDerivedForm(), otherNames: "" });
   const [shape, setShape] = useState(null);
   const [trial, setTrial] = useState(null);
   const [error, setError] = useState("");
@@ -316,6 +317,11 @@ function DerivedForm({ type, options, editing, onSaved, onCancel }) {
       <label className="field">
         <span className="caption">{t("types.derived.name")}</span>
         <input type="text" value={form.name} maxLength={40} placeholder={form.kind === "function" ? t("types.derived.namePlaceholderFn") : t("types.derived.namePlaceholderStat")} onChange={(e) => edit({ ...form, name: e.target.value })} />
+      </label>
+      <label className="field">
+        <span className="caption">{t("types.otherNames")}</span>
+        <input type="text" value={form.otherNames ?? ""} placeholder={t("types.otherNamesPlaceholder")} onChange={(e) => edit({ ...form, otherNames: e.target.value })} />
+        <span className="muted small">{t("types.otherNamesHint")}</span>
       </label>
       <label className="field">
         <span className="caption">{t("types.derived.english")}</span>

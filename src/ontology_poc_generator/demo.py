@@ -39,6 +39,27 @@ def sample_dir() -> Path:
             return root / 'docs' / 'pilot' / 'sample'
     raise SystemExit('docs/pilot/sample was not found: run the seed from the repository folder')
 
+OTHER_NAMES = {   # the Chinese names of the demo's definitions, put forward with them and confirmed with them, so a question in Chinese names what it means
+    'types': {'order': ['订单'], 'customer': ['客户']},
+    'properties': {'order': {'order_id': ['订单号'], 'customer_id': ['客户号'], 'order_date': ['下单日期'], 'amount': ['金额'], 'status_code': ['状态']},
+                   'customer': {'customer_id': ['客户号'], 'name': ['客户名称'], 'city': ['城市'], 'tier': ['等级']}},
+    'meanings': {'New': ['新建'], 'Paid': ['已付款'], 'Shipped': ['已发货'], 'Delivered': ['已送达'], 'Cancelled': ['已取消'], 'Refunded': ['已退款']},
+    'views': {'Valid orders': ['有效订单']},
+}
+
+
+def _named(kind: str, key: str) -> dict:
+    """{'other_names': [...]} for this definition of the demo, or {} when it has none."""
+    names = OTHER_NAMES.get(kind, {}).get(key)
+    return {'other_names': names} if names else {}
+
+
+def _properties(type_key: str, columns, codes=()) -> list[dict]:
+    """The properties of one of the demo's types, each with its other names when it has some."""
+    names = OTHER_NAMES.get('properties', {}).get(type_key, {})
+    return [{'column': c, **({'enum': True} if c in codes else {}), **({'other_names': names[c]} if names.get(c) else {})} for c in columns]
+
+
 SCHEMA = 'CREATE TABLE IF NOT EXISTS demo_guest (user_id INTEGER PRIMARY KEY, client TEXT NOT NULL, at REAL NOT NULL)'
 
 
@@ -189,7 +210,8 @@ def _confirm(builder: _Client, type_id: str, column: str | None = None) -> None:
 def seed(data_dir: Path, admin_name: str = 'demo-admin', force_fresh: bool = False) -> dict:
     """Builds the demo workspace in data_dir and returns {'admin': name, 'password': password, 'data_dir': path}. What a visitor meets: Order with its status
     meanings, the view Valid orders and the board Orders overview, all confirmed; and Customer, confirmed and then sent back to needs_look by a later customers
-    extract (customers_update.csv) that lists one customer twice, so a guest's question naming it is refused, saying who it waits for."""
+    extract (customers_update.csv) that lists one customer twice, so a guest's question naming it is refused, saying who it waits for. The names are English,
+    each with its Chinese other names (OTHER_NAMES), put forward and confirmed with the definition."""
     from ontology_poc_generator.ontology_server import make_server
     from ontology_poc_generator.workspace_store import open_workspace
     data_dir = Path(data_dir)
@@ -219,18 +241,18 @@ def seed(data_dir: Path, admin_name: str = 'demo-admin', force_fresh: bool = Fal
         sample = sample_dir()
         part = lambda n: {'filename': n, 'content_base64': base64.b64encode((sample / n).read_bytes()).decode()}
         admin.must('POST', '/api/workspace/datasets/upload', {'files': [part('orders.csv'), part('customers.csv')]})
-        meanings = [{'value': v, 'label': l} for v, l in (('0', 'New'), ('1', 'Paid'), ('2', 'Shipped'), ('3', 'Delivered'), ('4', 'Cancelled'), ('5', 'Refunded'))]
-        admin.must('POST', '/api/workspace/types', {'english_name': 'order', 'name': 'Order', 'dataset': 'orders', 'key': ['order_id'],
-                   'properties': [{'column': c} for c in ('order_id', 'customer_id', 'order_date', 'amount')] + [{'column': 'status_code', 'enum': True}],
+        meanings = [{'value': v, 'label': l, **_named('meanings', l)} for v, l in (('0', 'New'), ('1', 'Paid'), ('2', 'Shipped'), ('3', 'Delivered'), ('4', 'Cancelled'), ('5', 'Refunded'))]
+        admin.must('POST', '/api/workspace/types', {'english_name': 'order', 'name': 'Order', **_named('types', 'order'), 'dataset': 'orders', 'key': ['order_id'],
+                   'properties': _properties('order', ('order_id', 'customer_id', 'order_date', 'amount', 'status_code'), codes=('status_code',)),
                    'enums': {'status_code': meanings}})
         _confirm(builder, 'order', 'status_code')
         _confirm(builder, 'order')
-        admin.must('POST', '/api/workspace/types/views', {'name': 'Valid orders', 'type': 'order',
+        admin.must('POST', '/api/workspace/types/views', {'name': 'Valid orders', 'type': 'order', **_named('views', 'Valid orders'),
                    'filters': [{'column': 'status_code', 'op': 'is_not', 'label': l} for l in ('New', 'Cancelled', 'Refunded')]})
         view = next(v for v in builder.must('GET', '/api/workspace/types/order/views')['views'] if v['name'] == 'Valid orders')
         builder.must('POST', '/api/workspace/types/views/confirm', {'id': 'Valid orders', 'version': view['version'], 'seen': view['seen']})
-        admin.must('POST', '/api/workspace/types', {'english_name': 'customer', 'name': 'Customer', 'dataset': 'customers', 'key': ['customer_id'],
-                   'properties': [{'column': c} for c in ('customer_id', 'name', 'city', 'tier')]})
+        admin.must('POST', '/api/workspace/types', {'english_name': 'customer', 'name': 'Customer', **_named('types', 'customer'), 'dataset': 'customers', 'key': ['customer_id'],
+                   'properties': _properties('customer', ('customer_id', 'name', 'city', 'tier'))})
         _confirm(builder, 'customer')
         admin.must('POST', '/api/workspace/relations', {'english_name': 'order_customer', 'name': 'Order belongs to customer', 'from': 'order', 'to': 'customer',
                                                         'cardinality': 'many_to_one', 'from_column': 'customer_id', 'to_column': 'customer_id'})

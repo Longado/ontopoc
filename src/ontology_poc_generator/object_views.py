@@ -21,6 +21,7 @@ from ontology_poc_generator.lang import TrMap, tr
 import hashlib
 import json
 
+from ontology_poc_generator import other_names
 from ontology_poc_generator.named_views import NUMERIC, orderable
 from ontology_poc_generator.object_types import (
     token_edit,
@@ -230,11 +231,13 @@ def check_definition(conn, payload: dict, user: dict | None, name: str | None = 
         latest = {'key': list(keys), 'order': order}
     if not filters and latest is None:
         raise TypeRefused(tr('视图要写至少一个条件，或者“每个编号只留最新的一行”', 'A view needs at least one condition, or "keep only the latest row per key"'))
-    return {'name': name, 'description': description, 'type': type_content['english_name'], 'filters': filters, 'latest': latest}
+    also = other_names.clean(payload.get('other_names'), tr(f'视图“{name}”', f'the view "{name}"'))
+    return other_names.put({'name': name, 'description': description, 'type': type_content['english_name'], 'filters': filters, 'latest': latest}, also)
 
 
 def check_names_free(conn, content: dict) -> None:
-    """The name is the id, so it is unique case-insensitively among views, and it is not the name of an object type (a question names one or the other)."""
+    """The name is the id, so it is unique case-insensitively among views, and it is not the name of an object type (a question names one or the other); its other
+    names clash with no name in their scope or a type's (other_names.check_view)."""
     mine = view_id(content['name'])
     for element_id, in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objview:%'"):
         if element_id != mine and element_id.casefold() == mine.casefold():
@@ -243,6 +246,7 @@ def check_names_free(conn, content: dict) -> None:
         names = {json.loads(other)['name'].casefold(), element_id[len(TYPE_PREFIX):].casefold()}
         if content['name'].casefold() in names:
             raise TypeRefused(tr(f'已经有叫“{content["name"]}”的对象类型，视图换一个名字', f'There is already an object type named "{content["name"]}"; give the view another name'), 409)
+    other_names.check_view(conn, content, mine, 'view')
 
 
 def reset_reasons(old: dict, new: dict) -> list[str]:
@@ -290,13 +294,18 @@ def update_view(conn, payload: dict, who: str | None, user: dict | None) -> dict
         raise TypeRefused(tr('这个视图在你打开之后被改了，请刷新后再改', 'This view was changed after you opened it. Refresh and edit again'), 409)
     old = _content(row)
     content = check_definition(conn, payload, user, old['name'])
-    reset = reset_reasons(old, content) or token_edit(row, user, old['description'] != content['description'])
+    if 'other_names' not in payload:   # an edit that does not say them keeps the other names on file
+        content = other_names.put(content, other_names.of(old))
+    others = other_names.of(old) != other_names.of(content)
+    if others:
+        other_names.check_view(conn, content, row['element_id'], 'view')
+    reset = reset_reasons(old, content) or token_edit(row, user, old['description'] != content['description'], others)
     if reset or row['state'] in ('proposed', 'rejected'):
         summary = view_summary(conn, content)
         if summary['problems']:
             raise TypeRefused(tr('；', '; ').join(summary['problems']), 409)
         write_elements(conn, [_change(content, summary, who)], {row['element_id']: _reads(content, summary)}, {row['element_id']: row['version']})
-    elif old['description'] != content['description']:
+    elif old['description'] != content['description'] or others:
         _edit_names(conn, row, content, who)
     return {'id': old['name'], 'state': element_row(conn, row['element_id'])['state'], 'reset': reset}
 
@@ -488,7 +497,7 @@ def _line(conn, row: dict, user: dict | None, summary: dict, type_name: str) -> 
     content = _content(row)
     anchors = json.loads(row['anchors_json']) if row['anchors_json'] else None
     limited = restriction(conn, type_id(content['type']), user) is not None   # counts of the whole data are not theirs; list_views puts the counts of their rows in
-    return {'id': content['name'], 'name': content['name'], 'description': content['description'], 'type': content['type'], 'type_name': type_name,
+    return {'id': content['name'], 'name': content['name'], **({'other_names': other_names.of(content)} if other_names.of(content) else {}), 'description': content['description'], 'type': content['type'], 'type_name': type_name,
             'filters': content['filters'], 'latest': content['latest'], 'says': describe(content, type_name), 'caliber': in_out_text(conn, content), 'problems': summary['problems'],
             'rows': None if limited else summary.get('rows'), 'of': None if limited else summary.get('of'), 'dataset': summary.get('dataset'), 'dataset_version': summary.get('version'),
             'seen': None if limited else seen_of_view(summary), 'anchored': None if limited else anchors, **({'limited_note': limited_note()} if limited else {}), **view_state(conn, row, user)}
