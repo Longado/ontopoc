@@ -250,3 +250,10 @@ test("the words for a page one may not open do not say builders may open an admi
     }
   }
 });
+
+test("the questions we need have their own address, for builders and admins", () => {
+  assert.deepEqual(parseRoute("#/needed"), { page: "needed" });
+  assert.equal(hrefFor({ page: "needed" }), "#/needed");
+  assert.equal(navKeyOf({ page: "needed" }), "needed");
+  assert.deepEqual([mayOpen("needed", { role: "viewer" }), mayOpen("needed", { role: "builder" }), mayOpen("needed", { role: "admin" })], [false, true, true]);
+});
