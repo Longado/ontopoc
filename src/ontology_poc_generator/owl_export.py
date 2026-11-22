@@ -23,7 +23,7 @@ import re
 import zipfile
 
 from ontology_poc_generator.agent_access import STANDING_PATH, _last_confirmation, _says
-from ontology_poc_generator.lang import current, tr
+from ontology_poc_generator.lang import tr
 from ontology_poc_generator.object_types import TypeRefused, _content, type_id
 from ontology_poc_generator.type_access import hidden_values
 from ontology_poc_generator.workspace_questions import scope
@@ -61,6 +61,12 @@ KEPT_FROM_MODELS = ('A column it reads is marked "don\'t send values", so its me
                     '它读的一列被设成“取值不对模型开放”，所以含义不写在这里，和定义状态表一样。')
 SEVERAL_COLUMNS_NOTE = ('核心 SHACL 写不出“几列合起来不重复”：由几列组成的主键，这里只检查每一列都填了、只有一个值，不检查组合有没有重复。',
                         'Core SHACL cannot say "no two objects share these values together": for a key of several columns, these shapes check only that each column is filled with one value, not that the combination is unique.')
+# What a real OWL tool said, and how far that goes: a run by hand on one sample, not something the tests repeat. Change it only with a new run.
+OWL_TOOL_RUN = ('Outside the test suite, ROBOT 1.9.10 (on the OWL API) was run once, by hand, on a sample of this file made from OntoPoc\'s test data by this version, '
+                'not by the test suite: the HermiT reasoner read it without error, and ROBOT\'s profile check put that sample in OWL 2 DL and OWL 2 RL, not in OWL 2 EL or QL. '
+                'This file itself has not been checked, and no profile is claimed for it.',
+                '测试之外，ROBOT 1.9.10（基于 OWL API）在这一版用 OntoPoc 测试数据生成的样例文件上手工跑过一次，不是测试自动跑的：HermiT 推理机读它没有报错，'
+                'ROBOT 的语言子集检查说那个样例属于 OWL 2 DL 和 OWL 2 RL，不属于 OWL 2 EL 和 QL。这个文件本身没有检查过，不声称它属于哪个子集。')
 VOCAB_TERMS = {
     'definitionId': ('The id of the definition in OntoPoc, as in the standing sheet.', '定义在 OntoPoc 里的编号，和定义状态表一样。'),
     'confirmedBy': ('Who confirmed it last.', '最后是谁确认的。'),
@@ -75,6 +81,11 @@ VOCAB_TERMS = {
     'madeAt': ('When this file was made.', '这个文件是什么时候生成的。'),
     'standing': ('Where the live standing of each definition is read.', '每条定义现在的状态在哪里读。'),
 }
+
+
+# The SKOS terms the file uses, declared with the kinds the SKOS Reference gives them (S1, S2, S3, S10, S15), so that an OWL tool does not have to guess.
+SKOS_KINDS = (('skos:Concept', 'owl:Class'), ('skos:ConceptScheme', 'owl:Class'), ('skos:inScheme', 'owl:ObjectProperty'), ('skos:hasTopConcept', 'owl:ObjectProperty'),
+              ('skos:prefLabel', 'owl:AnnotationProperty'), ('skos:notation', 'owl:DatatypeProperty'))
 
 
 def _now() -> datetime:
@@ -164,7 +175,8 @@ def _stamp(conn, element_id: str) -> list[tuple[str, str]]:
 
 
 def _said(text: str | None) -> list[tuple[str, str]]:
-    return [('op:definitionText', literal(text, current()))] if text else []
+    # no language tag: the sentence is in the asker's language, the names inside it in whatever language they were written
+    return [('op:definitionText', literal(text))] if text else []
 
 
 def _code(value: str, kind: str) -> str:
@@ -179,8 +191,9 @@ def _header(made: datetime, root: str, what: tuple[str, str], more: list[tuple[s
         (f'A snapshot: whether each definition is still confirmed is read live at GET {STANDING_PATH}.', f'这是快照：每条定义现在是不是还已确认，以 GET {STANDING_PATH} 为准。'),
         (f'Names start with {root} and are names only: what people typed and codes are never part of a name.', f'名字都以 {root} 开头，只是名字：人写的文字和代码取值不进名字。'),
         ('Annotations (op:) carry no logical meaning: nothing in this file enforces "confirmed".', '注释（op:）没有逻辑含义：文件里没有任何东西能保证“已确认”。'),
-        ('Read so far by rdflib (both files) and pyshacl (the shapes) in OntoPoc\'s tests; no OWL reasoner, profile checker or ontology editor has been run on it.',
-         '目前读过它的只有 OntoPoc 测试里的 rdflib（两个文件）和 pyshacl（规则文件）；没有用 OWL 推理机、语言子集检查工具或本体编辑器读过。'),
+        ('Some edits keep a definition confirmed (a type\'s new description, a relation\'s new name): they are written as they read now, as in the standing sheet.',
+         '有些改动不会让定义失去“已确认”（类型改了说明、关系改了名字）：这里按现在的写法写出，和定义状态表一样。'),
+        ('In OntoPoc\'s tests, rdflib reads both files and pyshacl runs the shapes.', 'OntoPoc 的测试里，rdflib 读两个文件，pyshacl 运行规则文件。'),
         ('Check data with the SHACL shapes and inference off. A reasoner does not check: it reads two objects with the same key as one object.',
          '检查数据用 SHACL 规则，并关掉推理。推理机不做检查：它会把主键相同的两个对象读成同一个对象。'),
         *more]
@@ -194,13 +207,14 @@ def files(conn, user: dict | None, now: datetime | None = None) -> dict[str, str
     n = _Names(root)
     sc = scope(conn, user)
     types = sc['types']
-    onto = [_header(made, root, ('the confirmed definitions of one workspace, as OWL (schema only).', '一个工作区已确认的定义，写成 OWL（只有结构）。')), PREFIXES]
+    onto = [_header(made, root, ('the confirmed definitions of one workspace, as OWL (schema only).', '一个工作区已确认的定义，写成 OWL（只有结构）。'), [OWL_TOOL_RUN]), PREFIXES]
     onto.append(_statement(n('ontology'), ['owl:Ontology'], [
         ('rdfs:label', _both(('OntoPoc confirmed definitions', 'OntoPoc 已确认的定义'))), ('op:madeAt', f'{literal(made.isoformat(timespec="seconds"))}^^xsd:dateTime'),
         ('op:standing', literal(STANDING_PATH)),
         ('rdfs:comment', _both(('A snapshot of the confirmed definitions one person may see. No row of data. Annotations carry no logical meaning; check data with the SHACL shapes.',
                                 '一个人能看到的已确认定义的快照。不含数据行。注释没有逻辑含义；检查数据用 SHACL 规则。')))]))
     onto += [_statement(f'op:{term}', ['owl:AnnotationProperty'], [('rdfs:comment', _both(words))]) for term, words in VOCAB_TERMS.items()]
+    onto.append(''.join(f'{term} a {kind} .\n' for term, kind in SKOS_KINDS))
     shapes = {}   # type name -> property shapes
     keys = []     # (type name, key property): a key of one column, whose repeats SHACL can see
     for name, t in types.items():
@@ -263,7 +277,7 @@ def files(conn, user: dict | None, now: datetime | None = None) -> dict[str, str
         onto.append(_statement(n.derived(c['type'], c['english_name']), ['owl:DatatypeProperty'], facts))
 
     out = [_header(made, root, ('SHACL shapes for what OntoPoc checks on the confirmed definitions (schema only).', '已确认定义里 OntoPoc 会检查的规则，写成 SHACL（只有结构）。'),
-                   [(SEVERAL_COLUMNS_NOTE[1], SEVERAL_COLUMNS_NOTE[0])]), PREFIXES]
+                   [('No other tool has read the shapes.', '别的工具没有读过规则文件。'), (SEVERAL_COLUMNS_NOTE[1], SEVERAL_COLUMNS_NOTE[0])]), PREFIXES]
     for name in types:
         if shapes.get(name):
             out.append(_statement(n('shape', 'type', name), ['sh:NodeShape'], [('rdfs:label', literal(types[name]['content']['name'])), ('sh:targetClass', n.type(name)),
