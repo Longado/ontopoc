@@ -514,7 +514,7 @@ def describe_definitions(s, a):
     if isinstance(wanted, str):
         wanted = [wanted]
     if not isinstance(wanted, list) or not wanted or not all(isinstance(w, str) for w in wanted):   # [] is not "all": that is leaving types out
-        raise ToolError('types 要写成类型的英文名或中文名的列表，例如 ["order", "客户"]；要全部就不写 types')
+        raise ToolError('types 要写成类型的英文名、名字或另称的列表，例如 ["order", "客户"]；要全部就不写 types')
     named = {**{n: t['id'] for t in d['types'] for n in t.get('other_names', [])}, **{t['name']: t['id'] for t in d['types']}, **{t['id']: t['id'] for t in d['types']}}   # a type by its English name, its name or an other name
     unknown = [w for w in wanted if w not in named]
     if unknown:
@@ -704,9 +704,9 @@ TOOLS = [
            'version': {'type': 'integer', 'minimum': 1, 'description': '你看过的那一版，来自 list_proposed_views 里这条的 version'}}, ('saved_as', 'name', 'version')),
     _tool(find_name_variants, '找出同一类对象里可能是同一个东西的不同写法，只给建议、不合并。会调用模型。', RUN, ('saved_as',)),
     _tool(describe_definitions, '团队已经确认的业务定义：对象类型（属性、主键、代码的含义）、关系、视图（取哪些行）、派生属性（怎么算），每条带谁确认、确认于哪个数据版本；还有拒答规则 rules。'
-          '属性只有 column 和 type；name 只在和列名不同时给，code 只在是代码列时给。定义多时给 types，只取这几个类型和连着它们的关系、视图、派生属性。只是读，可以重试。'
+          '属性只有 column 和 type；name 只在和列名不同时给，other_names（另称，问题里用它和用名字一样）只在有时给，code 只在是代码列时给。定义多时给 types，只取这几个类型和连着它们的关系、视图、派生属性。只是读，可以重试。'
           '只有已确认的、令牌的主人看得到的；没有数据行，没有全部数据的行数。不在这里的东西没有定义：不要猜，照 rules 拒答。',
-          {'types': {'type': 'array', 'items': {'type': 'string'}, 'description': '只要这几个类型（英文名或中文名），不写就是全部'}}),
+          {'types': {'type': 'array', 'items': {'type': 'string'}, 'description': '只要这几个类型（英文名、名字或另称），不写就是全部'}}),
     _tool(ask, '只在写不出 ontopoc_query 时用（问题里的说法对不上任何属性或关系，要模型来理解）：用已确认的定义回答一句话问的业务问题（模型把问题写成查询，代码在数据上算）。答得出来给 answer 和它用到的定义 definitions；beside 里是同一个问法换成别的行算出的数：answer 算的是全部能看的行时，是这个类型上每个已确认视图各自的数和确认人；answer 只算一个已确认视图时，第一条（all_rows）是全部行的数。转述时把它们一起说。用到的定义没确认、问题超出范围、取值没有含义时是拒绝：'
           'status 是 refused 或 ontology_gap / query_limit / definition_unmet，reason 说原因，refusal 说拒绝的种类和涉及的定义。拒绝就把原因原样转告人，不要换问法绕过，更不要自己猜一个答案。'
           'query_text 是这道题写成的本体查询，改条件、重跑都用 ontopoc_query，不再调用模型。会调用模型，慢且花钱；每问一次都记进问答历史、算一次提问，不要为了重试再问。',
