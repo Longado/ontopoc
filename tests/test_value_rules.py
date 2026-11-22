@@ -148,6 +148,17 @@ def current_table(out, name: str) -> str:
         conn.close()
 
 
+def started(out):
+    """A service started on this data directory, once its start-up count of value rules is done (it runs after the port is open), and closed again."""
+    from ontology_poc_generator import ontology_server
+    server = ontology_server.make_server(port=0, gateway=None, output_dir=out)
+    try:
+        assert server.settled.wait(60)
+    finally:
+        server.server_close()
+    return server
+
+
 class RuleChecksAgainstSql(unittest.TestCase):
     """The one pass over a table, on cells an upload never stores (an empty text, only spaces, spaces around a number), against the plain queries."""
 
@@ -634,18 +645,18 @@ class ValueRuleTests(SigningTestCase):
             self.confirm(bob)
             # an older version's upload that keeps the rule: counted at start, kept, still confirmed, nobody told
             older_upload(out, lambda r, i: {**r, '数量': '1'} if i == 0 else r)
-            ontology_server.make_server(port=0, gateway=None, output_dir=out).server_close()
+            started(out)
             self.assertEqual(self.page(bob, 'order')['state'], 'confirmed')
             self.assertEqual([n for n in bob.get('/api/workspace/notices')[1]['notices'] if '退回' in n['text']], [])
             # one that breaks it: the start sends it back, naming the rule and the rows, and tells who can confirm it once
             older_upload(out, lambda r, i: {**r, '金额': '-5'} if i < 2 else r)
-            ontology_server.make_server(port=0, gateway=None, output_dir=out).server_close()
+            started(out)
             page = self.page(bob, 'order')
             self.assertEqual((page['state'], page['cause']), ('needs_look', 'data'))
             self.assertIn('有 2 行不满足', page['reason'])
             for person in (bob, admin):
                 self.assertEqual(len([n for n in person.get('/api/workspace/notices')[1]['notices'] if '退回' in n['text']]), 1)
-            ontology_server.make_server(port=0, gateway=None, output_dir=out).server_close()   # a second start finds nothing new to tell
+            started(out)   # a second start finds nothing new to tell
             self.assertEqual(len([n for n in bob.get('/api/workspace/notices')[1]['notices'] if '退回' in n['text']]), 1)
             # confirmed again on mended data, then an older version's breaking upload while the service runs: the first question or readout counts it first
             self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [orders_upload()]})[0], 200)
