@@ -54,6 +54,7 @@ from collections import Counter
 from ontology_poc_generator.code_meanings import codes_for_label
 from ontology_poc_generator.derived_measures import to_number
 from ontology_poc_generator.lang import tr
+from ontology_poc_generator.other_names import fold
 from ontology_poc_generator.named_views import query_tables, query_types
 from ontology_poc_generator.ontology_questions import RANGES, _conditions, _fields, _matcher, _resolve_field, _shape_limit, _types, clean_used
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal, normalize_value
@@ -281,11 +282,19 @@ def definition_check(question: str, query: dict, ontology: dict, views: list[dic
     did not list is refused when the query reads such a property, as for a view, even when it is said only inside the property's name: no list of words can tell
     "已取消订单金额" from "减去已取消订单金额", so the model has to say the meaning is included. `picks` is picks_objects(): the query keeps
     to particular objects, so such a property need not have every row reach an object, only none reach more than one. `also` is {'views': {name: other names},
-    'meanings': {id: other names}, 'columns': {field: the other names of its property}}: a question that says an other name says the name."""
+    'meanings': {id: other names}, 'columns': {field: the other names of its property}, 'muted': {'views'|'meanings': {name or id: names said only inside a longer
+    name of another definition}}}: a question that says an other name says the name, and one said only inside a longer name of something else says nothing."""
     if _shape_limit(query):   # a query the language cannot read is said so by the query itself, not refused for a definition
         return {'unmet': [], 'apply': [], 'understood': []}
     also = also or {}
-    in_question = lambda term, names=(), column=None, field=None: any(_verbatim(question, t, column, also.get('columns', {}).get(field, ())) for t in (term, *names))   # the term or one of its other names
+    folded = fold(question)
+
+    def in_question(term, names=(), column=None, field=None, muted=()):
+        """The term, or one of its other names (ignoring case and width), said in the question somewhere that is not inside a longer name of another definition."""
+        columns = also.get('columns', {}).get(field, ())
+        return (_verbatim(question, term, column, columns) and term not in muted) or any(
+            _verbatim(folded, fold(t), column and fold(column), [fold(c) for c in columns]) and t not in muted for t in names)
+    muted = lambda kind, key: also.get('muted', {}).get(kind, {}).get(key, ())
     rank = {'mention': 0, 'include': 1, 'exclude': 2}
     declared, bare = {}, set()
     for u in clean_used(used):
@@ -308,7 +317,7 @@ def definition_check(question: str, query: dict, ontology: dict, views: list[dic
             ident = meaning_id(field, label)
             known.add(ident)
             direction = declared.get(ident) or (declared.get(label) if label in bare else None)
-            if direction or in_question(label, also.get('meanings', {}).get(ident, ()), field.partition('.')[2], field):
+            if direction or in_question(label, also.get('meanings', {}).get(ident, ()), field.partition('.')[2], field, muted('meanings', ident)):
                 codes = tr('、', ', ').join(sorted(c for c, said in held['labels'].items() if said == label))
                 unmet.append({'definition': label, 'kind': 'meaning', 'why': tr(f'{field} 里 {codes} = {label} 这个定义在等你再看一眼（{"；".join(held["changes"][:2])}），不按它回答',
                                                                               f'The definition {field}: {codes} = {label} is waiting for another look ({"; ".join(held["changes"][:2])}), so the answer does not use it')})
@@ -322,7 +331,7 @@ def definition_check(question: str, query: dict, ontology: dict, views: list[dic
             unmet.append({'definition': v['name'], 'kind': 'view', 'why': _excluding()})
             understood.append(_says(direction, v['name'], tr('查询做不到排除', 'A query cannot leave it out')))
         elif direction is None:
-            if offered(v['name']) and in_question(v['name'], also.get('views', {}).get(v['name'], ())):
+            if offered(v['name']) and in_question(v['name'], also.get('views', {}).get(v['name'], ()), muted=muted('views', v['name'])):
                 omitted.append(({'definition': v['name'], 'kind': 'view', 'why': tr('问题里说了它，但模型没有说明它是怎么用的，这条查询也没有读它', 'The question names it, but the model did not say how it is used, and the query does not read it')}, _says(UNSAID, v['name'], _unsaid_how())))
         elif direction == 'mention':
             if v['source'] in tables:
@@ -387,7 +396,7 @@ def definition_check(question: str, query: dict, ontology: dict, views: list[dic
                                                                                    f'{what}: the question leaves it out, but the query does not read objects from the table "{field.partition(".")[0]}", so there is nowhere to leave it out')
                                   + _not_through(read_derived, field.partition('.')[0], left_out)})
                     understood.append(_says(direction, label, tr('查询没有读它所在的列', 'The query does not read its column')))
-                elif direction is None and offered(ident, label) and label not in addressed and in_question(label, also.get('meanings', {}).get(ident, ()), column, field) \
+                elif direction is None and offered(ident, label) and label not in addressed and in_question(label, also.get('meanings', {}).get(ident, ()), column, field, muted('meanings', ident)) \
                         and (counting := [d['name'] for d in read_derived.values() if d['source'] == field.partition('.')[0]]):   # as for a view: the property picks these rows by its own conditions, and the model said nothing of how the question uses the meaning
                     omitted.append(({'definition': label, 'kind': 'meaning', 'why': tr(f'{what} 是确认过的含义，问题里说了它，但模型没有说明它是怎么用的；这条查询读的派生属性{"、".join(counting)}按自己的条件挑「{field.partition(".")[0]}」的行，没法核对。'
                                                                                   f'请换个问法再问：写明是只算「{label}」还是不算它，或者直接点名派生属性「{"」「".join(counting)}」',
@@ -431,10 +440,10 @@ def definition_check(question: str, query: dict, ontology: dict, views: list[dic
             elif use == 'exclude' and rest:   # left out so that only the meanings the question includes remain: said by those
                 continue
             elif use in ('filter', 'share', 'exclude'):
-                omitted.append(({'definition': label, 'kind': 'meaning', **({} if in_question(label, also.get('meanings', {}).get(ident, ()), column, field) else {'unasked': True}), 'why': tr(f'{what} 是确认过的含义，这条查询按它筛选了，但模型没有说明问题是要包含还是排除它，方向没法核对',
+                omitted.append(({'definition': label, 'kind': 'meaning', **({} if in_question(label, also.get('meanings', {}).get(ident, ()), column, field, muted('meanings', ident)) else {'unasked': True}), 'why': tr(f'{what} 是确认过的含义，这条查询按它筛选了，但模型没有说明问题是要包含还是排除它，方向没法核对',
                                                                                   f'{what} is a confirmed meaning and the query filters by it, but the model did not say whether the question includes or leaves it out, so the direction cannot be checked')},
                                 _says(UNSAID, label, tr(f'{column} {"不是" if use == "exclude" else "="} {codes}，但模型没说方向', f'{column} {"is not" if use == "exclude" else "="} {codes}, but the model did not say the direction'))))
-            elif label not in addressed and in_question(label, also.get('meanings', {}).get(ident, ()), column, field):
+            elif label not in addressed and in_question(label, also.get('meanings', {}).get(ident, ()), column, field, muted('meanings', ident)):
                 omitted.append(({'definition': label, 'kind': 'meaning', 'why': tr(f'{what} 是确认过的含义，问题里说了它，但模型没有说明它是怎么用的，这条查询也没有按它筛选',
                                                                               f'{what} is a confirmed meaning and the question names it, but the model did not say how it is used, and the query does not filter by it')}, _says(UNSAID, label, _unsaid_how())))
     unknown = [(name, d) for name, d in sorted(declared.items()) if name not in known and not (told is not None and name in told)]
