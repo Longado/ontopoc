@@ -63,9 +63,9 @@ def _status(trusted, then, now) -> str:
 
 
 def answer_number(result: dict) -> float | None:
-    """The one number an answer (a question's, or an OntoPoc Query card's) works out: a total or a count; None for groups, a graph, a share or an unknown total."""
+    """The one number an answer (a question's, or an OntoPoc Query card's) works out: a total or a count; None for groups, a graph, a share, a list of objects or an unknown total."""
     answer = result.get('answer')
-    if result.get('status') not in ANSWERED or not isinstance(answer, dict) or 'groups' in answer or 'graph' in answer or 'share' in answer:
+    if result.get('status') not in ANSWERED or not isinstance(answer, dict) or 'groups' in answer or 'graph' in answer or 'share' in answer or 'objects' in answer:
         return None
     if 'measure' in answer:
         return answer['measure'].get('value')
