@@ -8,6 +8,8 @@ confirmed), or not run (the model could not be reached). Nothing in it changes t
 import json
 import sqlite3
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -56,18 +58,23 @@ def one_more_cancelled(record, i):
 
 class ByQuestion:
     """A scripted model: for each question asked, the replies to give in turn (the last one again once the others are used). An exception is raised instead of
-    replying, as a model that cannot be reached. Every request is kept."""
+    replying, as a model that cannot be reached; a str is sent as it is (text that is not JSON, or JSON of another shape). Every request is kept. `hold`: an
+    event each call waits for, so a run can be caught while it goes."""
 
-    def __init__(self, script):
-        self.script, self.requests = {q: list(items) for q, items in script.items()}, []
+    def __init__(self, script, hold=None):
+        self.script, self.requests, self.hold = {q: list(items) for q, items in script.items()}, [], hold
 
     def complete_json(self, *, system_prompt, user_prompt, timeout_seconds=None):
+        if self.hold is not None:
+            self.hold.wait(10)
         request = json.loads(user_prompt)
         self.requests.append(request)
         items = self.script[request['asked']]
         reply = items.pop(0) if len(items) > 1 else items[0]
         if isinstance(reply, Exception):
             raise reply
+        if isinstance(reply, str):
+            return ModelCompletion('test', 'test-model', reply)
         return ModelCompletion('test', 'test-model', json.dumps({'questions': [{'question': request['asked'], **reply}]}, ensure_ascii=False))
 
 
@@ -110,10 +117,18 @@ class NeededCase(SigningTestCase):
         self.assertEqual(got, status, body)
         return body
 
-    def run_list(self, client, repeats=None, status=200, **more):
+    def run_list(self, client, repeats=None, status=200, wait=True, **more):
+        """Start a run; it goes on in the service after the answer, so wait (by default) until the list says it is done and return the list then."""
         got, body = client.post(f'{NEEDED}/run', {'repeats': repeats} if repeats is not None else {}, **more)
         self.assertEqual(got, status, body)
-        return body
+        if status != 200 or not wait:
+            return body
+        for _ in range(500):
+            if body.get('running') is None:
+                return body
+            time.sleep(0.02)
+            body = self.listing(client, **more)
+        self.fail('the run did not finish')
 
     def results(self, listing):
         return {q['question']: q['result'] for q in listing['questions']}
@@ -209,13 +224,15 @@ class OutcomeTests(NeededCase):
             self.assertEqual(self.results(self.run_list(bob))[Q_CANCELLED]['outcome'], 'passes')
 
     def test_when_a_definition_the_expectation_was_confirmed_on_moves_a_number_that_no_longer_holds_needs_another_look(self):
-        model = ByQuestion({Q_ALL: [said(ALL_ORDERS, None)]})
+        model = ByQuestion({Q_ALL: [said(ALL_ORDERS, None), said(AMOUNT)]})   # the count, then (after the definition moved) the amount
         with self.service(gateway=model) as (base, out):
             team = self.team(base, valid=False)
             ann, bob = team['ann'], team['bob']
-            self.write(ann, Q_ALL, number(len(ORDERS) + 5))
+            self.write(ann, Q_ALL)
+            self.assertEqual(self.results(self.run_list(bob))[Q_ALL]['outcome'], 'no_expectation')   # the answer is shown, adopted and confirmed: it read 订单
+            found = self.item(ann, Q_ALL)
+            self.assertEqual(ann.post(f'{NEEDED}/update', {'id': found['id'], 'version': found['version'], 'expect': number(len(ORDERS))})[0], 200)
             self.confirm(bob, Q_ALL)
-            self.assertEqual(self.results(self.run_list(bob))[Q_ALL]['outcome'], 'differs')   # nothing moved: the number never held
             shown = bob.get('/api/workspace/types/order')[1]   # 订单 gets a new description: it stays confirmed, at a new version
             self.assertEqual(ann.post('/api/workspace/types/update', {**ORDER, 'id': 'order', 'version': shown['version'], 'description': '一张订单'})[0], 200)
             self.assertEqual(bob.get('/api/workspace/types/order')[1]['state'], 'confirmed')
@@ -363,14 +380,17 @@ class BudgetTests(NeededCase):
             self.assertEqual((status, body['status']), (200, 'answered'))
 
     def test_one_run_at_a_time(self):
-        with self.service(gateway=ByQuestion(SCRIPT)) as (base, out):
+        hold = threading.Event()
+        with self.service(gateway=ByQuestion(SCRIPT, hold=hold)) as (base, out):
             team = self.team(base, valid=False)
             self.write(team['ann'], Q_CANCELLED)
-            conn = open_workspace(out / 'workspace.sqlite')
-            conn.execute("INSERT INTO needed_run(by_name, by_user_id, started_at, status, repeats, planned, calls) VALUES ('Ann', 2, ?, 'running', 1, 1, 0)", (workspace_store.now_text(),))
-            conn.close()
+            started = self.run_list(team['ann'], wait=False)   # the answer comes as the run starts; it goes on in the service
+            self.assertEqual((started['running']['by'], started['running']['planned']), ('Ann', 1))
             self.assertIn('正在跑', self.run_list(team['bob'], status=409)['error'])
             self.assertFalse(self.listing(team['bob'])['can_run']['ok'])
+            hold.set()
+            done = self.run_list(team['bob'])   # once the first is done, the next one starts
+            self.assertEqual(done['last_run']['by'], 'Bob')
 
 
 def raw(client, method, path, payload=None, headers=None):
