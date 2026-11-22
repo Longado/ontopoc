@@ -175,19 +175,44 @@ class WhatTheFilesSayTests(SchemaCase):
             listed = {e['id'] for e in team['bob'].get(STANDING)[1]['definitions'] if e['confirmed']}
             self.assertEqual({str(o) for o in onto.objects(None, URIRef(OP + 'definitionId'))}, listed)
 
-    def test_the_files_say_which_tools_read_them_and_claim_no_owl_profile(self):
+    def test_the_files_say_which_tools_read_them_and_claim_no_owl_profile_of_their_own(self):
         with self.service(gateway=AskModel(cancelled())) as (base, out):
             team = self.team(base)
             self.world(team)
             made = self.files(out, 'bob')
             for text in made.values():
                 head = ''.join(line for line in text.splitlines(keepends=True) if line.startswith('#'))
+                body = ''.join(line for line in text.splitlines(keepends=True) if not line.startswith('#'))
                 self.assertIn('rdflib', head)
                 self.assertIn('pyshacl', head)
                 self.assertIn(STANDING, head)   # a snapshot: the live standing is there
                 for claim in ('OWL 2 DL', 'OWL 2 EL', 'OWL 2 QL', 'OWL 2 RL', 'OWL DL'):
-                    self.assertNotIn(claim, text)
+                    self.assertNotIn(claim, body)
+            head = ''.join(line for line in made['ontology.ttl'].splitlines(keepends=True) if line.startswith('#'))
+            for words in ('ROBOT', 'HermiT', 'once, by hand', 'not by the test suite', '手工', '不是测试'):   # the one real OWL tool run, said as what it was
+                self.assertIn(words, head)
             self.assertIn('2026-11-22T08:00:00', made['ontology.ttl'])
+
+    def test_the_skos_terms_used_are_declared_with_the_kinds_skos_gives_them(self):
+        with self.service(gateway=AskModel(cancelled())) as (base, out):
+            team = self.team(base)
+            self.world(team)
+            onto = graph(self.files(out, 'bob')['ontology.ttl'])
+            used = {p for p in onto.predicates() if str(p).startswith(str(SKOS))} | {o for o in onto.objects(None, RDF.type) if str(o).startswith(str(SKOS))}
+            kinds = {SKOS.Concept: OWL.Class, SKOS.ConceptScheme: OWL.Class, SKOS.inScheme: OWL.ObjectProperty, SKOS.hasTopConcept: OWL.ObjectProperty,
+                     SKOS.prefLabel: OWL.AnnotationProperty, SKOS.notation: OWL.DatatypeProperty}   # SKOS Reference S1, S2, S3, S10, S15
+            self.assertEqual(used, set(kinds))
+            for term, kind in kinds.items():
+                self.assertEqual(set(onto.objects(term, RDF.type)), {kind}, term)
+
+    def test_what_a_definition_says_carries_no_language_tag(self):
+        with self.service(gateway=AskModel(cancelled())) as (base, out):
+            team = self.team(base)
+            self.world(team)
+            onto = graph(self.files(out, 'bob')['ontology.ttl'])
+            said = list(onto.objects(None, URIRef(OP + 'definitionText')))
+            self.assertTrue(said)
+            self.assertEqual({t.language for t in said}, {None})   # the sentence mixes the asker's language with names in whatever language they were written
 
     def test_every_name_the_files_mint_is_the_base_a_fixed_word_an_english_name_or_a_hash(self):
         with self.service(gateway=AskModel(cancelled())) as (base, out):
