@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { SKILL_HREF, STANDING_CSV_HREF, createAgentToken, getAgentInfo, getAgentTokens, getUsers, revokeAgentToken } from "./api.js";
+import { SCHEMA_HREF, SKILL_HREF, STANDING_CSV_HREF, createAgentToken, getAgentInfo, getAgentTokens, getUsers, revokeAgentToken } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { FormDialog } from "./FormDialog.jsx";
 import { isAdmin, roleLabel } from "./authModel.js";
@@ -163,6 +163,8 @@ export function AgentsPage() {
           <div className="inline"><a className="button secondary" href={SKILL_HREF} download={i.skill.file}>{t("agents.skill.download")}</a></div>
           <p className="muted small">{t("agents.standing.text")}</p>
           <div className="inline"><a className="button secondary" href={STANDING_CSV_HREF} download>{t("agents.standing.download")}</a></div>
+          <p className="muted small">{t("agents.schema.text")}</p>
+          <div className="inline"><a className="button secondary" href={SCHEMA_HREF} download>{t("agents.schema.download")}</a></div>
         </>
       )}
       {!i && info.status === "loading" && <p className="muted">{t("agents.loading")}</p>}

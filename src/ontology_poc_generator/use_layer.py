@@ -7,7 +7,7 @@ from ontology_poc_generator.lang import tr, unknown_endpoint
 import re
 from urllib.parse import unquote
 
-from ontology_poc_generator import agent_access, change_preview, checked_numbers, dashboards, explorer, workspace_receipt
+from ontology_poc_generator import agent_access, change_preview, checked_numbers, dashboards, explorer, owl_export, workspace_receipt
 from ontology_poc_generator.object_types import TypeRefused
 
 PREFIXES = ('/api/workspace/explore', '/api/workspace/dashboards', '/api/workspace/agent', '/api/workspace/impact', '/api/workspace/receipt', '/api/workspace/checked')
@@ -57,6 +57,8 @@ def get(conn, user: dict | None, path: str, query: dict[str, list[str]]):
             return agent_access.unconfirmed(conn, user)
         if parts[1] == 'standing' and len(parts) == 2:
             return agent_access.standing_sheet(conn, user) if first('format') == 'csv' else agent_access.standing(conn, user, first('id'))
+        if parts[1] == 'schema' and len(parts) == 2:
+            return owl_export.download(conn, user, first('file'))
         if parts[1] == 'derived':
             raise TypeRefused(tr('读派生属性要用 POST /api/workspace/agent/derived，type、name、key 写在请求体里', 'Read a derived property with POST /api/workspace/agent/derived, with type, name and key in the request body'), 405)
         if parts[1] == 'skill':
