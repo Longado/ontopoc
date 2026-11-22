@@ -146,6 +146,7 @@ The AI tool access page shows a JSON block for Claude Desktop, Cursor and other 
 | Definitions | Object types (key, properties, what code columns mean, value rules on the properties: at most 20 per type, each on one property of that type), relations (how many rows connect, whether the declared cardinality holds), views, derived properties (a formula over a row, or a statistic through relations); up to five other names on each type, property, meaning, view and derived property |
 | Confirmation | Proposed → checked by code → confirmed by another builder, with the data version and anchors kept. When the data or a definition changes, what no longer holds goes back to "needs another look", and whoever can confirm it, and whoever confirmed it last, gets one notice in Notifications. One exception for relations: one confirmed with every row connected and no repeated key stays confirmed while that is still true, even when the row counts changed. What one upload moved can be confirmed together on one screen |
 | Answers | Q&A: a question that names an unconfirmed or stale definition, by its name or an other name, is refused before the model is asked. The model sees structure, meanings and the values of columns with few distinct values, never rows, and writes a structured query; code runs it and checks the definitions it used. OntoPoc Query works out numbers with no model. Boards answer through the same gate |
+| Questions we need | A list of up to 30 questions the team needs answered, each with what it should give (a number, or that it must be refused), proposed by one builder and confirmed by another, signed in, while two-person confirmation is on (with it off a person may confirm their own, and the log says so). A builder or admin whom no type list, column rule or row rule limits runs it: each question is asked 1 to 5 times through the same gate as Q&A and comes back as passes, differs, refused by the gate (with the definitions that block it and who can confirm them), no answer (a reply that could not be read, or no query), no expectation yet (every answer is shown, to adopt one), needs another look (what the expected answer read has moved since) or not asked. Runs have their own budget, at most 300 model calls in any 24 hours, stated before each run and charged as each call goes out; they do not use a person's questions an hour. A run goes on in the service after it starts and the page follows it. Builders and admins only |
 | Around it | Light pipelines (filter, join, group, dedupe, calculated columns, union, split), the lineage and relation graphs (coloured by why something went back), an object explorer, English and Chinese pages |
 
 It does not do heavy orchestration, large data, live queries against your database, or a wide choice of charts. Actions (approved writes to data) and the AI steps inside pipelines are still there but off the main path. The earlier run-based screen is at `legacy.html` (last line below).
@@ -154,7 +155,7 @@ It does not do heavy orchestration, large data, live queries against your databa
 
 - Uploaded files, pulled tables and all results stay on the machine running the service.
 - The model sees the names and types of object types and properties, confirmed code meanings, relations, what derived properties say, and every value of columns with few distinct values (such as city or tier). Key columns and columns a builder marks "don't send values" send no values. No rows are sent.
-- Each model call leaves one line in `model_calls.jsonl` (which agent, how long, success or failure), never the content.
+- Each model call leaves one line in `model_calls.jsonl` (which agent, how long, success or failure), never the content. A call made by a run of Questions we need is marked as that run's.
 - What the earlier screen sends to the model is in [docs/LEGACY_SCREEN.en.md](docs/LEGACY_SCREEN.en.md#what-the-model-sees).
 
 ## Known issues
@@ -208,8 +209,8 @@ Issues and pull requests are welcome. Read the [development guardrails](docs/DEV
 ## Development
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (2,450 on 2026-11-22; install ".[check,sources]" first, or the Turtle, OWL and SHACL tests and some source checks are skipped)
-npm --prefix landing-page run test:unit                       # page tests (802 on 2026-11-22)
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (2,482 on 2026-11-22; install ".[check,sources]" first, or the Turtle, OWL and SHACL tests and some source checks are skipped)
+npm --prefix landing-page run test:unit                       # page tests (819 on 2026-11-22)
 PYTHONPATH=src:. python3 scripts/real_model_check.py --out /tmp/check   # real model against SQL (needs a model key; fails only on a wrong number)
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # a trial run in another data directory
 ```

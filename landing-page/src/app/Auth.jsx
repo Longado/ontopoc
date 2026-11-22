@@ -17,7 +17,7 @@ export function AuthGate({ children }) {
   const [me, setMe] = useState({ status: "loading" });
   const load = useCallback(
     () => getMe().then(
-      (b) => setMe({ status: "in", user: b.user, auth: b.auth, feedbackUrl: b.feedback_url }),
+      (b) => setMe({ status: "in", user: { ...b.user, limited: Boolean(b.limited) }, auth: b.auth, feedbackUrl: b.feedback_url }),   // limited: a rule limits what they see (the sidebar leaves out what is worked out over every row)
       (e) => setMe(e.code === 401 || e.setup ? { status: "out", setup: e.setup ? e.message : "" } : { status: "failed", error: e.message }),
     ),
     [],

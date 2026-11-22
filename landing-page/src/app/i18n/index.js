@@ -17,6 +17,7 @@ import enAgents from "./en/agents.js"; // areas
 import enAsk from "./en/ask.js"; // areas
 import enBoards from "./en/boards.js"; // areas
 import enNotices from "./en/notices.js"; // areas
+import enNeeded from "./en/needed.js"; // areas
 import enAccount from "./en/account.js"; // areas
 import enAuth from "./en/auth.js"; // areas
 import enCommon from "./en/common.js"; // areas
@@ -36,6 +37,7 @@ import zhAgents from "./zh/agents.js"; // areas
 import zhAsk from "./zh/ask.js"; // areas
 import zhBoards from "./zh/boards.js"; // areas
 import zhNotices from "./zh/notices.js"; // areas
+import zhNeeded from "./zh/needed.js"; // areas
 import enActions from "./en/actions.js"; // areas
 import enObjects from "./en/objects.js"; // areas
 import enRelations from "./en/relations.js"; // areas
@@ -68,8 +70,8 @@ export const AREAS = {
   zh: { account: zhAccount, actions: zhActions, auth: zhAuth, common: zhCommon, data: zhData, home: zhHome, lineage: zhLineage, nav: zhNav, objects: zhObjects, pipeline: zhPipeline, relations: zhRelations, review: zhReview, settings: zhSettings, shell: zhShell, sources: zhSources, status: zhStatus, steps: zhSteps, types: zhTypes, ui: zhUi, users: zhUsers }, // areas
 };
 
-Object.assign(AREAS.en, { agents: enAgents, ask: enAsk, boards: enBoards, notices: enNotices }); // areas (T3)
-Object.assign(AREAS.zh, { agents: zhAgents, ask: zhAsk, boards: zhBoards, notices: zhNotices }); // areas (T3)
+Object.assign(AREAS.en, { agents: enAgents, ask: enAsk, boards: enBoards, needed: enNeeded, notices: enNotices }); // areas (T3)
+Object.assign(AREAS.zh, { agents: zhAgents, ask: zhAsk, boards: zhBoards, needed: zhNeeded, notices: zhNotices }); // areas (T3)
 
 export const LOCALES = ["en", "zh"];
 const STORAGE_KEY = "ontopoc.locale";

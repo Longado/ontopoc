@@ -37,6 +37,7 @@ export function parseRoute(hash) {
   if (parts[0] === "datasets" && parts.length === 1) return { page: "datasets" };
   if (parts[0] === "tasks" && parts.length === 1) return { page: "tasks" };
   if (parts[0] === "notices" && parts.length === 1) return { page: "notices" };
+  if (parts[0] === "needed" && parts.length === 1) return { page: "needed" };   // the team's questions we need
   if (parts[0] === "schedules" && parts.length === 1) return { page: "schedules" };
   if (parts[0] === "sources" && parts.length <= 2) return parts.length === 1 ? { page: "sources" } : { page: "source", name: parts[1] };
   if ((parts[0] === "account" || parts[0] === "users" || parts[0] === "settings") &&parts.length === 1) return { page: parts[0] };
@@ -101,7 +102,7 @@ export const afterSignIn = (hash, ended) => (ended && hash && hash !== "#/" ? ha
 export function hrefFor(route) {
   if (route.page === "home") return "#/home";
   if (route.page === "qa") return route.id ? `#/qa/${route.id}` : route.ask ? `#/qa?ask=${encodeURIComponent(route.ask)}` : "#/qa";
-  if (route.page === "tasks" || route.page === "notices" || route.page === "account" || route.page === "users" || route.page === "settings" || route.page === "sources" || route.page === "schedules") return `#/${route.page}`;
+  if (route.page === "tasks" || route.page === "notices" || route.page === "needed" || route.page === "account" || route.page === "users" || route.page === "settings" || route.page === "sources" || route.page === "schedules") return `#/${route.page}`;
   if (route.page === "source") return `#/sources/${encodeURIComponent(route.name)}`;
   if (route.page === "planned") return `#/${route.key}`;
   if (route.page === "types") return "#/types";
@@ -140,20 +141,21 @@ export function hrefFor(route) {
 export const PLANNED = {
 };
 
-const BUILT = { home: "#/home", qa: "#/qa", tasks: "#/tasks", notices: "#/notices", datasets: "#/datasets", types: "#/types", relations: "#/relations", lineage: "#/lineage", agents: "#/agents", boards: "#/boards", confirm: "#/confirm", users: "#/users", settings: "#/settings", permissions: "#/permissions", pipelines: "#/pipelines", sources: "#/sources", schedules: "#/schedules" };
-const BUILDERS = ["confirm", "pipelines", "sources", "schedules", "agents"];   // in the sidebar of builders and admins only: a viewer has nothing to confirm, and a pipeline's steps and previews quote rows (the service refuses them to a viewer)
-const ONLY_WITH = { notices: "notices" };   // shown only when the person has one: 消息 once a notice has arrived (the top bar's bell and the address always reach it)
+const BUILT = { home: "#/home", qa: "#/qa", tasks: "#/tasks", notices: "#/notices", datasets: "#/datasets", types: "#/types", relations: "#/relations", lineage: "#/lineage", agents: "#/agents", boards: "#/boards", confirm: "#/confirm", needed: "#/needed", users: "#/users", settings: "#/settings", permissions: "#/permissions", pipelines: "#/pipelines", sources: "#/sources", schedules: "#/schedules" };
+const BUILDERS = ["confirm", "needed", "pipelines", "sources", "schedules", "agents"];   // in the sidebar of builders and admins only: a viewer has nothing to confirm, and a pipeline's steps and previews quote rows (the service refuses them to a viewer)
+const ONLY_WITH = { notices: "notices" };
+const UNLIMITED = ["needed"];   // worked out over every row and every type: not offered to a builder a type list, column rule or row rule limits (the service refuses them and says why)   // shown only when the person has one: 消息 once a notice has arrived (the top bar's bell and the address always reach it)
 // label (and a group's label and hint) are getters: the words are read when drawn, in the language chosen then
-const item = (key, icon) => ({ key, get label() { return t(`nav.${key}`); }, icon, href: BUILT[key] ?? `#/${key}`, built: key in BUILT, builders: BUILDERS.includes(key), ...(ONLY_WITH[key] ? { onlyWith: ONLY_WITH[key] } : {}) });
+const item = (key, icon) => ({ key, get label() { return t(`nav.${key}`); }, icon, href: BUILT[key] ?? `#/${key}`, built: key in BUILT, builders: BUILDERS.includes(key), unlimited: UNLIMITED.includes(key), ...(ONLY_WITH[key] ? { onlyWith: ONLY_WITH[key] } : {}) });
 const group = (key, icon, rest) => ({ key, get label() { return t(`nav.group.${key}`); }, icon, get hint() { return t(`nav.group.${key}.hint`); }, ...rest });
 
 /** The sidebar, around the gate (docs/PRODUCT.md): the main line, then the definitions a person confirms (the review queue first, and lineage, which says why
- * one went back), then the data they are built on, then the agents that answer from them. A group with a `label` folds and has a grey one-line `hint`;
+ * one went back; for builders, the questions the definitions must answer), then the data they are built on, then the agents that answer from them. A group with a `label` folds and has a grey one-line `hint`;
  * `builders` items are for builders and admins. A viewer sees 首页, 助手, 看板, the definitions they may read (对象类型, 关系, 血缘) and 数据集. The task list is not
  * in the sidebar; every page stays reachable by its address. */
 export const NAV = [
   { key: "main", items: [item("home", "home"), item("qa", "chat"), item("boards", "board"), item("notices", "bell")] },
-  group("objects", "cube", { items: [item("confirm", "check"), item("types", "cube"), item("relations", "link"), item("lineage", "lineage")] }),
+  group("objects", "cube", { items: [item("confirm", "check"), item("needed", "check-circle"), item("types", "cube"), item("relations", "link"), item("lineage", "lineage")] }),
   group("data", "database", { items: [item("datasets", "table"), item("sources", "plug"), item("pipelines", "pipeline"), item("schedules", "clock")] }),
   group("apps", "apps", { items: [item("agents", "bot")] }),
 ];
@@ -167,7 +169,7 @@ export const ADMIN_NAV = [group("settings", "settings", { items: [item("settings
 export const navFor = (user, has = {}) => [...NAV, ...(isAdmin(user) ? ADMIN_NAV : [])]
   .filter((g) => !g.label || user)
   .map((g) => {
-    const items = g.items.filter((i) => (!i.builders || canBuild(user)) && (!i.onlyWith || has[i.onlyWith]));
+    const items = g.items.filter((i) => (!i.builders || canBuild(user)) && (!i.unlimited || !user?.limited) && (!i.onlyWith || has[i.onlyWith]));
     return items.length === g.items.length ? g : { __proto__: g, items };
   })
   .filter((g) => g.items.length);
@@ -186,6 +188,7 @@ export const PAGES = {
   types: { nav: "types" }, type: { nav: "types" }, typenew: { nav: "types", role: "builder" }, typeedit: { nav: "types", role: "builder" }, object: { nav: "types" },
   relations: { nav: "relations" }, relation: { nav: "relations" }, relationnew: { nav: "relations", role: "builder" }, relationedit: { nav: "relations", role: "builder" },
   confirm: { nav: "confirm", role: "builder" }, confirmgroup: { nav: "confirm", role: "builder" },
+  needed: { nav: "needed", role: "builder" },   // the list and its results are worked out over every row: the service refuses viewers and builders a rule limits
   agents: { nav: "agents", role: "builder" },
   boards: { nav: "boards" }, board: { nav: "boards" }, boardnew: { nav: "boards", role: "builder" }, boardedit: { nav: "boards", role: "builder" },
   lineage: { nav: "lineage" },

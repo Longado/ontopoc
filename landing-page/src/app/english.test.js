@@ -27,7 +27,7 @@ test("the sidebar speaks English, and the labels follow a language switch", () =
   const admin = navFor({ role: "admin" }, { notices: true });
   assert.deepEqual(admin.map((g) => g.label ?? "(main)"), ["(main)", "Definitions", "Data", "Agents", "Settings"]);
   assert.deepEqual(admin.flatMap((g) => g.items.map((i) => i.label)), [
-    "Home", "Assistant", "Boards", "Notifications", "Review queue", "Object types", "Relations", "Lineage", "Datasets", "Sources", "Pipelines", "Schedules", "AI tool access", "Workspace", "Users", "Permissions",
+    "Home", "Assistant", "Boards", "Notifications", "Review queue", "Questions we need", "Object types", "Relations", "Lineage", "Datasets", "Sources", "Pipelines", "Schedules", "AI tool access", "Workspace", "Users", "Permissions",
   ]);
   assert.equal(TAB_LABEL.fields, "Fields");
   assert.match(NAV[1].hint, /confirmed it on the current data/);
