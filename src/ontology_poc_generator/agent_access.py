@@ -22,7 +22,7 @@ import zipfile
 from ontology_poc_generator.caliber import line_of
 from ontology_poc_generator.derived_properties import derived_id, derived_visible, describe as describe_derived, evaluate
 from ontology_poc_generator.explorer import _load, _object_key, whole_page
-from ontology_poc_generator.object_types import OBJECT_PAGE, TypeRefused, _content, element_row, type_id
+from ontology_poc_generator.object_types import OBJECT_PAGE, TypeRefused, _content, element_row, presented_row, type_id
 from ontology_poc_generator.object_views import describe as describe_view
 from ontology_poc_generator.type_access import hidden_values
 from ontology_poc_generator.value_rules import columns_of, says as rule_says
@@ -78,10 +78,11 @@ def _not_confirmed(conn, user: dict | None) -> list[dict]:
     """The definitions this person may see that are not confirmed, as refusals name them (_definition_line). A viewer sees none (they see only confirmed things)."""
     out = []
     if user is None or user['role'] != 'viewer':
-        for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE state != 'confirmed' AND (element_id LIKE 'objtype:%' OR element_id LIKE 'enum:%' OR element_id LIKE 'relation:%' "
-                                          "OR element_id LIKE 'objview:%' OR element_id LIKE 'derived:%') ORDER BY element_id").fetchall():
-            if _may_see(conn, user, element_id):
-                out.append(_definition_line(conn, element_row(conn, element_id), user))
+        for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE (state != 'confirmed' OR element_id LIKE 'objtype:%') AND (element_id LIKE 'objtype:%' OR element_id LIKE 'enum:%' "
+                                          "OR element_id LIKE 'relation:%' OR element_id LIKE 'objview:%' OR element_id LIKE 'derived:%') ORDER BY element_id").fetchall():
+            row = presented_row(conn, element_row(conn, element_id))   # a confirmed type whose value rules are not known to hold is not confirmed to an agent
+            if row['state'] != 'confirmed' and _may_see(conn, user, element_id):
+                out.append(_definition_line(conn, row, user))
     return out
 
 
@@ -129,11 +130,6 @@ def _standing(conn, user: dict | None) -> tuple[list[dict], dict]:
         kind, name = _kind_and_name(conn, row, sc['types'])
         entries.append({'id': row['element_id'], 'kind': kind, 'name': name, 'state': 'confirmed', 'confirmed': True, **_last_confirmation(conn, row['element_id'])})
         says[row['element_id']] = _says(conn, sc, kind, _content(row)) if open_text else None
-    for name, verdict in sc['untrusted'].items():   # confirmed, but its value rules are not known to hold (rules_untrusted): not to be answered from
-        row = element_row(conn, type_id(name))
-        entries.append({'id': row['element_id'], 'kind': 'type', 'name': _content(row)['name'], 'state': row['state'], 'confirmed': False, **_last_confirmation(conn, row['element_id']),
-                        'reason_hidden': None, 'cause_word': None, 'stale_word': None, 'who_can_confirm': [], 'proposed_by': row['proposed_by'], 'proposed_with_token': None,
-                        'reason': tr('；', '; ').join(verdict.get('problems') or [tr('值规则还没有按现在的数据数过', 'Its value rules have not been counted on the data as it is')])})
     for line in _not_confirmed(conn, user):
         entries.append({'id': line['id'], 'kind': line['kind'], 'name': line['name'], 'state': line['state'], 'confirmed': False, **_last_confirmation(conn, line['id']),
                         **{k: line[k] for k in ('reason_hidden', 'cause_word', 'stale_word', 'who_can_confirm', 'proposed_by')}, 'proposed_with_token': _proposed_with_token(conn, line['id']),

@@ -31,7 +31,7 @@ import json
 import re
 
 from ontology_poc_generator.explorer import _standing, explore_chart, explore_meta, explore_table, normalize_chart, normalize_query
-from ontology_poc_generator.object_types import VIEW_PREFIX, TypeRefused, _confirmers, _content, _type_row, element_row, type_id, was_confirmed, waiting_for_viewer
+from ontology_poc_generator.object_types import VIEW_PREFIX, TypeRefused, _confirmers, _content, _type_row, element_row, presented_row, type_id, was_confirmed, waiting_for_viewer
 from ontology_poc_generator.object_views import view_id
 from ontology_poc_generator.ontopoc_query import QueryError, is_graph, param_names
 from ontology_poc_generator.type_access import can_access, hidden_columns
@@ -363,7 +363,7 @@ def _waiting_on(conn, user: dict | None, component: dict) -> list[str] | None:
     """The people who could confirm it again, when what a reader cannot read is a type (or a view of it) that was confirmed and needs another look, and not one that is
     closed to them: [] when nobody could. None when the component is unreadable for another reason."""
     query = component['query']
-    rows = [element_row(conn, type_id(query['type']))]
+    rows = [presented_row(conn, element_row(conn, type_id(query['type'])))]   # a type whose value rules are not known to hold waits, as the type list says
     if query['view']:
         rows.append(element_row(conn, view_id(query['view'])))
     if rows[0] is None or not can_access(conn, rows[0]['element_id'], user):

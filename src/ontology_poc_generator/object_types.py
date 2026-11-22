@@ -672,12 +672,28 @@ def rules_untrusted(conn, element_id: str, latest: dict | None = None) -> dict |
     if not content.get('rules'):
         return None
     dataset = current_dataset(conn, content['dataset'])
-    kept = (latest if latest is not None else _latest_counts(conn)).get(element_id)
+    if latest is None:   # one type: its own latest count
+        found = conn.execute("SELECT dataset_id, rows_checked, samples_json FROM check_result WHERE element_id = ? AND check_type = 'value_rules' ORDER BY id DESC LIMIT 1", (element_id,)).fetchone()
+        latest = {element_id: (found[0], found[1], json.loads(found[2]) if found[2] else {})} if found else {}
+    kept = latest.get(element_id)
     if dataset is None or kept is None or kept[0] != dataset['id'] or kept[2].get('rules') != content['rules'] or kept[2].get('codes') != _rule_codes(conn, content, content['rules']):
         return {'counted': False}
     names = {p['column']: p['name'] for p in content['properties']}
     problems = [broken_text(rule_says(rule, names), n, kept[1], []) for rule, n in zip(content['rules'], kept[2].get('broken') or []) if n]
     return {'counted': True, 'problems': problems} if problems else None
+
+
+def presented_row(conn, row: dict | None) -> dict | None:
+    """The row of an element as every reader shows it and relies on it: a confirmed type whose value rules are not known to hold (rules_untrusted: an older
+    version wrote to the file) reads as needing another look, with the reason, until it is judged; anything else as stored. Reads no data row; writes nothing."""
+    if row is None or row['state'] != 'confirmed' or not row['element_id'].startswith(TYPE_PREFIX) or '"rules"' not in (row['content_json'] or ''):
+        return row
+    verdict = rules_untrusted(conn, row['element_id'])
+    if verdict is None:
+        return row
+    dataset = current_dataset(conn, _content(row)['dataset'])
+    reason = tr('；', '; ').join(verdict['problems']) if verdict['counted'] else unchecked_rules_text(dataset) if dataset else tr('值规则没法检查', 'Its value rules cannot be checked')
+    return {**row, 'state': 'needs_look', 'cause': 'data', 'via': 'self', 'reason': reason, 'untrusted': True}
 
 
 def settle_rules(conn, only: list[str] | None = None) -> set[str]:
@@ -1211,7 +1227,9 @@ def _confirmers(conn, row: dict, user: dict | None) -> tuple[bool, list[str]]:
 
 
 def _state_view(conn, row: dict, user: dict | None, ahead: dict | None = None, saved_only: bool = False) -> dict:
-    """The state of one element for a page: who put it forward, whether this person may confirm it, who could, the last confirmation, the reason it needs a look."""
+    """The state of one element for a page: who put it forward, whether this person may confirm it, who could, the last confirmation, the reason it needs a look.
+    A confirmed type whose value rules are not known to hold is shown as needing another look (presented_row), with nothing to confirm until it is judged."""
+    row = presented_row(conn, row)
     waiting = row['state'] in WAITING or (row['state'] == 'needs_look' and row['element_id'].startswith((TYPE_PREFIX, RELATION_PREFIX, VIEW_PREFIX, ACTION_PREFIX, PIPELINE_PREFIX, DERIVED_PREFIX)))
     can, others = _confirmers(conn, row, user)
     meanings = _unconfirmed_meanings(conn, row['element_id']) if row['element_id'].startswith(TYPE_PREFIX) and waiting else []   # a type waits for its meanings first
@@ -1227,7 +1245,7 @@ def _state_view(conn, row: dict, user: dict | None, ahead: dict | None = None, s
     unchecked = dataset is not None and problems == [unchecked_rules_text(dataset)]   # held out only because its rules wait to be counted
     reason, reason_hidden = reason_for(conn, row, user)
     return {'state': row['state'], 'version': row['version'], 'proposed_by': row['proposed_by'], 'drafted': _content(row).get('drafted'), 'reason': reason, 'reason_hidden': reason_hidden,
-            'model_draft': row['state'] == 'proposed' and row['proposed_by'] is None, 'can_confirm': waiting and can and not blocked and not limited and not failing, 'limited_by_rule': limited,
+            'model_draft': row['state'] == 'proposed' and row['proposed_by'] is None, 'can_confirm': waiting and can and not blocked and not limited and not failing and not row.get('untrusted'), 'limited_by_rule': limited,
             'cause': row['cause'] if row['state'] == 'needs_look' else None, 'via': row['via'] if row['state'] == 'needs_look' else None,
             'stale_word': stale_word(row['cause'], row['via']) if row['state'] == 'needs_look' else None,
             'cause_word': CAUSE_WORDS.get(row['cause']) if row['state'] == 'needs_look' else None, 'pipelines_blocking': producers,
@@ -1238,8 +1256,9 @@ def _state_view(conn, row: dict, user: dict | None, ahead: dict | None = None, s
 
 
 def _visible(conn, row: dict, user: dict | None) -> bool:
-    """A type nobody confirmed is for builders; a type with a list of people is for them (and admins) only (type_access)."""
-    if user is not None and user['role'] == 'viewer' and row['state'] != 'confirmed':
+    """A type nobody confirmed is for builders; a type with a list of people is for them (and admins) only (type_access). A viewer reads the state as presented
+    (presented_row): a type whose value rules are not known to hold waits."""
+    if user is not None and user['role'] == 'viewer' and presented_row(conn, row)['state'] != 'confirmed':
         return False
     return can_access(conn, row['element_id'], user)
 
@@ -1251,7 +1270,7 @@ def was_confirmed(conn, element_id: str) -> bool:
 def waiting_for_viewer(conn, row: dict | None, user: dict | None) -> bool:
     """A type a viewer is allowed to see that was confirmed once and now needs another look: it is not closed to them, it waits for a confirmer. They are shown
     that it waits and nothing of its definition or data (a type nobody ever confirmed, or one a list of people leaves them out of, is not this)."""
-    return (row is not None and user is not None and user['role'] == 'viewer' and row['state'] == 'needs_look' and row['element_id'].startswith(TYPE_PREFIX)
+    return (row is not None and user is not None and user['role'] == 'viewer' and presented_row(conn, row)['state'] == 'needs_look' and row['element_id'].startswith(TYPE_PREFIX)
             and can_access(conn, row['element_id'], user) and was_confirmed(conn, row['element_id']))
 
 
