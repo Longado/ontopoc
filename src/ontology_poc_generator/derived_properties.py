@@ -34,6 +34,7 @@ from contextlib import contextmanager
 import json
 import re
 
+from ontology_poc_generator import other_names
 from ontology_poc_generator.name_checks import STAT_WORDS, claim_of
 from ontology_poc_generator.named_views import ORDERED_TEXT, orderable
 from ontology_poc_generator.object_relations import _relation_visible, relation_id
@@ -595,7 +596,8 @@ def check_definition(conn, payload: dict, user: dict | None, english_name: str |
     kind = payload.get('kind')
     if kind not in KINDS:
         raise TypeRefused(tr('种类要选函数或统计', 'Choose function or statistic as the kind'))
-    base = {'english_name': english, 'name': name, 'description': description, 'type': owner['english_name'], 'kind': kind}
+    base = other_names.put({'english_name': english, 'name': name, 'description': description, 'type': owner['english_name'], 'kind': kind},
+                           other_names.clean(payload.get('other_names'), tr(f'派生属性“{name}”', f'the derived property "{name}"')))
     if kind == 'function':
         body = _function_body(payload, owner, cols)
         content = {**base, **body, 'types': [owner['english_name']], 'path': [], 'measure': None, 'fn': None, 'latest': None, 'conditions': []}
@@ -721,6 +723,10 @@ def check_names_free(conn, content: dict) -> None:
             taken.add(o['name'])
     if content['name'] in taken:
         raise TypeRefused(tr(f'“{content["name"]}”已经是这个数据集的一列、一个属性，或另一个派生属性的名字', f'"{content["name"]}" is already the name of a column or property of this dataset, or of another derived property'), 409)
+    clash = next((n for n in other_names.of(content) if n in taken), None)   # an other name is a name: not a column or property of this dataset either
+    if clash:
+        raise TypeRefused(tr(f'“{clash}”已经是这个数据集的一列、一个属性，或另一个派生属性的名字', f'"{clash}" is already the name of a column or property of this dataset, or of another derived property'), 409)
+    other_names.check_view(conn, content, mine, 'derived')
 
 
 def reset_reasons(old: dict, new: dict) -> list[str]:
@@ -764,16 +770,17 @@ def update_derived(conn, payload: dict, who: str | None, user: dict | None) -> d
     if payload.get('version') != row['version']:
         raise TypeRefused(tr('这个派生属性在你打开之后被改了，请刷新后再改', 'This derived property was changed after you opened it. Refresh and edit again'), 409)
     old = _content(row)
-    content = check_definition(conn, {**payload, 'type': old['type']}, user, old['english_name'])
+    content = check_definition(conn, {**payload, 'type': old['type'], 'other_names': payload['other_names'] if 'other_names' in payload else other_names.of(old)}, user, old['english_name'])
     check_names_free(conn, content)
-    reset = reset_reasons(old, content) or token_edit(row, user, (old['name'], old['description']) != (content['name'], content['description']))
+    others = other_names.of(old) != other_names.of(content)
+    reset = reset_reasons(old, content) or token_edit(row, user, (old['name'], old['description']) != (content['name'], content['description']), others)
     if reset or row['state'] in ('proposed', 'rejected'):
         chain, result = _chain(conn, content, None), evaluate(conn, content, None)
         from ontology_poc_generator.object_types import _flag_readers   # a view that uses it as a condition stops being confirmed with it
         said = tr(f'它用的派生属性“{old["name"]}”改了，要重新确认', f'The derived property "{old["name"]}" it uses changed and needs confirming again')
         write_elements(conn, [_change(content, result, who)], {row['element_id']: _reads(content, chain)}, {row['element_id']: row['version']},
                        after=(lambda c: _flag_readers(c, row['element_id'], said, [])) if row['state'] == 'confirmed' else None)
-    elif (old['name'], old['description']) != (content['name'], content['description']):
+    elif (old['name'], old['description']) != (content['name'], content['description']) or others:
         _edit_names(conn, row, content, who)
     return {'id': old['english_name'], 'type': old['type'], 'state': element_row(conn, row['element_id'])['state'], 'reset': reset}
 
@@ -953,7 +960,7 @@ def _line(conn, row: dict, user: dict | None) -> dict:
     content = _content(row)
     anchors = json.loads(row['anchors_json']) if row['anchors_json'] else None
     shown = trial(conn, content, user)
-    return {'id': content['english_name'], 'type': content['type'], 'name': content['name'], 'description': content['description'], 'kind': content['kind'], 'kind_name': KINDS[content['kind']],
+    return {'id': content['english_name'], 'type': content['type'], 'name': content['name'], **({'other_names': other_names.of(content)} if other_names.of(content) else {}), 'description': content['description'], 'kind': content['kind'], 'kind_name': KINDS[content['kind']],
             'says': describe(conn, content), 'output_type': content['output_type'], 'definition': content, 'problems': shown['problems'],
             'trial': shown, 'anchored': None if shown.get('limited_note') else anchors, 'used_by': _used_by(conn, row['element_id'], user), **derived_state(conn, row, user),
             'seen': shown.get('seen'), 'new_values': [] if shown.get('limited_note') else open_new_values(conn, row)}   # a person a row rule limits cannot confirm, and the counts are of the whole data

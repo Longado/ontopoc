@@ -28,12 +28,12 @@ claude mcp add ontopoc -- env ONTOPOC_TOKEN=<令牌> ONTOPOC_TOOLSET=read PYTHON
 
 | 工具 | 做什么 | 调用模型 | 重试 |
 |---|---|---|---|
-| `describe_definitions` | 已确认的对象类型、属性、代码含义、关系、视图、派生属性和拒答规则；`types` 只取几个类型和连着它们的定义 | 否 | 可以 |
+| `describe_definitions` | 已确认的对象类型、属性、代码含义、关系、视图、派生属性和拒答规则，有另称的带着 `other_names`；`types` 只取几个类型和连着它们的定义（写英文名、名字或另称都行） | 否 | 可以 |
 | `ontopoc_query` | 要一个数时先用它：直接写本体查询（像 SQL，见 [QUERY.md](QUERY.md)），代码算；写错时说明能写什么 | 否 | 可以，不记录 |
 | `ask` | 写不出查询时才用：用一句话问，模型写成查询，代码算 | 是 | 每问一次都记进问答历史、算一次提问 |
 | `list_unconfirmed` | 还不能用的定义，以及原因 | 否 | 可以 |
 | `read_derived_property` | 读一个已确认的派生属性的值 | 否 | 可以 |
-| `definition_standing` | 每条定义现在是不是已确认、谁确认的、什么时候、在哪个数据版本上，没确认的写明原因和可以确认的人；`id` 只看一条。同一份也在 `GET /api/workspace/agent/standing`（`?id=` 一条，`?format=csv` 已确认的定义表），技能包是快照，以这里为准 | 否 | 可以 |
+| `definition_standing` | 每条定义现在是不是已确认、谁确认的、什么时候、在哪个数据版本上，没确认的写明原因和可以确认的人；`id` 只看一条。同一份也在 `GET /api/workspace/agent/standing`（`?id=` 一条，`?format=csv` 已确认的定义表，最后一列是另称），技能包是快照，以这里为准 | 否 | 可以 |
 
 `ask` 的回答带着 `query_text`，也就是这道题写成本体查询的样子。智能体可以先用 `ask` 学写法，再用 `ontopoc_query` 改条件、重复跑，后面这些都不再调用模型。
 

@@ -26,6 +26,7 @@ from ontology_poc_generator.accounts import two_person
 from ontology_poc_generator.assistant_checks import drafted_mark
 from ontology_poc_generator.draft_receipts import spend as spend_receipt
 from ontology_poc_generator.code_meanings import check_enum, merge_enum
+from ontology_poc_generator import other_names
 from ontology_poc_generator.row_rules import keeps, positions, restriction
 from ontology_poc_generator.type_access import can_access, column_allowed, dataset_hidden, hidden_columns, hidden_values, reads_hidden, visible_to
 from ontology_poc_generator.value_rules import EXAMPLES, REASON_EXAMPLES, RuleRefused, broken_text, columns_of, note as rules_note, read_rules, run as run_rules, says as rule_says
@@ -230,6 +231,7 @@ def check_definition(conn, payload: dict, english_name: str | None = None, user:
         raise TypeRefused(tr('英文名不能叫 new：页面的“新建”用了这个地址', 'The English name cannot be "new": the New page uses that address'))
     name = _text(payload.get('name'), tr('名称', 'The name'), MAX_NAME)
     description = _text(payload.get('description') or '', tr('说明', 'The description'), MAX_DESCRIPTION, required=False)
+    also = other_names.clean(payload.get('other_names'), tr(f'对象类型“{name}”', f'the object type "{name}"'))
     dataset = _readable_dataset(conn, payload.get('dataset'), user)
     if dataset is None:
         raise TypeRefused(tr(f'没有叫“{payload.get("dataset")}”的数据集', f'There is no dataset named "{payload.get("dataset")}"'), 404)
@@ -266,8 +268,9 @@ def check_definition(conn, payload: dict, english_name: str | None = None, user:
         if shown.casefold() in shown_names:
             raise TypeRefused(tr(f'属性名称“{shown}”重复了', f'The property name "{shown}" is repeated'))
         shown_names.add(shown.casefold())
-        properties.append({'column': column, 'name': shown, 'type': kind, 'enum': enum})
-    content = {'name': name, 'english_name': english, 'description': description, 'dataset': dataset['name'], 'key': list(key), 'properties': properties}
+        properties.append(other_names.put({'column': column, 'name': shown, 'type': kind, 'enum': enum}, other_names.clean(p.get('other_names'), tr(f'属性“{shown}”', f'the property "{shown}"'))))
+    other_names.check_properties(properties)
+    content = other_names.put({'name': name, 'english_name': english, 'description': description, 'dataset': dataset['name'], 'key': list(key), 'properties': properties}, also)
     posted = payload.get('enums') or {}
     if not isinstance(posted, dict):
         raise TypeRefused(tr('含义要写成 {列名: [{value, label}]}', 'Meanings must be written as {column: [{value, label}]}'))
@@ -285,13 +288,19 @@ def check_definition(conn, payload: dict, english_name: str | None = None, user:
 
 def _meanings(kept: list[dict], column: str, col: dict, posted) -> list[dict]:
     """The meanings after a person's entries are put over the ones on file (check_enum, merge_enum): only values the data has or that already have a
-    meaning (so a stale one can be taken back); a blank label takes one back."""
+    meaning (so a stale one can be taken back); a blank label takes one back. An entry's other names are its own; an entry that gives none keeps the ones on
+    file for that value. TypeRefused when an other name clashes with another meaning of the column (other_names.check_meanings)."""
     profile = {'values': [{'value': v} for v in {*(col['counts'] or {}), *(e['value'] for e in kept)}]}
     try:
         entries = check_enum(profile, posted)
     except ValueError as exc:
         raise TypeRefused(str(exc)) from None
-    return merge_enum(kept, entries)
+    was = {e['value']: other_names.of(e) for e in kept}
+    entries = [other_names.put(e, other_names.clean(raw.get('other_names'), tr(f'含义“{e["label"]}”', f'the meaning "{e["label"]}"')) if 'other_names' in raw else was.get(e['value']))
+               for e, raw in zip(entries, posted)]
+    merged = merge_enum(kept, entries)
+    other_names.check_meanings(merged)
+    return merged
 
 
 def _kept_meanings(conn, english_name: str, column: str) -> list[dict]:
@@ -300,7 +309,8 @@ def _kept_meanings(conn, english_name: str, column: str) -> list[dict]:
 
 
 def check_names_free(conn, content: dict) -> None:
-    """The English name is the type's id, so it is unique case-insensitively; the display name too."""
+    """The English name is the type's id, so it is unique case-insensitively; the display name too; and other names clash with no name in their scope
+    (other_names.check_type)."""
     mine = type_id(content['english_name'])
     for element_id, other in conn.execute("SELECT element_id, content_json FROM element_state WHERE element_id LIKE 'objtype:%'"):
         if element_id == mine:
@@ -309,6 +319,7 @@ def check_names_free(conn, content: dict) -> None:
             raise TypeRefused(tr(f'英文名“{content["english_name"]}”和已有的“{element_id[len(TYPE_PREFIX):]}”只差大小写', f'The English name "{content["english_name"]}" differs from the existing "{element_id[len(TYPE_PREFIX):]}" only in case'), 409)
         if json.loads(other)['name'].casefold() == content['name'].casefold():
             raise TypeRefused(tr(f'已经有叫“{content["name"]}”的对象类型', f'There is already an object type named "{content["name"]}"'), 409)
+    other_names.check_type(conn, content)
 
 
 def _type_change(content: dict, dataset: dict, key_check: dict, who: str | None) -> tuple:
@@ -339,6 +350,7 @@ def _meaning_change(conn, content: dict, column: str, values: list[dict], datase
     if not fresh and row and row['state'] in (*WAITING, 'confirmed') and values == _content(row)['values']:
         return None
     meaning = {'type': content['english_name'], 'column': column, 'dataset': dataset['name'], 'values': values}
+    other_names.check_across(conn, other_names.entries_of(enum_id(content['english_name'], column), meaning), {enum_id(content['english_name'], column)})
     anchors = {'dataset': dataset['name'], 'version': dataset['version'], 'counts': dict(cols[column]['counts'] or {})}
     return (enum_id(content['english_name'], column), 'checked', f'dataset:{dataset["name"]}@v{dataset["version"]}', who, meaning, anchors, who)
 
@@ -379,12 +391,28 @@ def reset_reasons(old: dict, new: dict) -> list[str]:
     return reasons
 
 
-def token_edit(row: dict, user: dict | None, edited: bool) -> list[str]:
+def token_edit(row: dict, user: dict | None, edited: bool, others: bool = False) -> list[str]:
     """[the reason] when a confirmed definition is edited with a token: whatever the edit, it is put forward again, as a change of what it means is, and a person
-    confirms it again (a token's words must not stand beside a person's confirmation). [] for a person signed in, for nothing edited, or for one not confirmed."""
-    if edited and row['state'] == 'confirmed' and user is not None and user.get('token_id') is not None:
-        return [tr('名称或说明（用令牌改的）', 'its name or description, with a token')]
+    confirms it again (a token's words must not stand beside a person's confirmation). [] for a person signed in, for nothing edited, or for one not confirmed.
+    `others`: what changed is only its other names."""
+    if (edited or others) and row['state'] == 'confirmed' and user is not None and user.get('token_id') is not None:
+        return [tr('名称或说明（用令牌改的）', 'its name or description, with a token') if edited else tr('另称（用令牌改的）', 'its other names, with a token')]
     return []
+
+
+def keep_other_names(payload: dict, old: dict) -> dict:
+    """An edit that does not say the other names keeps the ones on file: the type's own, and each property's that it lists without them."""
+    out = {**payload, 'other_names': payload['other_names'] if 'other_names' in payload else other_names.of(old)}
+    if isinstance(payload.get('properties'), list):
+        was = {p['column']: other_names.of(p) for p in old.get('properties', [])}
+        out['properties'] = [{**p, 'other_names': was.get(p.get('column'), [])} if isinstance(p, dict) and 'other_names' not in p else p for p in payload['properties']]
+    return out
+
+
+def others_changed(old: dict, new: dict) -> bool:
+    """Whether the other names changed: the definition's own, or (for a type) a property's."""
+    props = lambda c: {p['column']: other_names.of(p) for p in c.get('properties', []) if other_names.of(p)}
+    return other_names.of(old) != other_names.of(new) or props(old) != props(new)
 
 
 def _meaning_columns(conn, english_name: str) -> list[str]:
@@ -427,11 +455,12 @@ def update_type(conn, payload: dict, who: str | None, user: dict | None = None) 
         raise TypeRefused(tr('这个对象类型在你打开之后被改了，请刷新后再改', 'This object type was changed after you opened it. Refresh and edit again'), 409)
     old = _content(row)
     kept = {} if payload.get('rules') is not None else {'rules': old.get('rules', [])}   # a request that says nothing of the rules keeps them; [] takes them away
-    content, posted, warnings, key_check = check_definition(conn, {**payload, **kept, 'english_name': old['english_name']}, old['english_name'], user)
+    content, posted, warnings, key_check = check_definition(conn, keep_other_names({**payload, **kept, 'english_name': old['english_name']}, old), old['english_name'], user)   # and nothing of the other names, keeps those
     check_names_free(conn, content)
     dataset = current_dataset(conn, content['dataset'])
     cols = dataset_columns(conn, dataset['id'])
-    reset = reset_reasons(old, content) or token_edit(row, user, (old['name'], old['description']) != (content['name'], content['description']))
+    renamed, others = (old['name'], old['description']) != (content['name'], content['description']), others_changed(old, content)
+    reset = reset_reasons(old, content) or token_edit(row, user, renamed, others)
     if mark := drafted_mark(conn, payload, who, user, 'type', content, old.get('drafted'), old['english_name']):   # applied from the assistant's draft: who, when (a later ordinary edit keeps it)
         content = {**content, 'drafted': mark}
     english = old['english_name']
@@ -453,7 +482,7 @@ def update_type(conn, payload: dict, who: str | None, user: dict | None = None) 
             if _confirmed_meaning(conn, english, column):
                 was_confirmed.append(column)
     if not changes:   # (something to retire always comes with a change on the reset list)
-        if (old['name'], old['description']) != (content['name'], content['description']):
+        if renamed or others:
             _edit_names(conn, row, content, who)
         shown, broken = _proposed_rules(conn, content, dataset, user)
         return {'id': english, 'state': row['state'], 'reset': reset, 'warnings': [*warnings, *broken], **shown}
@@ -466,21 +495,29 @@ def update_type(conn, payload: dict, who: str | None, user: dict | None = None) 
 
     write_elements(conn, changes, reads, {row['element_id']: row['version']}, after)
     spend_receipt(conn, payload, user)
-    if not reset and (old['name'], old['description']) != (content['name'], content['description']):
+    if not reset and (renamed or others):
         _edit_names(conn, element_row(conn, row['element_id']), content, who)
     shown, broken = _proposed_rules(conn, content, dataset, user)
     return {'id': english, 'state': element_row(conn, row['element_id'])['state'], 'reset': reset, 'warnings': [*warnings, *broken], **shown}
 
 
 def _edit_names(conn, row: dict, content: dict, who: str | None) -> None:
-    """A change to the display name or the description: the state stays, the log says who."""
+    """A change to the display name, the description or the other names (a type's own and its properties'): the state stays, the log says who."""
     old = _content(row)
+    new = other_names.put({**old, 'name': content['name'], 'description': content['description']}, other_names.of(content))
+    typed = row['element_id'].startswith(TYPE_PREFIX)   # only a type's properties are named by their column (an action's are something else)
+    named = lambda c: {p['column']: other_names.of(p) for p in c.get('properties', []) if other_names.of(p)} if typed else {}
+    if typed and 'properties' in content:   # a property's other names, by its column; the rest of the property as it is on file
+        theirs = {p['column']: other_names.of(p) for p in content['properties']}
+        new['properties'] = [other_names.put(p, theirs.get(p['column'], other_names.of(p))) for p in old['properties']]
+    said = lambda c: {**({'other_names': other_names.of(c)} if other_names.of(old) or other_names.of(new) else {}),
+                      **({'property_other_names': named(c)} if named(old) != named(new) else {})}   # said only when there are some: a log line as before other names existed otherwise
     conn.execute('BEGIN IMMEDIATE')
     try:
         conn.execute('UPDATE element_state SET content_json = ?, version = version + 1 WHERE element_id = ?',
-                     (json.dumps({**old, 'name': content['name'], 'description': content['description']}, ensure_ascii=False, sort_keys=True), row['element_id']))
-        log_line(conn, who or tr('未署名', 'unsigned'), row['element_id'], 'edited', before={'name': old['name'], 'description': old['description']},
-                 after={'name': content['name'], 'description': content['description'], 'state': row['state']})
+                     (json.dumps(new, ensure_ascii=False, sort_keys=True), row['element_id']))
+        log_line(conn, who or tr('未署名', 'unsigned'), row['element_id'], 'edited', before={'name': old['name'], 'description': old['description'], **said(old)},
+                 after={'name': content['name'], 'description': content['description'], **said(new), 'state': row['state']})
         conn.execute('COMMIT')
     except BaseException:
         conn.execute('ROLLBACK')
@@ -1330,6 +1367,7 @@ def _meaning_view(conn, content: dict, prop: dict, cols: dict, dataset: dict | N
     else:
         values = [{'value': v, 'label': labels[v]['label'] if v in labels else '', 'description': labels[v]['description'] if v in labels else '',
                    'rows': now.get(v), 'rows_at_confirmation': was.get(v), 'in_data': v in now} for v in _by_value({*now, *labels})]
+    values = [other_names.put(e, other_names.of(labels.get(e['value']))) for e in values]   # a meaning's other names, when it has some
     return {'column': prop['column'], 'values': values, 'seen': None if limited else seen_of_meaning(dataset, cols.get(prop['column'])),
             **({'limited_note': limited_note()} if limited else {}), **(_state_view(conn, row, user) if row else {'state': None, 'can_confirm': False})}
 
@@ -1359,7 +1397,7 @@ def type_detail(conn, english_name: str, user: dict | None) -> dict:
         keep_count(conn, row['element_id'], _content(row), whole)   # so the reads made on every page know it from now on
     rules = rules_readout(conn, row['element_id'], _content(row), dataset, user, whole)   # none on a column kept from them, counted on their rows
     from ontology_poc_generator.derived_properties import limited_reads   # derived_properties reads this module: imported here, where it is used
-    return {'id': content['english_name'], 'name': content['name'], 'description': content['description'], 'dataset': content['dataset'], 'limited_reads': limited_reads(conn, english_name, user),
+    return {'id': content['english_name'], 'name': content['name'], **({'other_names': other_names.of(content)} if other_names.of(content) else {}), 'description': content['description'], 'dataset': content['dataset'], 'limited_reads': limited_reads(conn, english_name, user),
             'dataset_version': dataset['version'] if dataset else None, 'rows': visible_rows(conn, row, dataset, user) if dataset else None, 'rows_limited': limited,
             **({'limited_note': limited_note()} if limited else {}), 'seen': None if limited else seen_of_type(dataset), 'key': content['key'],
             'properties': props, 'visible_to': None if user is not None and user['role'] == 'viewer' else visible_to(conn, row['element_id']), **_state_view(conn, row, user, whole),

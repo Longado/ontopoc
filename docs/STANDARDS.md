@@ -30,7 +30,7 @@ OntoPoc 的团队应用用自己的模型记团队的定义：带主键的对象
 | 派生属性 | `owl:DatatypeProperty`，`rdfs:domain` 所属类型，`rdfs:range` 输出类型，带 `op:definitionText`（算式或统计的文字）和同样的说明 | 属性有声明；算法只是文字 | — |
 | 谁确认、什么时候、在哪版数据上 | `op:definitionId`（CSV 里的编号）、`op:confirmedBy`、`op:confirmedAt`（`xsd:dateTime`）、`op:confirmedOnData`（例如 `订单 v1`） | 注释 | — |
 
-`op:` 开头的是 OntoPoc 自己的注释属性，在文件开头以 `urn:ontopoc:vocab:` 声明。文件用到的 SKOS 词也在那里声明，类别照 SKOS 参考给的：`skos:Concept` 和 `skos:ConceptScheme` 是类，`skos:inScheme` 和 `skos:hasTopConcept` 是对象属性，`skos:notation` 是数据属性，`skos:prefLabel` 是注释属性。PROV-O 有记录谁在什么时候做了什么的词，但它们是给 `prov:Entity` 这类东西用的对象属性和数据属性（例子都用在个体上）；写在一个类上，就等于说这个类本身是这种东西。普通的注释属性只说要说的意思，不进入逻辑。
+`op:` 开头的是 OntoPoc 自己的注释属性，在文件开头以 `urn:ontopoc:vocab:` 声明。文件用到的 SKOS 词也在那里声明，类别照 SKOS 参考给的：`skos:Concept` 和 `skos:ConceptScheme` 是类，`skos:inScheme` 和 `skos:hasTopConcept` 是对象属性，`skos:notation` 是数据属性，`skos:prefLabel` 是注释属性。定义的另称（对象类型、属性、代码含义、视图、派生属性）写成 `skos:altLabel`，SKOS 也把它定为注释属性；只有文件里有另称时才声明它，所以没有另称的文件和以前一样。PROV-O 有记录谁在什么时候做了什么的词，但它们是给 `prov:Entity` 这类东西用的对象属性和数据属性（例子都用在个体上）；写在一个类上，就等于说这个类本身是这种东西。普通的注释属性只说要说的意思，不进入逻辑。
 
 ### 数据类型
 

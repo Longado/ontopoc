@@ -1,6 +1,10 @@
 // Object types: the list, a type's page (properties, derived, views, log), the form, and the type model's sentences.
 export default {
   "sep": ", ",
+  "alsoCalled": "Also called: {names}",
+  "otherNames": "Other names (optional)",
+  "otherNamesHint": "Other ways people say this definition, for example in another language. Separate them with commas, at most 5, each at most 40 characters. A question that uses an other name is read as if it used the name.",
+  "otherNamesPlaceholder": "For example: sales order, purchase",
   "colon": ":",
   "semi": "; ",
   "comma": ", ",
@@ -121,6 +125,10 @@ export default {
   "form.keyAria": "{name} as key",
   "form.useAria": "{name} as property",
   "form.labelAria": "Property name of {name}",
+  "form.col.other": "Other names",
+  "form.otherAria": "Other names of {name}",
+  "form.meaningOthers": "Other names",
+  "form.meaningOthersAria": "Other names of value {value} of {column}",
   "form.typeAria": "Type of {name}",
   "form.codeAria": "{name} is a code column",
   "form.advancedHide": "Hide advanced settings",
