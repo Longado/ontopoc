@@ -332,8 +332,9 @@ class ShapesTests(SchemaCase):
             self.world(team)
             made = self.files(out, 'bob')
             onto = graph(made['ontology.ttl'])
-            classes = set(onto.subjects(RDF.type, OWL.Class))
-            self.assertFalse([s for c in classes for s in onto.subjects(RDF.type, c)])   # no object of any type
+            classes = {c for c in onto.subjects(RDF.type, OWL.Class) if not str(c).startswith(str(SKOS))}   # the concept schemes and their codes are SKOS's
+            self.assertTrue(classes)
+            self.assertFalse([s for c in classes for s in onto.subjects(RDF.type, c)])   # no object of any type or view
             values = {r['订单号'] for r in ORDERS} | {r['客户编号'] for r in CUSTOMERS} | {r['客户名称'] for r in CUSTOMERS}
             for text in made.values():
                 self.assertFalse([v for v in values if v and v in text])
