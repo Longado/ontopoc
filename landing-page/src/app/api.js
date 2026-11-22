@@ -268,6 +268,14 @@ export const deleteBoard = (id) => send("/api/workspace/dashboards/delete", { id
 export const recordCheck = (payload) => send("/api/workspace/checked", payload);   // a number the team checked: {board, component} or {question}, with value and note
 export const getAnswerCheck = (id) => request(`/api/workspace/checked/question/${id}`);
 
+// questions we need (needed_questions.py): the team's list, what each should give, and runs of it
+export const getNeeded = () => request("/api/workspace/needed");
+export const addNeeded = (fields) => send("/api/workspace/needed", fields);   // {question, expect?, note?}
+export const updateNeeded = (item, fields) => send("/api/workspace/needed/update", { id: item.id, version: item.version, ...fields });
+export const deleteNeeded = (item) => send("/api/workspace/needed/delete", { id: item.id, version: item.version });
+export const confirmNeeded = (item) => send("/api/workspace/needed/confirm", { id: item.id, version: item.version });
+export const runNeeded = (repeats) => send("/api/workspace/needed/run", { repeats });
+
 export const getAgentInfo = () => request("/api/workspace/agent");
 /** The address that downloads the skill folder (a zip) as the signed-in person. */
 export const SKILL_HREF = "/api/workspace/agent/skill";

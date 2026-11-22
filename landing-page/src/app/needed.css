@@ -1,0 +1,29 @@
+/* questions we need (NeededPage.jsx): the run box, the list, each question's expectation and what it came back as */
+.needed .nq-run { margin-bottom: var(--s3); }
+.needed h2 { margin: 0 0 var(--s1); font-size: var(--body, 15px); font-weight: 600; }
+.nq-plan { margin: 0 0 var(--s1); font-size: var(--small); color: var(--ink); }
+.nq-run-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--s1); }
+.nq-repeats { display: flex; flex-direction: column; gap: 4px; }
+.nq-repeats .caption { font-size: var(--small); color: var(--muted); }
+.nq-warn { color: var(--orange-ink); }
+.nq-list { list-style: none; margin: 0 0 var(--s3); padding: 0; display: grid; gap: var(--s2); }
+.nq-item p { margin: 0; overflow-wrap: anywhere; }
+.nq-question { font-weight: 600; }
+.nq-expect { margin-top: 4px !important; }
+.nq-state { color: var(--muted); }
+.nq-state-needs_look { color: var(--orange-ink); }
+.nq-result { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--grey-line); display: grid; gap: 4px; justify-items: start; }
+.nq-line { font-size: var(--small); color: var(--ink); }
+.nq-query { font-family: var(--mono, ui-monospace, monospace); font-size: var(--small); color: var(--muted); white-space: pre-wrap; }
+.nq-chip { display: inline-flex; align-items: center; min-height: 20px; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 20px; white-space: nowrap; }
+.nq-passes { background: var(--green-soft); color: var(--green-ink); }
+.nq-differs { background: var(--red-soft); color: var(--red-ink); }
+.nq-refused, .nq-not_run { background: var(--grey-soft); color: var(--grey-ink); }
+.nq-no_expectation { background: var(--bg-subtle); color: var(--ink); }
+.nq-needs_look { background: var(--orange-soft); color: var(--orange-ink); }
+.nq-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+.nq-ask { display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.nq-form textarea, .nq-form input[type="text"] { width: 100%; }
+.nq-kinds { border: 0; margin: 0 0 12px; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.nq-kinds legend { padding: 0; margin-bottom: 4px; font-size: var(--small); color: var(--muted); }
+.nq-kind { display: inline-flex; gap: 6px; align-items: center; }
