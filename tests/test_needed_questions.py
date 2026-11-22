@@ -20,7 +20,7 @@ from ontology_poc_generator import needed_questions, workspace_questions, worksp
 from ontology_poc_generator.recognition import ModelCompletion, RecognitionError
 from ontology_poc_generator.workspace_store import open_workspace
 from tests.test_access import Client
-from tests.test_object_types import ORDER, TABLES, VALID, orders_upload
+from tests.test_object_types import COMMIT, ORDER, TABLES, VALID, orders_upload
 from tests.test_two_person import SigningTestCase
 from tests.test_workspace_questions import ALL_ORDERS, CANCELLED, CANCELLED_QUERY, ORDERS, cancelled
 
@@ -588,6 +588,110 @@ class VerdictTests(NeededCase):
             for typed in ('1.234,5', '1,2,3', '12,34', '1 234'):
                 self.assertIn('must be a number', self.write(ann, Q_ALL, number(typed), status=400, **ENGLISH)['error'], typed)
             self.assertEqual(self.write(ann, Q_ALL, number('1,234.5'))['expect'], number(1234.5))
+
+
+class JudgedAgainstTests(NeededCase):
+    """A result belongs to the expectation it was judged against: once the question's words or its expectation change, or it is confirmed again, the earlier
+    result is no longer its outcome. The question then says it has not been run since it changed, with the earlier answers as plain facts."""
+
+    def change(self, client, which, **fields):
+        found = self.item(client, which)
+        status, body = client.post(f'{NEEDED}/update', {'id': found['id'], 'version': found['version'], **fields})
+        self.assertEqual(status, 200, body)
+        return body
+
+    def assert_earlier(self, result, answers, run):
+        self.assertEqual(result['outcome'], 'not_run_since_change')
+        self.assertEqual(result['earlier']['distinct'], answers)
+        self.assertEqual(result['earlier']['at'], run['at'])
+        for verdict in ('right', 'expected', 'moved', 'blocking', 'reason', 'reads_otherwise', 'answer'):
+            self.assertNotIn(verdict, result)
+
+    def test_a_changed_and_confirmed_again_expectation_no_longer_shows_the_verdict_judged_against_the_old_one(self):
+        with self.service(gateway=ByQuestion(SCRIPT)) as (base, out):
+            team = self.team(base, valid=False)
+            ann, bob = team['ann'], team['bob']
+            self.write(ann, Q_CANCELLED, number(CANCELLED))
+            self.confirm(bob, Q_CANCELLED)
+            body = self.run_list(bob)
+            self.assertEqual(self.results(body)[Q_CANCELLED]['outcome'], 'passes')
+            self.change(ann, Q_CANCELLED, expect=number(CANCELLED + 1))
+            answered = [{'number': CANCELLED, 'status': 'answered', 'times': 1}]
+            self.assert_earlier(self.item(bob, Q_CANCELLED)['result'], answered, body['last_run'])
+            done = self.confirm(bob, Q_CANCELLED)
+            self.assertEqual((done['expect'], done['state']), (number(CANCELLED + 1), 'confirmed'))
+            self.assert_earlier(done['result'], answered, body['last_run'])
+            self.assertEqual(self.results(self.run_list(bob))[Q_CANCELLED]['outcome'], 'differs')   # judged again, against 17
+
+    def test_new_words_or_a_refusal_in_place_of_a_number_make_the_earlier_result_an_earlier_answer(self):
+        with self.service(gateway=ByQuestion({**SCRIPT, '已取消的订单有多少？': [cancelled()]})) as (base, out):
+            team = self.team(base, valid=False)
+            ann, bob = team['ann'], team['bob']
+            self.write(ann, Q_CANCELLED, number(CANCELLED))
+            self.write(ann, Q_ALL, number(len(ORDERS)))
+            for question in (Q_CANCELLED, Q_ALL):
+                self.confirm(bob, question)
+            run = self.run_list(bob)['last_run']
+            self.change(ann, Q_CANCELLED, note='财务 11 月报表')   # a new source alone: the verdict stands
+            self.assertEqual(self.item(bob, Q_CANCELLED)['result']['outcome'], 'passes')
+            self.change(ann, Q_CANCELLED, question='已取消的订单有多少？')
+            self.assert_earlier(self.item(bob, '已取消的订单有多少？')['result'], [{'number': CANCELLED, 'status': 'answered', 'times': 1}], run)
+            self.assertEqual(self.item(bob, '已取消的订单有多少？')['result']['earlier']['question'], Q_CANCELLED)
+            self.change(ann, Q_ALL, expect=REFUSED)
+            self.assert_earlier(self.item(bob, Q_ALL)['result'], [{'number': len(ORDERS), 'status': 'answered', 'times': 1}], run)
+
+    def test_confirmed_again_unchanged_after_another_look_the_earlier_verdict_goes(self):
+        with self.service(gateway=ByQuestion(SCRIPT)) as (base, out):
+            team = self.team(base, valid=False)
+            ann, bob = team['ann'], team['bob']
+            self.write(ann, Q_CANCELLED, number(CANCELLED))
+            self.confirm(bob, Q_CANCELLED)
+            self.run_list(bob)
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [orders_upload(one_more_cancelled)]})[0], 200)
+            body = self.run_list(bob)
+            self.assertEqual(self.results(body)[Q_CANCELLED]['outcome'], 'needs_look')   # the run that sent it back is judged against what is there
+            self.confirm(bob, Q_CANCELLED)   # confirmed again on the new data, unchanged
+            self.assert_earlier(self.item(bob, Q_CANCELLED)['result'], [{'number': CANCELLED + 1, 'status': 'answered', 'times': 1}], body['last_run'])
+
+    def test_an_expectation_changed_while_a_run_goes_is_not_shown_with_the_verdict_of_the_old_one(self):
+        hold = threading.Event()
+        with self.service(gateway=ByQuestion(SCRIPT, hold=hold)) as (base, out):
+            team = self.team(base, valid=False)
+            ann, bob = team['ann'], team['bob']
+            self.write(ann, Q_CANCELLED, number(CANCELLED))
+            self.write(ann, Q_ALL)
+            self.confirm(bob, Q_CANCELLED)
+            self.run_list(bob, wait=False)
+            self.change(ann, Q_CANCELLED, expect=number(CANCELLED + 1))
+            found = self.item(ann, Q_ALL)   # and one goes from the list while the run goes
+            self.assertEqual(ann.post(f'{NEEDED}/delete', {'id': found['id'], 'version': found['version']})[0], 200)
+            hold.set()
+            body = self.run_list(bob, wait=False)
+            for _ in range(500):
+                body = self.listing(bob)
+                if body['running'] is None:
+                    break
+                time.sleep(0.02)
+            self.assertEqual(self.results(body)[Q_CANCELLED]['outcome'], 'not_run_since_change')
+            conn = sqlite3.connect(out / 'workspace.sqlite')
+            kept = conn.execute('SELECT COUNT(*) FROM needed_result WHERE question_id = ?', (found['id'],)).fetchone()[0]
+            conn.close()
+            self.assertEqual(kept, 0)   # nothing is kept for a question that went from the list
+
+
+class BlockerTests(NeededCase):
+    def test_a_name_two_definitions_share_cannot_be_the_expected_blocker_but_either_id_can(self):
+        with self.service(gateway=ByQuestion(SCRIPT)) as (base, out):
+            team = self.team(base, valid=False)
+            ann = team['ann']
+            self.assertEqual(ann.post('/api/workspace/types/views', {**VALID, 'name': '订单承诺'})[0], 200)   # a view, then a type with the view's name
+            self.assertEqual(ann.post('/api/workspace/types', COMMIT)[0], 200)
+            refused = self.write(ann, Q_ALL, {'kind': 'refused', 'blocker': '订单承诺'}, status=400, **ENGLISH)['error']
+            self.assertIn('objtype:commit', refused)
+            self.assertIn('objview:订单承诺', refused)
+            self.assertIn('objview:订单承诺', self.write(ann, Q_ALL, {'kind': 'refused', 'blocker': '订单承诺'}, status=400)['error'])
+            self.assertEqual(self.write(ann, Q_ALL, {'kind': 'refused', 'blocker': 'objview:订单承诺'})['expect'], {'kind': 'refused', 'blocker': 'objview:订单承诺'})
+            self.assertEqual(self.write(ann, Q_CANCELLED, {'kind': 'refused', 'blocker': '订单'})['expect'], {'kind': 'refused', 'blocker': '订单'})   # one definition by that name
 
 
 class ChargingTests(NeededCase):

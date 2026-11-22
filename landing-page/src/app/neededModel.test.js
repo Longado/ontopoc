@@ -148,3 +148,17 @@ test("while a run goes the page says how far it is", () => {
   setLocale("zh");
   assert.equal(runningText({ by: "Ann", calls: 4, planned: 18 }), "Ann 的运行正在跑：已经调用模型 4 次，最多 18 次。跑完后清单会更新。");
 });
+
+test("a result judged against an earlier expectation is shown only as what was answered then, with no verdict", () => {
+  const result = { outcome: "not_run_since_change", earlier: { at: "2026-11-22T08:00:00+00:00", question: "取消的订单有多少？", asked: 1, distinct: [{ number: 16, status: "answered", times: 1 }] } };
+  setLocale("en");
+  assert.equal(outcomeWord("not_run_since_change"), "Not run since it changed");
+  const [line] = resultLines(result);
+  assert.match(line, /^Not run since it changed\. Answered before the change \(.*2026.*\): 16 \(once\)\.$/);
+  assert.equal(resultLines(result).length, 1);
+  assert.doesNotMatch(line, /expected|Passes|Differs/);
+  setLocale("zh");
+  assert.equal(outcomeWord("not_run_since_change"), "改过之后还没跑");
+  assert.match(resultLines(result)[0], /^改过之后还没跑。改之前（.*2026.*）的回答：16（1 次）。$/);
+  assert.equal(adoptable(result), null);
+});
