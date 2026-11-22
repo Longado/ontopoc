@@ -407,8 +407,8 @@ class ValueRuleTests(SigningTestCase):
             self.assertTrue(limited['rows_limited'])
             self.assertEqual(limited['rows'], mine)
             self.assertLess(limited['rules'][0]['broken'], self.page(admin, 'order')['rules'][0]['broken'])
-            item = next(i for i in carl.get('/api/workspace/queue')[1]['items'] if i.get('kind') == 'type')
-            self.assertIn(f'“金额”要小于 3000：你能看到的行里现在有 {limited["rules"][0]["broken"]} 行不满足', [line['text'] for line in item['lines']])
+            item = next(i for i in carl.get('/api/workspace/queue')[1]['items'] if i.get('kind') == 'type')   # the queue list counts nothing for them: the type page does
+            self.assertIn('“金额”要小于 3000：打开对象类型来数你能看到的行里有多少不满足', [line['text'] for line in item['lines']])
 
     def test_a_rule_on_a_hidden_column_is_absent_for_someone_kept_from_that_column(self):
         def walk(rules):
