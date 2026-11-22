@@ -129,7 +129,7 @@ class ChangedViewTests(unittest.TestCase):
     def test_a_question_that_names_no_view_is_answered_from_the_models_filter_and_claims_no_view(self):
         self.demo.model.item = {'reasoning': 'not cancelled or refunded', 'query': ALL_BUT, 'definitions_used': ALL_BUT_USED}
         try:
-            status, body = a_guest(self.demo.base).call('POST', '/api/workspace/ask', {'question': '有效订单的总金额是多少？'})
+            status, body = a_guest(self.demo.base).call('POST', '/api/workspace/ask', {'question': '不算取消和退款的订单，总金额是多少？'})   # names no view (有效订单 is the view's other name)
         finally:
             self.demo.model.item = {'reasoning': 'test'}
         self.assertEqual(status, 200, body)
@@ -220,7 +220,7 @@ class UploadedOrdersTests(unittest.TestCase):
     def test_a_guest_with_nothing_confirmed_in_scope_is_told_only_that_definitions_wait(self):
         guest = a_guest(self.demo.base)
         self.assertEqual(guest.call('GET', '/api/workspace/types')[1]['types'][1]['state'], 'needs_look')
-        status, body = guest.call('POST', '/api/workspace/ask', {'question': '有效订单的总金额是多少？'})
+        status, body = guest.call('POST', '/api/workspace/ask', {'question': '销售额是多少？'})   # names nothing (订单 and 有效订单 would name the waiting Order and its view)
         self.assertEqual(status, 200, body)
         self.assertEqual(body['status'], 'refused', body)
         self.assertIn('在等再确认', body['reason'])
@@ -232,7 +232,7 @@ class UploadedOrdersTests(unittest.TestCase):
     def test_with_viewers_told_what_waits_a_guest_with_nothing_in_scope_hears_what_waits_and_for_whom(self):
         guest = a_guest(self.demo.base)
         with mock.patch.object(workspace_questions, 'VIEWERS_TOLD_WHAT_WAITS', True):
-            status, body = guest.call('POST', '/api/workspace/ask', {'question': '有效订单的总金额是多少？'})
+            status, body = guest.call('POST', '/api/workspace/ask', {'question': '销售额是多少？'})
         self.assertEqual(status, 200, body)
         self.assertEqual(body['status'], 'refused', body)
         self.assertIn('Demo builder', body['reason'])

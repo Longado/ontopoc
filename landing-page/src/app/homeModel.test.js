@@ -173,7 +173,7 @@ test("a guest's start cards: the board, why it can be trusted (the confirmed vie
   assert.deepEqual(cards.map((c) => c.key), ["orders", "trust", "refuse"]);
   assert.equal(cards[0].href, "#/boards/7");
   assert.equal(cards[1].href, "#/types/order/views");
-  assert.equal(cards[2].href, `#/qa?ask=${encodeURIComponent("按 Customer 城市看有效订单金额")}`);
+  assert.equal(cards[2].href, `#/qa?ask=${encodeURIComponent("按客户城市看有效订单金额")}`);
   assert.ok(cards.every((c) => !c.external && !c.href.startsWith("http")));
   assert.match(t("home.start.refuse.text"), /Customer/);
   const plain = startCards(null, [T("ticket", "Ticket")]);   // not the demo's workspace: the boards list and the README as before

@@ -145,7 +145,7 @@ class StandingTests(StandingCase):
             token = self.token_for(admin, 'bob')['token']
             kind, rows = self.sheet(base, token)
             self.assertTrue(kind.startswith('text/csv'))
-            self.assertEqual(list(rows[0]), ['id', 'kind', 'name', 'definition', 'confirmed_by', 'confirmed_at', 'data_versions'])
+            self.assertEqual(list(rows[0]), ['id', 'kind', 'name', 'definition', 'confirmed_by', 'confirmed_at', 'data_versions', 'other_names'])
             listed = [e for e in self.standing(Client(base), token)['definitions'] if e['confirmed']]
             self.assertEqual([r['id'] for r in rows], [e['id'] for e in listed])   # the same list, the confirmed ones only
             self.assertNotIn('含税金额', json.dumps(rows, ensure_ascii=False))
