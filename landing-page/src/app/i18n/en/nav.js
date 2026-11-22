@@ -15,6 +15,7 @@ export default {
   "group.objects": "Definitions",
   "group.objects.hint": "AI answers from a definition only after a second person confirmed it on the current data",
   "confirm": "Review queue",
+  "needed": "Questions we need",
   "types": "Object types",
   "relations": "Relations",
   "group.apps": "Agents",

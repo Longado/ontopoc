@@ -129,6 +129,19 @@ CREATE TABLE IF NOT EXISTS checked_number (
     id INTEGER PRIMARY KEY AUTOINCREMENT, dashboard_id INTEGER, component_id TEXT, component_json TEXT, question_id INTEGER,
     trusted REAL NOT NULL, computed REAL NOT NULL, note TEXT NOT NULL, by_user_id INTEGER, by_name TEXT NOT NULL, at TEXT NOT NULL,
     datasets_json TEXT NOT NULL, definitions_json TEXT NOT NULL);
+-- questions we need (needed_questions): the team's list of questions, each with what it should give (a number, or that it must be refused), proposed by one person and
+-- confirmed by another; every run of the list (who, how many asks, how many model calls) and what each question came back as in it
+CREATE TABLE IF NOT EXISTS needed_question (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, question TEXT NOT NULL, expect_kind TEXT CHECK (expect_kind IN ('number', 'refused')), expect_value REAL, expect_blocker TEXT, expect_version INTEGER NOT NULL DEFAULT 1, note TEXT,
+    state TEXT NOT NULL CHECK (state IN ('none', 'proposed', 'confirmed', 'needs_look')), version INTEGER NOT NULL,
+    written_by TEXT, written_by_user_id INTEGER, written_at TEXT NOT NULL, confirmed_by TEXT, confirmed_by_user_id INTEGER, confirmed_at TEXT, self_confirmed INTEGER NOT NULL DEFAULT 0,
+    basis_json TEXT, look_json TEXT);
+CREATE TABLE IF NOT EXISTS needed_run (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, by_name TEXT NOT NULL, by_user_id INTEGER, started_at TEXT NOT NULL, finished_at TEXT,
+    status TEXT NOT NULL CHECK (status IN ('running', 'done', 'stopped')), repeats INTEGER NOT NULL, planned INTEGER NOT NULL, calls INTEGER NOT NULL DEFAULT 0,
+    model TEXT, prompt_version TEXT, note TEXT, owner TEXT);   -- owner: the token of the service running it; a running row no service runs was cut off
+CREATE TABLE IF NOT EXISTS needed_result (
+    run_id INTEGER NOT NULL, question_id INTEGER NOT NULL, question TEXT NOT NULL, outcome TEXT NOT NULL, result_json TEXT NOT NULL, PRIMARY KEY (run_id, question_id));
 '''
 
 
@@ -168,9 +181,12 @@ def open_workspace(path) -> sqlite3.Connection:
                           ('dataset', 'who_user_id'), ('element_state', 'confirmed_by_user_id'), ('element_state', 'proposed_by_user_id'), ('log', 'user_id'), ('log', 'via_token'),
                           ('element_state', 'cause'), ('element_state', 'via'), ('confirmation', 'snapshot_json'), ('llm_review', 'distinct_rows'), ('llm_review', 'detail_json'),
                           ('api_token', 'scope'), ('api_token', 'expires_at'), ('action_record', 'undo_of'), ('action_record', 'op'),
-                          ('data_source', 'tls'), ('data_source', 'ca_pem'), ('refresh_run', 'error_public'), ('schedule', 'created_by_user_id'), ('user', 'attrs_json'), ('row_rule', 'user_attr')):
+                          ('data_source', 'tls'), ('data_source', 'ca_pem'), ('refresh_run', 'error_public'), ('schedule', 'created_by_user_id'), ('user', 'attrs_json'), ('row_rule', 'user_attr'),
+                          ('needed_question', 'expect_blocker'), ('needed_run', 'owner')):
         if column not in {r[1] for r in conn.execute(f'PRAGMA table_info({table})')}:   # a file made before the column existed
             conn.execute(f'ALTER TABLE {table} ADD COLUMN {column} {"INTEGER" if column in ("dataset_id", "null_key_rows", "distinct_rows", "undo_of") or column.endswith("user_id") else "TEXT"}')
+    if 'expect_version' not in {r[1] for r in conn.execute('PRAGMA table_info(needed_question)')}:   # counts each new expectation and each confirmation of one: a result belongs to one
+        conn.execute('ALTER TABLE needed_question ADD COLUMN expect_version INTEGER NOT NULL DEFAULT 1')
     _never_reuse_ids(conn)
     _allow_needs_look(conn)
     conn.execute('INSERT OR IGNORE INTO current_dataset SELECT name, id FROM dataset WHERE version = '
