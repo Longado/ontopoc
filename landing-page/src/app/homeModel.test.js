@@ -156,7 +156,7 @@ test("the question tally: the last 7 days by outcome with the answered share, th
 const DEMO = [T("order", "Order"), { id: "customer", name: "Customer", state: "needs_look", waiting: true, waiting_for: ["demo-admin"] }];
 
 test("a guest on the demo is offered three questions with three outcomes: an answer, a refusal for the type that waits, another answer", () => {
-  assert.deepEqual(demoQuestions(DEMO), ["有效订单的总金额是多少？", "按 Customer 城市看有效订单金额", "已送达的订单有几笔？"]);   // the refused one says the type's name, which is how the service finds it
+  assert.deepEqual(demoQuestions(DEMO), ["有效订单的总金额是多少？", "按客户城市看有效订单金额", "已送达的订单有几笔？"]);   // the refused one says the type's other name, which is how the service finds it
   assert.deepEqual(demoQuestions([T("order", "Order"), T("customer", "Customer")]), ["有效订单的总金额是多少？", "已送达的订单有几笔？"]);   // nothing waits: no refusal to show
   assert.equal(demoQuestions([T("ticket", "Ticket")]), null);   // not the demo's workspace: the usual examples
   assert.equal(demoQuestions([]), null);
