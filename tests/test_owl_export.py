@@ -265,6 +265,19 @@ class ShapesTests(SchemaCase):
             self.assertFalse(self.check(shapes, two_customers)[0])   # many to one: an order with two customers
             self.assertFalse(self.check(shapes, self.objects(onto, links=((0, None), (1, 0))))[0])   # a link to something that is not a customer
 
+    def test_a_link_to_something_unknown_is_reported_by_sh_class_with_inference_off_and_not_with_rdfs_inference_on(self):
+        with self.service(gateway=AskModel(cancelled())) as (base, out):
+            team = self.team(base)
+            self.world(team)
+            made = self.files(out, 'bob')
+            onto, shapes = graph(made['ontology.ttl']), graph(made['shapes.ttl'])
+            dangling = self.objects(onto, links=((0, None), (1, 0)))
+            off = self.check(shapes, dangling)
+            self.assertFalse(off[0])
+            self.assertIn('ClassConstraint', off[1])
+            inferred = pyshacl.validate(dangling, shacl_graph=shapes, ont_graph=onto, inference='rdfs')[2]
+            self.assertNotIn('ClassConstraint', inferred)   # rdfs:range made the unknown end a customer: why the pages say to check with inference off
+
     def test_a_key_of_several_columns_is_not_checked_for_repeats_and_both_the_file_and_the_pages_say_so(self):
         with self.service(gateway=AskModel(cancelled())) as (base, out):
             team = self.team(base)
