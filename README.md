@@ -181,7 +181,7 @@ Ontology 先约定「有哪些对象、怎么识别、对象之间可以有什�
 
 ### OntoPoc 用 OWL 或 RDF 吗？
 
-内部不用。团队应用用自己的对象模型，也不运行 OWL 推理机：OWL 按开放世界读数据，主键相同的两个对象会被读成同一个，而 OntoPoc 会拒绝重复的主键。你能看到的已确认定义可以下载成两个 Turtle 文件，在“AI 工具接入”页或 `GET /api/workspace/agent/schema`：OWL 写对象类型、主键、属性和关系，SKOS 写代码含义，SHACL 规则写主键、代码和基数的检查。视图和派生属性在里面是文字，不是 OWL 公理，也不含任何数据行。目前读过它们的只有 OntoPoc 测试里的 rdflib 和 pyshacl。什么对应什么、哪些放不进去，见 [docs/STANDARDS.md](docs/STANDARDS.md)。早期界面另有一个自己的 Turtle 导出。
+内部不用。团队应用用自己的对象模型，也不运行 OWL 推理机：OWL 按开放世界读数据，主键相同的两个对象会被读成同一个，而 OntoPoc 会拒绝重复的主键。登录的人（包括查看者）都可以从 `GET /api/workspace/agent/schema` 把自己能看到的已确认定义下载成两个 Turtle 文件（建设者和管理员在“AI 工具接入”页上也有下载链接）：OWL 写对象类型、主键、属性和关系，SKOS 写代码含义，SHACL 规则写主键、代码和基数的检查。视图和派生属性在里面是文字，不是 OWL 公理，也不含任何数据行。OntoPoc 的测试里用 rdflib 和 pyshacl 读它们；ROBOT 和 HermiT 推理机在一个样例上手工跑过一次，不声称下载的文件属于哪个 OWL 语言子集。什么对应什么、哪些放不进去，见 [docs/STANDARDS.md](docs/STANDARDS.md)。早期界面另有一个自己的 Turtle 导出。
 
 ### 什么是 ontology MCP？可以怎么用？
 
