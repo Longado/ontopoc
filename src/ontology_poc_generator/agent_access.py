@@ -129,6 +129,11 @@ def _standing(conn, user: dict | None) -> tuple[list[dict], dict]:
         kind, name = _kind_and_name(conn, row, sc['types'])
         entries.append({'id': row['element_id'], 'kind': kind, 'name': name, 'state': 'confirmed', 'confirmed': True, **_last_confirmation(conn, row['element_id'])})
         says[row['element_id']] = _says(conn, sc, kind, _content(row)) if open_text else None
+    for name, verdict in sc['untrusted'].items():   # confirmed, but its value rules are not known to hold (rules_untrusted): not to be answered from
+        row = element_row(conn, type_id(name))
+        entries.append({'id': row['element_id'], 'kind': 'type', 'name': _content(row)['name'], 'state': row['state'], 'confirmed': False, **_last_confirmation(conn, row['element_id']),
+                        'reason_hidden': None, 'cause_word': None, 'stale_word': None, 'who_can_confirm': [], 'proposed_by': row['proposed_by'], 'proposed_with_token': None,
+                        'reason': tr('；', '; ').join(verdict.get('problems') or [tr('值规则还没有按现在的数据数过', 'Its value rules have not been counted on the data as it is')])})
     for line in _not_confirmed(conn, user):
         entries.append({'id': line['id'], 'kind': line['kind'], 'name': line['name'], 'state': line['state'], 'confirmed': False, **_last_confirmation(conn, line['id']),
                         **{k: line[k] for k in ('reason_hidden', 'cause_word', 'stale_word', 'who_can_confirm', 'proposed_by')}, 'proposed_with_token': _proposed_with_token(conn, line['id']),

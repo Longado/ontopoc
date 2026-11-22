@@ -144,21 +144,30 @@ def _day(s: str, kind: str) -> tuple[str, str]:
     """(the cell is a real date, its moment as a julian day) for a date, date-and-time or month cell (`s` is trimmed of blanks)."""
     if kind == 'month':
         first = f"({s} || '-01')"
-        return f"({s} GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]' AND date({first}) IS {first})", f'julianday({first})'
+        return f"({s} GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]' AND substr({s}, 1, 4) <> '0000' AND date({first}) IS {first})", f'julianday({first})'
     shapes = ' OR '.join(f"{s} GLOB '{_DAY}{tail}'" for tail in ('', '[T ][0-9][0-9]:[0-9][0-9]', '[T ][0-9][0-9]:[0-9][0-9]:[0-9][0-9]'))
-    return f"(({shapes}) AND julianday({s}) IS NOT NULL AND date(substr({s}, 1, 10)) IS substr({s}, 1, 10))", f'julianday({s})'
+    # year 0 and hour 24 name no real moment, though SQLite reads them
+    return (f"(({shapes}) AND substr({s}, 1, 4) <> '0000' AND (length({s}) = 10 OR substr({s}, 12, 2) <= '23') AND julianday({s}) IS NOT NULL "
+            f"AND date(substr({s}, 1, 10)) IS substr({s}, 1, 10))", f'julianday({s})')
 
 
 _OPS = {'gt': '>', 'ge': '>=', 'lt': '<', 'le': '<='}
 EXACT = 'value_rule_order'   # the SQL function that orders a cell's number against a bound exactly, for the few cells a float cannot tell from the bound
 
 
+_PLAIN = re.compile(r'-?[0-9]+(\.[0-9]+)?', re.ASCII)
+
+
 def _order(text, bound) -> int | None:
+    """-1, 0 or 1 as the cell's plain number is below, at or above the bound; None (never an error) for anything that is not a plain number: NaN, Infinity,
+    1e999, hex and the rest that Decimal would read are text here."""
     try:
+        if not (isinstance(text, str) and isinstance(bound, str) and _PLAIN.fullmatch(text) and _PLAIN.fullmatch(bound)):
+            return None
         a, b = Decimal(text), Decimal(bound)
-    except (InvalidOperation, TypeError):
+        return (a > b) - (a < b)
+    except Exception:
         return None
-    return (a > b) - (a < b)
 
 
 def _holds(s: str, op: str, bound) -> tuple[str, list]:
@@ -180,10 +189,10 @@ def broken_sql(rule: dict, kinds: dict[str, str], codes: dict[str, list[str]], c
         return _empty(s), []
     if check in _OPS:
         holds, params = _holds(s, _OPS[check], rule['value'])
-        return f"(NOT {_empty(s)} AND NOT COALESCE({_number(s)} AND {holds}, 0))", params
+        return f"(NOT {_empty(s)} AND NOT COALESCE(CASE WHEN {_number(s)} THEN {holds} ELSE 0 END, 0))", params   # CASE: the comparison only ever sees a plain number
     if check == 'between':
         (low, low_params), (high, high_params) = _holds(s, '>=', rule['low']), _holds(s, '<=', rule['high'])
-        return f"(NOT {_empty(s)} AND NOT COALESCE({_number(s)} AND {low} AND {high}, 0))", [*low_params, *high_params]
+        return f"(NOT {_empty(s)} AND NOT COALESCE(CASE WHEN {_number(s)} THEN {low} AND {high} ELSE 0 END, 0))", [*low_params, *high_params]
     if check == 'in_codes':
         allowed = list(codes.get(rule['column']) or [])
         return (f"(NOT {_empty(s)} AND {raw} NOT IN ({', '.join('?' * len(allowed))}))" if allowed else f'(NOT {_empty(s)})'), allowed

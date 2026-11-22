@@ -22,7 +22,7 @@ from ontology_poc_generator.named_views import name_views
 from ontology_poc_generator.object_relations import CARDINALITY, _relation_visible, cardinality_false, check_relation, relation_id
 from ontology_poc_generator.object_types import (
     CAUSE_WORDS, DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, _confirmers, _content, _visible, _waiting_line, dataset_columns, element_row, enum_id, reason_for,
-    settle_unkept_rules, stale_word, type_id, waiting_for_viewer)
+    _latest_counts, rules_untrusted, settle_rules, stale_word, type_id, waiting_for_viewer)
 from ontology_poc_generator.ontopoc_query import QueryError, canonical as canonical_query, compile_query, is_graph, parse as parse_query, to_text
 from ontology_poc_generator.object_views import describe, kept_positions, view_id, view_visible, view_waiting_for_viewer
 from ontology_poc_generator.agent_harness import ask_model
@@ -73,9 +73,11 @@ def scope(conn, user: dict | None) -> dict:
     properties whose types and relations are all among them and that read no column marked "don't send values".
     The ones that do read such a column are in 'derived_kept_back' (same shape): not for the model, but a person or an agent may still be told they exist."""
     types, meanings, relations, views, derived, kept_back = {}, {}, {}, {}, {}, {}
-    unsettled = settle_unkept_rules(conn)   # a confirmed type whose value rules were never counted on its data is counted first (and sent back if one is broken)
+    settle_rules(conn)   # a confirmed type whose value rules are not known to hold on its data is judged first (counted, and sent back if a rule is broken)
+    latest, untrusted = _latest_counts(conn), {}
     for name in visible_type_ids(conn, user, confirmed_only=True):
-        if type_id(name) in unsettled:   # it could not be counted inside the caller's transaction: not used
+        if (verdict := rules_untrusted(conn, type_id(name), latest)) is not None:   # still not known to hold (inside the caller's transaction nothing is judged): not used
+            untrusted[name] = verdict
             continue
         row = element_row(conn, type_id(name))
         content = _content(row)
@@ -109,7 +111,7 @@ def scope(conn, user: dict | None) -> dict:
         read += [(content['types'][-1], f['column']) for f in content['conditions']]   # what it says names the meaning of that column, as a view's conditions do
         if all(t in types for t in content['types']) and all(r in relations for r in content['path']) and derived_visible(conn, row, user):
             (kept_back if any(c in hidden_values(conn, type_id(t)) for t, c in read) else derived)[element_id] = {'row': row, 'content': content}
-    return {'types': types, 'meanings': meanings, 'relations': relations, 'views': views, 'derived': derived, 'derived_kept_back': kept_back, 'user': user}
+    return {'types': types, 'meanings': meanings, 'relations': relations, 'views': views, 'derived': derived, 'derived_kept_back': kept_back, 'user': user, 'untrusted': untrusted}
 
 
 def _unsettled(conn, user: dict | None) -> list[dict]:
