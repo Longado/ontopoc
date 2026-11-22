@@ -328,6 +328,7 @@ def _meaning_change(conn, content: dict, column: str, values: list[dict], datase
     if not fresh and row and row['state'] in (*WAITING, 'confirmed') and values == _content(row)['values']:
         return None
     meaning = {'type': content['english_name'], 'column': column, 'dataset': dataset['name'], 'values': values}
+    other_names.check_across(conn, other_names.entries_of(enum_id(content['english_name'], column), meaning), {enum_id(content['english_name'], column)})
     anchors = {'dataset': dataset['name'], 'version': dataset['version'], 'counts': dict(cols[column]['counts'] or {})}
     return (enum_id(content['english_name'], column), 'checked', f'dataset:{dataset["name"]}@v{dataset["version"]}', who, meaning, anchors, who)
 

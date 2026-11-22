@@ -10,7 +10,11 @@ No clash: within a scope (types across the workspace; the properties of a type; 
 name may not equal, ignoring case and width, a name or other name of another definition, nor its own name. A name with anything but ASCII in it is found in a
 question as a substring (workspace_questions._named), so there one may not contain the other either. Across scopes, types against views and derived
 properties: equal is refused, and so is a view's or derived property's name inside a type's, since a question that says the type would be heard as naming the
-view; a type's name inside a view's is allowed (订单 inside 有效订单: a question about valid orders is about orders)."""
+view; a type's name inside a view's is allowed (订单 inside 有效订单: a question about valid orders is about orders). Across kinds (check_across), an other name
+may not equal a name of a definition of another kind, nor of a meaning of another column. No invisible character is kept.
+
+In a question the longest name wins its place (workspace_questions._muted): a name found only inside a longer name of another definition, one of the two an
+other name, is not heard there; 客户 inside the property's 客户号 does not name the type 客户. With no other names, names are heard as they always were."""
 from __future__ import annotations
 
 import json
@@ -46,6 +50,8 @@ def clean(raw, what: str) -> list[str] | None:
     for n in names:
         if len(n) > MAX_LENGTH or '\n' in n or '\r' in n:
             raise _refused(tr(f'另称“{n}”要写 1 到 {MAX_LENGTH} 个字，不能换行', f'The other name "{n}" must be 1 to {MAX_LENGTH} characters, on one line'), 400)
+        if any(unicodedata.category(c).startswith('C') for c in n):   # a zero-width or direction mark: a name nobody can type back
+            raise _refused(tr(f'另称“{n}”里有看不见的字符，请重新输入', f'The other name "{n}" holds an invisible character. Type it again'), 400)
         if fold(n) in seen:
             raise _refused(tr(f'另称“{n}”写了两次', f'The other name "{n}" is written twice'), 400)
         seen.add(fold(n))
@@ -168,6 +174,7 @@ def check_type(conn, content: dict) -> None:
     me = f'objtype:{content["english_name"]}'
     refuse_clash(mine, [(n, o, w) for n, o, w, e in types if e != me])
     refuse_across([(n, o, whose('type', content['name'])) for n, o in mine], [(n, o, w) for n, o, w, _, _ in views])
+    check_across(conn, entries_of(me, content), {me})
 
 
 def check_view(conn, content: dict, element_id: str, kind: str) -> None:
@@ -176,6 +183,7 @@ def check_view(conn, content: dict, element_id: str, kind: str) -> None:
     mine = view_names(content)
     refuse_clash(mine, [(n, o, w) for n, o, w, t, e in views if t == content['type'] and e != element_id])
     refuse_across([(n, o, w) for n, o, w, _ in types], [(n, o, whose(kind, content['name'])) for n, o in mine])
+    check_across(conn, entries_of(element_id, content), {element_id})
 
 
 def check_properties(properties: list[dict]) -> None:
@@ -192,3 +200,49 @@ def check_meanings(values: list[dict]) -> None:
     named = lambda label: [(label, False), *((n, True) for n in others.get(label, []))]
     for label in labels:
         refuse_clash(named(label), [(n, o, whose('meaning', x)) for x in labels if x != label for n, o in named(x)])
+
+
+# --- one name for one thing across kinds -------------------------------------------------------------------------------------------------------------------
+
+def _entries(conn) -> list[dict]:
+    """Every name and other name in the workspace: {'element', 'kind', 'key' (the definition it names), 'text', 'other', 'whose', 'column' (a meaning's
+    (type, column))}."""
+    out = []
+    for element_id, content_json in conn.execute("SELECT element_id, content_json FROM element_state WHERE element_id LIKE 'objtype:%' OR element_id LIKE 'objview:%' "
+                                                 "OR element_id LIKE 'derived:%' OR element_id LIKE 'enum:%'"):
+        if content_json:
+            out += entries_of(element_id, json.loads(content_json))
+    return out
+
+
+def entries_of(element_id: str, c: dict) -> list[dict]:
+    """The names an element carries, as _entries lists them."""
+    e = lambda kind, key, text, other, who, column=None: {'element': element_id, 'kind': kind, 'key': key, 'text': text, 'other': other, 'whose': who, 'column': column}
+    if element_id.startswith('objtype:'):
+        out = [e('type', ('type', c['english_name']), n, o, whose('type', c['name'])) for n, o in type_names(c)]
+        for p in c['properties']:
+            out += [e('property', ('property', c['english_name'], p['column']), n, o, whose('property', p['name'])) for n, o in [(p['column'], False), (p['name'], False), *((x, True) for x in of(p))]]
+        return out
+    if element_id.startswith('enum:'):
+        column = (c['type'], c['column'])
+        found = meaning_names(c['values'])
+        return [e('meaning', ('meaning', *column, label), n, o, whose('meaning', label), column)
+                for label in dict.fromkeys(v['label'] for v in c['values'] if v.get('label')) for n, o in [(label, False), *((x, True) for x in found.get(label, []))]]
+    kind = 'view' if element_id.startswith('objview:') else 'derived'
+    return [e(kind, (kind, element_id), n, o, whose(kind, c['name'])) for n, o in view_names(c)]
+
+
+def check_across(conn, new: list[dict], replaced: set[str]) -> None:
+    """One name for one thing: an other name may not equal (ignoring case and width) a name or other name of a definition of another kind (a type, a property, a
+    meaning, a view, a derived property), nor of a meaning of another column. `new`: the entries being saved; `replaced`: the elements they replace. The scopes
+    have their own rules (refuse_clash, refuse_across); a property may share an other name with another type's property (both say the same column's thing)."""
+    if not any(n['other'] for n in new) and not any(x['other'] for x in _entries(conn)):
+        return
+    others = [x for x in _entries(conn) if x['element'] not in replaced]
+    for a in new:
+        for b in [*others, *new]:
+            if a['key'] == b['key'] or not (a['other'] or b['other']) or not _same(a['text'], b['text']):
+                continue
+            if a['kind'] == b['kind'] and (a['kind'] != 'meaning' or a['column'] == b['column']):
+                continue   # within one kind the scopes decide
+            raise _refused(tr(f'“{a["text"]}”已经是{b["whose"]}的名字：问题里一个名字只能指一样东西', f'"{a["text"]}" is already a name of {b["whose"]}: a name in a question can only mean one thing'), 409)
