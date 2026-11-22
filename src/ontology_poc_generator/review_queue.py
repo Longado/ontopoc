@@ -14,7 +14,7 @@ import json
 from ontology_poc_generator.object_relations import (
     _relation_visible, check_relation, confirm_relation, counts_only, evidence_lines, relation_view)
 from ontology_poc_generator.object_types import (
-    ACTION_PREFIX, DERIVED_PREFIX, ENUM_PREFIX, limited_note, PIPELINE_PREFIX, RELATION_PREFIX, stale_note, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _confirmers, _content, _readers_of_dataset, _state_view, _visible, confirm_element, dataset_columns, element_row, rules_readout, seen_of_meaning, seen_of_type)
+    ACTION_PREFIX, DERIVED_PREFIX, ENUM_PREFIX, limited_note, PIPELINE_PREFIX, RELATION_PREFIX, stale_note, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _confirmers, _content, _readers_of_dataset, _state_view, _visible, _whole_pass, confirm_element, dataset_columns, element_row, rules_readout, seen_of_meaning, seen_of_type)
 from ontology_poc_generator.derived_properties import confirm_derived, derived_state, derived_visible, describe as describe_derived, open_new_values as derived_new_values, trial as derived_trial
 from ontology_poc_generator.object_actions import action_state, action_visible, confirm_action, describe as describe_action, open_records
 from ontology_poc_generator.object_views import confirm_view, describe, open_new_values, seen_of_view, view_state, view_summary, view_visible
@@ -144,11 +144,13 @@ def _item(conn, row: dict, user: dict | None, light: bool = False) -> dict | Non
             return None
         hidden = frozenset(hidden_columns(conn, element_id, user))
         content = {**content, 'properties': [p for p in content['properties'] if p['column'] not in hidden]}
-        view = _state_view(conn, row, user)
+        own_rows = restriction(conn, element_id, user) is not None
+        dataset = current_dataset(conn, content['dataset'])
+        whole = _whole_pass(conn, _content(row), dataset) if not light and not own_rows and not hidden else None   # one rule pass for the lines and for whether it can be confirmed
+        view = _state_view(conn, row, user, whole)
         base = {'kind': 'type', 'title': content['name'], 'id': content['english_name'], 'lines': []}
         if not light:
-            base['lines'] = _type_lines(conn, row, content, view['limited_by_rule'], hidden, rules_readout(conn, element_id, _content(row), current_dataset(conn, content['dataset']), user),
-                                        restriction(conn, element_id, user) is not None)
+            base['lines'] = _type_lines(conn, row, content, view['limited_by_rule'], hidden, rules_readout(conn, element_id, _content(row), dataset, user, whole), own_rows)
             view['seen'] = None if view['limited_by_rule'] else seen_of_type(current_dataset(conn, content['dataset']))
     if light:
         return {'element': element_id, **base, **view}
