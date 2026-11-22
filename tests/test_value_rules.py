@@ -1002,7 +1002,7 @@ class ValueRuleTests(SigningTestCase):
             self.confirm(bob)
             status, body = ann.post('/api/workspace/datasets/upload', {'files': [orders_upload(lambda r, i: {**r, '金额': ['NaN', 'sNaN', '-nan', 'Infinity'][i]} if i < 4 else r)]})
             self.assertEqual(status, 200, body)
-            self.assertNotIn('recheck_error', json.dumps(body))
+            self.assertIsNone(body['results'][0].get('recheck_error'), body)
             page = self.page(bob, 'order')
             self.assertEqual((page['state'], page['rules'][0]['broken']), ('needs_look', 4))
             self.assertIn('有 4 行不满足', page['reason'])
