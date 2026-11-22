@@ -306,7 +306,7 @@ class ValueRuleTests(SigningTestCase):
             status, body = ann.post('/api/workspace/types/update', {**ORDER, 'id': 'order', 'version': page['version'], 'description': '改了说明'})   # no rules in the request: they stay
             self.assertEqual((status, body['state'], body['reset']), (200, 'confirmed', []))
             self.assertEqual([r['check'] for r in self.page(ann, 'order')['rules']], ['gt'])
-            for rules in ([rule, {'column': '金额', 'check': 'le', 'value': 9999}], [{'column': '金额', 'check': 'ge', 'value': 0}], []):
+            for rules in ([rule, {'column': '金额', 'check': 'le', 'value': 999999}], [{'column': '金额', 'check': 'ge', 'value': 0}], []):
                 page = self.page(ann, 'order')
                 status, body = ann.post('/api/workspace/types/update', {**ORDER, 'id': 'order', 'version': page['version'], 'rules': rules})
                 self.assertEqual((status, body['state'], body['reset']), (200, 'checked', ['值规则']), body)
@@ -380,7 +380,7 @@ class ValueRuleTests(SigningTestCase):
             team = self.team(base, 'carl')
             ann, admin, carl = team['ann'], team['admin'], team['carl']
             rules = [{'column': '金额', 'check': 'lt', 'value': 3000}, {'column': '数量', 'check': 'between', 'low': 5, 'high': 30}]
-            self.assertEqual(ann.post('/api/workspace/types', {**ORDER, 'properties': [*ORDER['properties'], {'column': '数量'}], 'rules': rules})[0], 200)
+            self.assertEqual(ann.post('/api/workspace/types', {**ORDER, 'properties': [*ORDER['properties'], {'column': '数量'}, {'column': '客户编号'}], 'rules': rules})[0], 200)
             carl_id = next(u['id'] for u in admin.get('/api/users')[1]['users'] if u['username'] == 'carl')
             self.assertEqual(admin.post('/api/workspace/row-rules', {'type': 'order', 'rules': [{'column': '客户编号', 'value': 'KH022', 'user_ids': [carl_id]}]})[0], 200)
             conn = plain_sql(sqlite3.connect(out / 'workspace.sqlite'))
