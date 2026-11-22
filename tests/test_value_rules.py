@@ -19,6 +19,7 @@ from datetime import date, datetime, timedelta
 from ontology_poc_generator import value_rules
 from tests.test_object_types import MEANINGS, ORDER, TABLES, orders_upload
 from tests.test_two_person import SigningTestCase
+from tests.test_workspace_store import planted_bundle
 from tests.test_workspace_questions import AskModel, cancelled
 
 EN = {'Accept-Language': 'en'}
@@ -52,6 +53,16 @@ def ledger_upload(rows, mode=None) -> dict:
     writer.writeheader()
     writer.writerows(rows)
     return {'filename': '账目.csv', 'content_base64': base64.b64encode(out.getvalue().encode('utf-8')).decode(), **({'target': '账目', 'mode': mode} if mode else {})}
+
+
+def commits_upload() -> dict:
+    """The 订单承诺 table again as an overwrite, with one quantity changed: a new version on which no rule has been counted yet."""
+    records = planted_bundle()['sources']['订单承诺']['records']
+    out = io.StringIO()
+    writer = csv.DictWriter(out, fieldnames=list(records[0]))
+    writer.writeheader()
+    writer.writerows({**r, '承诺数量': '7'} if i == 0 else r for i, r in enumerate(records))
+    return {'filename': '订单承诺.csv', 'content_base64': base64.b64encode(out.getvalue().encode('utf-8')).decode(), 'target': '订单承诺', 'mode': 'overwrite'}
 
 
 LEDGER_RULES = [
@@ -490,6 +501,91 @@ class ValueRuleTests(SigningTestCase):
             page = self.page(bob, 'order')
             self.assertEqual(page['state'], 'needs_look')
             self.assertIn('有 2 行不满足', page['reason'])
+
+    def test_reads_made_on_every_page_run_no_rule_pass_and_count_only_what_can_be_confirmed(self):
+        """The navigation count, the type list and the queue list read no data row for value rules: they use the rule count saved by the last proposal,
+        confirmation or recheck on the current version. A type whose rules were not counted on its current version is not in the count (`rules_unchecked`
+        says how many such); opening it counts them, and it can be confirmed there."""
+        from unittest import mock
+        from ontology_poc_generator import ontology_server
+        from ontology_poc_generator.workspace_store import open_workspace
+        statements = []
+
+        def traced(path):
+            conn = open_workspace(path)
+            conn.set_trace_callback(statements.append)
+            return conn
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            orders = lambda english, name, bound: {'english_name': english, 'name': name, 'dataset': '订单', 'key': ['订单号'], 'properties': [{'column': '金额'}],
+                                                   'rules': [{'column': '金额', 'check': 'gt', 'value': bound}]}
+            self.assertEqual(ann.post('/api/workspace/types', orders('orderok', '订单甲', 0))[0], 200)
+            self.assertEqual(ann.post('/api/workspace/types', orders('orderhigh', '订单乙', 3000))[0], 200)
+            commits = {'english_name': 'commitok', 'name': '承诺甲', 'dataset': '订单承诺', 'key': ['订单号', '承诺版本'], 'properties': [{'column': '承诺数量'}],
+                       'rules': [{'column': '承诺数量', 'check': 'gt', 'value': 0}]}
+            self.assertEqual(ann.post('/api/workspace/types', commits)[0], 200)
+
+            def read(path):
+                statements.clear()
+                with mock.patch.object(ontology_server, 'open_workspace', traced):
+                    status, body = bob.get(path)
+                self.assertEqual(status, 200, body)
+                rule_reads = [sql for sql in statements if sql.startswith('SELECT') and 'trim("' in sql]
+                self.assertEqual(rule_reads, [], path)
+                return body
+            self.assertEqual(read('/api/workspace/queue?count=1')['count'], 2)   # orderok and commitok; orderhigh breaks its rule
+            status, body = ann.post('/api/workspace/datasets/upload', {'files': [commits_upload()]})
+            self.assertEqual(status, 200, body)
+            counted = read('/api/workspace/queue?count=1')
+            self.assertEqual((counted['count'], counted['rules_unchecked']), (1, 1))   # commitok's rules were counted on the version before: not counted now
+            listed = {t['id']: t for t in read('/api/workspace/types')['types']}
+            self.assertEqual({k: listed[k]['can_confirm'] for k in ('orderok', 'orderhigh', 'commitok')}, {'orderok': True, 'orderhigh': False, 'commitok': False})
+            queue = read('/api/workspace/queue')
+            self.assertEqual((queue['count'], queue['rules_unchecked']), (1, 1))
+            lines = {i['id']: [l['text'] for l in i['lines']] for i in queue['items'] if i.get('kind') == 'type'}
+            self.assertIn('“金额”要大于 0：现在没有行不满足', lines['orderok'])
+            conn = sqlite3.connect(out / 'workspace.sqlite')
+            high = conn.execute(f'SELECT COUNT(*) FROM {q(current_table(out, "订单"))} WHERE CAST("金额" AS REAL) <= 3000').fetchone()[0]
+            conn.close()
+            self.assertIn(f'“金额”要大于 3000：现在有 {high} 行不满足', lines['orderhigh'])
+            self.assertIn('“承诺数量”要大于 0：还没有按现在的数据数过，打开对象类型来数', lines['commitok'])
+            page = self.page(bob, 'commitok')   # opening it counts the rules on the data as it is
+            self.assertEqual((page['rules'][0]['broken'], page['can_confirm']), (0, True))
+            self.confirm(bob, 'commitok')
+            self.confirm(bob, 'orderok')
+            self.confirm(bob, 'orderhigh', expect=409)
+
+    def test_an_edit_made_with_a_token_to_a_confirmed_type_with_rules_puts_it_forward_again_and_a_token_cannot_confirm_it(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            rule = {'column': '金额', 'check': 'gt', 'value': 0}
+            self.assertEqual(ann.post('/api/workspace/types', {**ORDER, 'rules': [rule]})[0], 200)
+            self.confirm(bob, column='状态码')
+            self.confirm(bob)
+            token = {'headers': {'Authorization': f'Bearer {ann.post("/api/auth/tokens", {"label": "agent"})[1]["token"]}'}, 'origin': None}
+            bob_token = {'headers': {'Authorization': f'Bearer {bob.post("/api/auth/tokens", {"label": "bob agent"})[1]["token"]}'}, 'origin': None}
+            stored = lambda: json.loads(sqlite3.connect(out / 'workspace.sqlite').execute("SELECT content_json FROM element_state WHERE element_id = 'objtype:order'").fetchone()[0]).get('rules')
+            edits = [('a rule changed', {'rules': [{**rule, 'value': 1}]}, ['值规则'], [{**rule, 'value': 1}]),
+                     ('a rule added', {'rules': [{**rule, 'value': 1}, {'column': '订单号', 'check': 'not_empty'}]}, ['值规则'], [{**rule, 'value': 1}, {'column': '订单号', 'check': 'not_empty'}]),
+                     ('a rule removed', {'rules': [{'column': '订单号', 'check': 'not_empty'}]}, ['值规则'], [{'column': '订单号', 'check': 'not_empty'}]),
+                     ('a property changed, as before rules', {'properties': [*ORDER['properties'], {'column': '数量'}]}, ['属性的类型'], [{'column': '订单号', 'check': 'not_empty'}]),
+                     ('rules not mentioned, only the description', {'description': '令牌改的说明', 'properties': [*ORDER['properties'], {'column': '数量'}]}, ['名称或说明（用令牌改的）'], [{'column': '订单号', 'check': 'not_empty'}])]
+            for case, change, reset, kept in edits:
+                page = self.page(ann, 'order')
+                self.assertEqual(page['state'], 'confirmed', case)
+                status, body = ann.post('/api/workspace/types/update', {**ORDER, 'id': 'order', 'version': page['version'], **change}, **token)
+                self.assertEqual((status, body.get('state'), body.get('reset')), (200, 'checked', reset), (case, body))
+                self.assertEqual(stored(), kept, case)
+                standing = ann.get('/api/workspace/agent/standing?id=objtype%3Aorder')[1]
+                self.assertEqual((standing['state'], standing['proposed_by'], standing['proposed_with_token']), ('checked', 'Ann', 'agent'), case)
+                page = self.page(bob, 'order')
+                status, body = bob.post('/api/workspace/types/confirm', {'id': 'order', 'version': page['version'], 'seen': page['seen']}, **bob_token)
+                self.assertEqual(status, 403, (case, body))   # a token confirms nothing, rules or not
+                self.assertEqual(bob.post('/api/workspace/queue/confirm', {'element': 'objtype:order', 'version': page['version'], 'seen': page['seen']}, **bob_token)[0], 403, case)
+                self.assertEqual(self.page(bob, 'order')['state'], 'checked', case)
+                self.confirm(bob)   # signed in, Bob confirms it again before the next edit
 
     def test_a_type_stored_before_value_rules_takes_rules_with_nothing_added_to_the_file(self):
         """A rule is part of the type's definition (its content), so the file gains no table or column: a type written with no rules takes them on its next edit."""
