@@ -556,6 +556,17 @@ def _rule_pass(conn, content: dict, dataset: dict, rules: list[dict], examples: 
     return run_rules(conn, dataset['table_name'], rules, kinds, _rule_codes(conn, content, rules), content['key'], examples, only)
 
 
+def _whole_pass(conn, content: dict, dataset: dict | None, examples: int = EXAMPLES) -> dict | None:
+    """The value rules of a type counted over all rows of the current version, in the shape a later check takes as `ahead`; None for a type without rules or
+    one whose columns are not all there (its own check says so)."""
+    if not content.get('rules') or dataset is None:
+        return None
+    cols = dataset_columns(conn, dataset['id'])
+    if any(c not in cols for c in [*content['key'], *(p['column'] for p in content['properties'])]):
+        return None
+    return {'dataset_id': dataset['id'], 'rules': content['rules'], 'codes': _rule_codes(conn, content, content['rules']), 'found': _rule_pass(conn, content, dataset, content['rules'], examples)}
+
+
 def _rules_ahead(conn, readers) -> dict[str, dict]:
     """The value rules of each confirmed type among these readers, counted on the current version of its dataset before the recheck takes the write lock, so the
     lock is held no longer than the key check needs: a stored version never changes, and the recheck uses a count only when the version, the rules and the codes
@@ -564,14 +575,9 @@ def _rules_ahead(conn, readers) -> dict[str, dict]:
     for element_id in sorted(r for r in readers if r.startswith(TYPE_PREFIX)):
         row = element_row(conn, element_id)
         content = _content(row) if row is not None and row['state'] == 'confirmed' else {}
-        dataset = current_dataset(conn, content['dataset']) if content.get('rules') else None
-        if dataset is None:
-            continue
-        cols = dataset_columns(conn, dataset['id'])
-        if any(c not in cols for c in [*content['key'], *(p['column'] for p in content['properties'])]):   # the check inside stops at the missing column
-            continue
-        ahead[element_id] = {'dataset_id': dataset['id'], 'rules': content['rules'], 'codes': _rule_codes(conn, content, content['rules']),
-                             'found': _rule_pass(conn, content, dataset, content['rules'], REASON_EXAMPLES)}
+        found = _whole_pass(conn, content, current_dataset(conn, content['dataset']), REASON_EXAMPLES) if content.get('rules') else None
+        if found is not None:
+            ahead[element_id] = found
     return ahead
 
 
@@ -582,9 +588,10 @@ def _record_rules(conn, content: dict, dataset: dict, found: dict) -> int:
                          {'rules': content['rules'], 'broken': broken}, 'failed' if any(broken) else 'passed')
 
 
-def rules_readout(conn, element_id: str, content: dict, dataset: dict | None, user: dict | None) -> list[dict] | None:
+def rules_readout(conn, element_id: str, content: dict, dataset: dict | None, user: dict | None, ahead: dict | None = None) -> list[dict] | None:
     """The value rules as this person may read them, each with what it says and the rows that break it now with up to 20 of their keys: counted over the
-    rows a row rule lets them see, and without a rule on a column kept from them. None when there is no rule for them to read."""
+    rows a row rule lets them see, and without a rule on a column kept from them. None when there is no rule for them to read. `ahead` (_whole_pass): the
+    count over all rows already made, used when this person reads all rows and every rule."""
     hidden = hidden_columns(conn, element_id, user)
     rules = [r for r in content.get('rules') or [] if not columns_of(r) & hidden]
     if not rules:
@@ -594,6 +601,8 @@ def rules_readout(conn, element_id: str, content: dict, dataset: dict | None, us
     if dataset is None or any(c not in cols for r in rules for c in [*columns_of(r), *content['key']]):   # what the type's own check says is gone: nothing to count
         return [{**r, 'says': rule_says(r, names), 'broken': None, 'examples': []} for r in rules]
     limit = restriction(conn, element_id, user)
+    if ahead is not None and limit is None and rules == content['rules']:
+        return [{**r, 'says': rule_says(r, names), 'broken': f['broken'], 'examples': f['examples']} for r, f in zip(rules, ahead['found']['rules'])]
     only = None
     if limit is not None:   # a row rule names this person: only their rows are counted, through a temporary list of them
         cursor = conn.execute(f'SELECT rowid, * FROM {_quote(dataset["table_name"])} ORDER BY rowid')
@@ -1033,7 +1042,7 @@ def _confirmers(conn, row: dict, user: dict | None) -> tuple[bool, list[str]]:
     return not (excluded is not None and user is not None and user['id'] == excluded), others
 
 
-def _state_view(conn, row: dict, user: dict | None) -> dict:
+def _state_view(conn, row: dict, user: dict | None, ahead: dict | None = None) -> dict:
     """The state of one element for a page: who put it forward, whether this person may confirm it, who could, the last confirmation, the reason it needs a look."""
     waiting = row['state'] in WAITING or (row['state'] == 'needs_look' and row['element_id'].startswith((TYPE_PREFIX, RELATION_PREFIX, VIEW_PREFIX, ACTION_PREFIX, PIPELINE_PREFIX, DERIVED_PREFIX)))
     can, others = _confirmers(conn, row, user)
@@ -1044,7 +1053,7 @@ def _state_view(conn, row: dict, user: dict | None) -> dict:
     last = conn.execute('SELECT confirmed_by, confirmed_at, dataset_versions_json, evidence_ref FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1',
                         (row['element_id'],)).fetchone()
     limited = limited_on(conn, row, user)
-    failing = waiting and can and not blocked and not limited and row['element_id'].startswith(TYPE_PREFIX) and bool(_type_problems(conn, _content(row), record=False)[0])   # confirming would be refused (confirm_element): not one to confirm now
+    failing = waiting and can and not blocked and not limited and row['element_id'].startswith(TYPE_PREFIX) and bool(_type_problems(conn, _content(row), record=False, ahead=ahead)[0])   # confirming would be refused (confirm_element): not one to confirm now
     reason, reason_hidden = reason_for(conn, row, user)
     return {'state': row['state'], 'version': row['version'], 'proposed_by': row['proposed_by'], 'drafted': _content(row).get('drafted'), 'reason': reason, 'reason_hidden': reason_hidden,
             'model_draft': row['state'] == 'proposed' and row['proposed_by'] is None, 'can_confirm': waiting and can and not blocked and not limited and not failing, 'limited_by_rule': limited,
@@ -1153,12 +1162,13 @@ def type_detail(conn, english_name: str, user: dict | None) -> dict:
     fanned = fan_marks(conn, dataset['id']) if dataset else set()
     props = [{**p, 'key': p['column'] in content['key'], 'hide_values': p['column'] in unsent, 'fan': fan_note() if p['column'] in fanned else None, 'meanings': _meaning_view(conn, content, p, cols, dataset, user) if p['enum'] else None} for p in content['properties']]
     limited = restriction(conn, row['element_id'], user) is not None
-    rules = rules_readout(conn, row['element_id'], _content(row), dataset, user)   # none on a column kept from them, counted on their rows
+    whole = _whole_pass(conn, _content(row), dataset) if not limited and not hidden else None   # one pass serves both what the page lists and whether it can be confirmed
+    rules = rules_readout(conn, row['element_id'], _content(row), dataset, user, whole)   # none on a column kept from them, counted on their rows
     from ontology_poc_generator.derived_properties import limited_reads   # derived_properties reads this module: imported here, where it is used
     return {'id': content['english_name'], 'name': content['name'], 'description': content['description'], 'dataset': content['dataset'], 'limited_reads': limited_reads(conn, english_name, user),
             'dataset_version': dataset['version'] if dataset else None, 'rows': visible_rows(conn, row, dataset, user) if dataset else None, 'rows_limited': limited,
             **({'limited_note': limited_note()} if limited else {}), 'seen': None if limited else seen_of_type(dataset), 'key': content['key'],
-            'properties': props, 'visible_to': None if user is not None and user['role'] == 'viewer' else visible_to(conn, row['element_id']), **_state_view(conn, row, user),
+            'properties': props, 'visible_to': None if user is not None and user['role'] == 'viewer' else visible_to(conn, row['element_id']), **_state_view(conn, row, user, whole),
             'columns': [{'name': n, 'type': c['type'], 'enum_candidate': bool(c['counts']) and c['type'] in CODE_TYPES} for n, c in cols.items() if n not in hidden],
             'columns_kept': len(hidden), **({'rules': rules, 'rules_note': rules_note()} if rules else {})}
 
