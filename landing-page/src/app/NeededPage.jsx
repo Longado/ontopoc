@@ -1,7 +1,7 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { addNeeded, confirmNeeded, deleteNeeded, getNeeded, runNeeded, updateNeeded } from "./api.js";
 import { useT } from "./i18n/index.js";
-import { adoptable, canConfirm, confirmHint, expectPayload, expectText, lastRunText, outcomeWord, planText, resultLines, runAllowed, stateText } from "./neededModel.js";
+import { adoptable, canConfirm, confirmHint, exactNumber, expectPayload, expectText, lastRunText, outcomeWord, planText, resultLines, runAllowed, runningText, stateText } from "./neededModel.js";
 import { useLoad } from "./useLoad.js";
 import { EmptyState } from "./ui/EmptyState.jsx";
 import { PageHeader } from "./ui/PageHeader.jsx";
@@ -16,6 +16,12 @@ export function NeededPage() {
   const t = useT();
   const [state, reload] = useLoad(getNeeded, []);
   const listing = state.data;
+  const going = Boolean(listing?.running);
+  useEffect(() => {   // a run goes on in the service after it starts: the list is read again until it is done
+    if (!going) return undefined;
+    const timer = setTimeout(reload, 3000);
+    return () => clearTimeout(timer);
+  }, [going, state]);
   return (
     <main className="page needed">
       <PageHeader title={t("needed.title")} sub={t("needed.sub")} />
@@ -57,6 +63,7 @@ function RunBox({ listing, onDone }) {
     }
   };
   const run = listing.last_run;
+  const going = listing.running;
   return (
     <section className="card nq-run" aria-labelledby="nq-run-title">
       <h2 id="nq-run-title">{t("needed.run.title")}</h2>
@@ -71,7 +78,8 @@ function RunBox({ listing, onDone }) {
         <button className="primary" type="button" onClick={start} disabled={busy || !allowed.ok}>{t("needed.run.button")}</button>
       </div>
       {busy && <p className="muted small" role="status">{t("needed.run.running")}</p>}
-      {!busy && !allowed.ok && allowed.why && <p className="muted small">{allowed.why}</p>}
+      {going && <p className="small" role="status">{runningText(going)}</p>}
+      {!busy && !going && !allowed.ok && allowed.why && <p className="muted small">{allowed.why}</p>}
       {error && <p className="error" role="alert">{error}</p>}
       {run && <p className="muted small">{lastRunText(run)}</p>}
       {run?.note && <p className="small nq-warn">{t("needed.last.stopped", { note: run.note })}</p>}
@@ -122,7 +130,7 @@ function Question({ item, twoPerson, onChange }) {
       ) : (
         <div className="nq-actions">
           {canConfirm(item, twoPerson) && <button className="primary" type="button" disabled={busy} onClick={() => act(() => confirmNeeded(item))}>{t("needed.act.confirm")}</button>}
-          {adopt != null && <button className="secondary" type="button" disabled={busy} onClick={() => act(() => updateNeeded(item, { expect: { kind: "number", value: adopt } }))}>{t("needed.act.adopt", { number: adopt })}</button>}
+          {adopt != null && <button className="secondary" type="button" disabled={busy} onClick={() => act(() => updateNeeded(item, { expect: { kind: "number", value: adopt } }))}>{t("needed.act.adopt", { number: exactNumber(adopt) })}</button>}
           <button className="plain" type="button" disabled={busy} onClick={() => setEditing(true)}>{t("needed.act.edit")}</button>
           {asking ? (
             <span className="nq-ask">
@@ -147,13 +155,14 @@ function QuestionForm({ item, onDone, onCancel }) {
   const [kind, setKind] = useState(item?.expect?.kind ?? "none");
   const [value, setValue] = useState(item?.expect?.kind === "number" ? String(item.expect.value) : "");
   const [note, setNote] = useState(item?.note ?? "");
+  const [blocker, setBlocker] = useState(item?.expect?.blocker ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const save = async (e) => {
     e.preventDefault();
     setBusy(true);
     setError("");
-    const fields = { question, expect: expectPayload({ kind, value }), note: note.trim() || null };
+    const fields = { question, expect: expectPayload({ kind, value, blocker }), note: note.trim() || null };
     try {
       if (item) await updateNeeded(item, fields);
       else await addNeeded(fields);
@@ -162,6 +171,7 @@ function QuestionForm({ item, onDone, onCancel }) {
         setKind("none");
         setValue("");
         setNote("");
+        setBlocker("");
       }
       onDone();
     } catch (err) {
@@ -190,6 +200,12 @@ function QuestionForm({ item, onDone, onCancel }) {
         <label className="field">
           <span className="caption">{t("needed.form.value")}</span>
           <input type="text" inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} />
+        </label>
+      )}
+      {kind === "refused" && (
+        <label className="field">
+          <span className="caption">{t("needed.form.blocker")}</span>
+          <input type="text" maxLength={MAX_NOTE} placeholder={t("needed.form.blockerPlaceholder")} value={blocker} onChange={(e) => setBlocker(e.target.value)} />
         </label>
       )}
       <label className="field">
