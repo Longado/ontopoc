@@ -123,25 +123,25 @@ def columns_of(rule: dict) -> set[str]:
 # --- what breaks a rule, in SQL ----------------------------------------------------------------------------------------------------------------------
 
 def _trim(v: str) -> str:
-    return f'trim({v}, {_BLANKS_SQL})'
+    """The cell without the blanks around it. Plain ASCII text (most cells: numbers, dates, codes) has only spaces to trim, which the short form does quickly."""
+    return f"(CASE WHEN {v} GLOB '*[^ -~]*' THEN trim({v}, {_BLANKS_SQL}) ELSE trim({v}) END)"
 
 
-def _empty(v: str) -> str:
-    return f"({v} IS NULL OR {_trim(v)} = '')"
+def _empty(s: str) -> str:
+    """`s`: the cell with its blanks trimmed (or NULL)."""
+    return f"({s} IS NULL OR {s} = '')"
 
 
-def _number(v: str) -> str:
-    """A filled cell that is a plain number: an optional minus, digits, at most one point with digits after it (blanks around it are trimmed)."""
-    s = _trim(v)
+def _number(s: str) -> str:
+    """A filled cell that is a plain number: an optional minus, digits, at most one point with digits after it (`s` is trimmed of blanks)."""
     return f"(({s} GLOB '[0-9]*' OR {s} GLOB '-[0-9]*') AND substr({s}, 2) NOT GLOB '*[^0-9.]*' AND {s} NOT GLOB '*.*.*' AND {s} NOT GLOB '*.')"
 
 
 _DAY = "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]"
 
 
-def _day(v: str, kind: str) -> tuple[str, str]:
-    """(the cell is a real date, its moment as a julian day) for a date, date-and-time or month cell."""
-    s = _trim(v)
+def _day(s: str, kind: str) -> tuple[str, str]:
+    """(the cell is a real date, its moment as a julian day) for a date, date-and-time or month cell (`s` is trimmed of blanks)."""
     if kind == 'month':
         first = f"({s} || '-01')"
         return f"({s} GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]' AND date({first}) IS {first})", f'julianday({first})'
@@ -169,40 +169,47 @@ def _holds(s: str, op: str, bound) -> tuple[str, list]:
             [float(bound), near, str(bound), float(bound)])
 
 
-def broken_sql(rule: dict, kinds: dict[str, str], codes: dict[str, list[str]]) -> tuple[str, list]:
-    """(a condition true for a row that breaks the rule, its parameters). What holds is wrapped in COALESCE(..., 0): a test that comes out NULL (a date SQLite
-    cannot read) counts as not holding, never as unknown."""
-    v = _quote(rule['column'])
+def broken_sql(rule: dict, kinds: dict[str, str], codes: dict[str, list[str]], cell=None) -> tuple[str, list]:
+    """(a condition true for a row that breaks the rule, its parameters). `cell(column)`: (the cell trimmed of blanks, the cell as stored) as SQL expressions;
+    by default they are worked out from the column itself. What holds is wrapped in COALESCE(..., 0): a test that comes out NULL (a date SQLite cannot read)
+    counts as not holding, never as unknown."""
+    cell = cell or (lambda column: (_trim(_quote(column)), _quote(column)))
+    s, raw = cell(rule['column'])
     check = rule['check']
     if check == 'not_empty':
-        return _empty(v), []
+        return _empty(s), []
     if check in _OPS:
-        holds, params = _holds(_trim(v), _OPS[check], rule['value'])
-        return f"(NOT {_empty(v)} AND NOT COALESCE({_number(v)} AND {holds}, 0))", params
+        holds, params = _holds(s, _OPS[check], rule['value'])
+        return f"(NOT {_empty(s)} AND NOT COALESCE({_number(s)} AND {holds}, 0))", params
     if check == 'between':
-        (low, low_params), (high, high_params) = _holds(_trim(v), '>=', rule['low']), _holds(_trim(v), '<=', rule['high'])
-        return f"(NOT {_empty(v)} AND NOT COALESCE({_number(v)} AND {low} AND {high}, 0))", [*low_params, *high_params]
+        (low, low_params), (high, high_params) = _holds(s, '>=', rule['low']), _holds(s, '<=', rule['high'])
+        return f"(NOT {_empty(s)} AND NOT COALESCE({_number(s)} AND {low} AND {high}, 0))", [*low_params, *high_params]
     if check == 'in_codes':
         allowed = list(codes.get(rule['column']) or [])
-        return (f"(NOT {_empty(v)} AND {v} NOT IN ({', '.join('?' * len(allowed))}))" if allowed else f'(NOT {_empty(v)})'), allowed
-    o = _quote(rule['other'])
-    (v_ok, v_day), (o_ok, o_day) = _day(v, kinds[rule['column']]), _day(o, kinds[rule['other']])
-    return f'(NOT {_empty(v)} AND NOT {_empty(o)} AND NOT COALESCE({v_ok} AND {o_ok} AND {v_day} >= {o_day}, 0))', []
+        return (f"(NOT {_empty(s)} AND {raw} NOT IN ({', '.join('?' * len(allowed))}))" if allowed else f'(NOT {_empty(s)})'), allowed
+    o = cell(rule['other'])[0]
+    (v_ok, v_day), (o_ok, o_day) = _day(s, kinds[rule['column']]), _day(o, kinds[rule['other']])
+    return f'(NOT {_empty(s)} AND NOT {_empty(o)} AND NOT COALESCE({v_ok} AND {o_ok} AND {v_day} >= {o_day}, 0))', []
 
 
 def run(conn, table: str, rules: list[dict], kinds: dict[str, str], codes: dict[str, list[str]], key: list[str], examples: int = EXAMPLES, only: str | None = None) -> dict:
     """Count, in one pass over the table, the rows that break each rule, and fetch the key of up to `examples` of them per broken rule, in table order.
-    `only`: a temporary table of the rowids a reader may see (column r); the rest are not read. {'rows_checked', 'query', 'rules': [{'broken', 'examples'}]}."""
+    `only`: a temporary table of the rowids a reader may see (column r); the rest are not read. {'rows_checked', 'query', 'rules': [{'broken', 'examples'}]}.
+    Each column a rule reads is trimmed of blanks once per row, in a subquery SQLite reads row by row (LIMIT -1 OFFSET 0 keeps it from being merged into the
+    outer query, which would trim the cell again for every test made on it)."""
     conn.create_function(EXACT, 2, _order, deterministic=True)
     within = f' WHERE rowid IN (SELECT r FROM temp.{_quote(only)})' if only else ''
-    conditions = [broken_sql(rule, kinds, codes) for rule in rules]
+    used = list(dict.fromkeys(c for rule in rules for c in sorted(columns_of(rule), key=lambda c: c != rule['column'])))
+    alias = {c: (f'c{i}', f'v{i}') for i, c in enumerate(used)}
+    picked = ['rowid AS r', *(f'{_quote(k)} AS k{j}' for j, k in enumerate(key)), *(f'{_trim(_quote(c))} AS {alias[c][0]}, {_quote(c)} AS {alias[c][1]}' for c in used)]
+    rows = f'(SELECT {", ".join(picked)} FROM {_quote(table)}{within} ORDER BY rowid LIMIT -1 OFFSET 0)'
+    conditions = [broken_sql(rule, kinds, codes, alias.__getitem__) for rule in rules]
     sums = ', '.join(f'COALESCE(SUM(CASE WHEN {sql} THEN 1 ELSE 0 END), 0)' for sql, _ in conditions)
-    query = f'SELECT COUNT(*){", " + sums if sums else ""} FROM {_quote(table)}{within}'
+    query = f'SELECT COUNT(*){", " + sums if sums else ""} FROM {rows}'
     counts = conn.execute(query, [p for _, params in conditions for p in params]).fetchone()
     found = []
     for (sql, params), broken in zip(conditions, counts[1:]):
-        keys = [list(k) for k in conn.execute(f'SELECT {", ".join(_quote(c) for c in key)} FROM {_quote(table)} WHERE {sql}{within.replace(" WHERE", " AND")} ORDER BY rowid LIMIT ?',
-                                               [*params, examples])] if broken and examples else []
+        keys = [list(k) for k in conn.execute(f'SELECT {", ".join(f"k{j}" for j in range(len(key)))} FROM {rows} WHERE {sql} LIMIT ?', [*params, examples])] if broken and examples else []
         found.append({'broken': broken, 'examples': keys})
     return {'rows_checked': counts[0], 'query': query, 'rules': found}
 
