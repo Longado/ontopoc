@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { answerView, besideView, definitionHref, isAnswer, namedLines, isThenAnswer, queryExample, queryParams, queryRecord, rangeNotes, readText, scopeText, standingText, staleHeading, staleLines } from "./qaModel.js";
+import { answerView, besideView, definitionHref, isAnswer, namedLines, isThenAnswer, queryExample, queryParams, queryRecord, rangeNotes, readText, scopeText, standingText, staleHeading, staleLines, todayNote } from "./qaModel.js";
 
 const types = [{ id: "order", name: "订单" }];
 
@@ -173,4 +173,30 @@ test("an answer on every row shows each confirmed view's own number beside it, a
   assert.deepEqual(one.lines.map((l) => [l.name, l.text, l.of, l.by]), [["全部订单", "金额合计 162,960", "", ""]]);
   assert.equal(one.hint, "上面的数只算了它读的那个视图的行。");
   assert.equal(besideView({ status: "answered", types, answer: measure(1, 1) }), null);
+});
+
+test("a list reads as its count and a table of one page, a code by its meaning, and one object found by its key as that object", () => {
+  const columns = [{ column: "订单号", name: "订单号", key: true }, { column: "紧急程度", name: "紧急程度", meanings: { 0: "普通", 1: "加急" } }, { column: "金额", name: "金额" }];
+  const answer = { total: 120, objects: { columns, rows: [["DD1", "1", "60000"], ["DD2", "0", null]], page: 2, pages: 3, page_size: 50, order_by: ["订单号"] } };
+  for (const [locale, big, coded, page] of [["zh", "120 个订单", "加急（1）", "第 2 页，共 3 页，每页 50 个，一共 120 个"], ["en", "120 订单", "加急 (1)", "Page 2 of 3, 50 a page, 120 in all"]]) {
+    setLocale(locale);
+    const view = answerView({ answer, types, status: "answered" });
+    assert.equal(view.big, big);
+    assert.deepEqual(view.objects.head, ["订单号", "紧急程度", "金额"]);
+    assert.deepEqual(view.objects.rows, [["DD1", coded, "60000"], ["DD2", locale === "zh" ? "普通（0）" : "普通 (0)", "—"]]);
+    assert.deepEqual([view.objects.keys, view.objects.hasPrev, view.objects.hasNext, view.objects.pageText], [[true, false, false], true, true, page]);
+  }
+  setLocale("zh");
+  const one = answerView({ answer: { total: 1, lookup: { 措施编号: "M-17" }, objects: { columns: [{ column: "措施编号", name: "措施编号", key: true }], rows: [["M-17"]], page: 1, pages: 1, page_size: 50, order_by: ["措施编号"] } }, types: [{ id: "measure", name: "处置措施" }], status: "answered" });
+  assert.deepEqual([one.big, one.objects.pageText, one.objects.hasNext], ["找到这个处置措施", "", false]);
+  assert.equal(answerView({ status: "no_data", reason: "没有措施编号 = M-99 的处置措施" }).note, "没有措施编号 = M-99 的处置措施");   // a key nobody has, or one the reader may not read: said the same
+});
+
+test("an answer that compared a date with today says which date today was", () => {
+  setLocale("zh");
+  assert.equal(todayNote({ today: { date: "2026-06-15", time_zone: "UTC+08:00" } }), "“今天”按 2026-06-15 算（UTC+08:00，服务所在的时区）");
+  setLocale("en");
+  assert.equal(todayNote({ today: { date: "2026-06-15", time_zone: "UTC+08:00" } }), "\"today\" was taken as 2026-06-15 (UTC+08:00, the service's time zone)");
+  assert.equal(todayNote({}), "");
+  setLocale("zh");
 });

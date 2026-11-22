@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { confirmWords, emptyViewForm, newValueChoices, newValueText, rowsText, viewPayload, viewProblem, viewWaitingText } from "./viewModel.js";
+import { confirmWords, emptyViewForm, formulaOption, newValueChoices, newValueText, rowsText, viewPayload, viewProblem, viewWaitingText } from "./viewModel.js";
 import { setLocale } from "./i18n/index.js";
 
 setLocale("zh");   // these tests pin the Chinese wording; the English is in modelingEnglish.test.js
@@ -39,4 +39,14 @@ test("a view with a new value cannot be confirmed until each new value has a cho
   assert.equal(confirmWords(newValueChoices(nv, { "状态码|3": "in" })), "确认这个视图");
   assert.equal(confirmWords(newValueChoices(nv, { "状态码|3": "out" })), "加上这个条件，交给另一位确认");
   assert.deepEqual(newValueChoices([], {}), []);   // nothing to ask: confirm as before
+});
+
+test("a condition on a per-row formula is sent only when it is whole, and counts as a condition", () => {
+  const withFormula = form({ filters: [{ column: "紧急程度", op: "is", label: "加急" }], derived: [{ property: "high_risk", op: "equals", value: "1" }, { property: "", op: "equals", value: "" }] });
+  assert.deepEqual(viewPayload("order", withFormula).derived, [{ property: "high_risk", op: "equals", value: 1 }]);
+  assert.equal("derived" in viewPayload("order", form()), false);   // none written: the view is sent as it always was
+  assert.equal(viewProblem({ ...emptyViewForm(), name: "x", derived: [{ property: "high_risk", op: "at_least", value: "3" }] }), "");
+  assert.match(viewProblem({ ...emptyViewForm(), name: "x", derived: [{ property: "high_risk", op: "at_least", value: "x" }] }), /至少一个条件/);
+  assert.equal(formulaOption({ name: "高风险", state: "checked" }), "高风险（还没确认）");
+  assert.equal(formulaOption({ name: "高风险", state: "confirmed" }), "高风险");
 });
