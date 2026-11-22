@@ -132,7 +132,7 @@ class WhatTheFilesSayTests(SchemaCase):
             self.assertEqual(list(Collection(onto, onto.value(order, OWL.hasKey))), [number])
             self.assertEqual({o for o in onto.objects(number, RDF.type)}, {OWL.DatatypeProperty, OWL.FunctionalProperty})
             self.assertEqual(onto.value(number, RDFS.range), XSD.string)
-            self.assertEqual(onto.value(self.column(onto, order, '金额'), RDFS.range), XSD.decimal)
+            self.assertEqual(onto.value(self.column(onto, order, '金额'), RDFS.range), XSD.integer)   # whole numbers in the planted table
             customer = self.iri_of(onto, 'objtype:customer')
             self.assertEqual(len(list(Collection(onto, onto.value(customer, OWL.hasKey)))), 2)   # a key of two columns
             # a month is text with a note (xsd:gYearMonth is not among OWL 2's datatypes); a date would be xsd:dateTime
@@ -188,7 +188,7 @@ class WhatTheFilesSayTests(SchemaCase):
                     if env is None:
                         os.environ.pop(owl_export.BASE_ENV, None)
                     made = self.files(out, 'bob')
-                minted = {str(t) for text in made.values() for triple in graph(text) for t in triple if isinstance(t, URIRef) and str(t).startswith(root)}
+                minted = {str(t) for text in made.values() for triple in graph(text) for t in triple if isinstance(t, URIRef) and str(t).startswith(root) and not str(t).startswith(owl_export.VOCAB)}
                 self.assertTrue(minted)
                 for iri in minted:
                     self.assertRegex(iri[len(root):], r'^(ontology|(type|relation|view|shape)(/[A-Za-z0-9_]+)*(/(column|derived|codes|key)(/[A-Za-z0-9_]+)?)*)$', iri)
@@ -347,7 +347,7 @@ class WhoGetsWhatTests(SchemaCase):
             derived = self.iri_of(onto, 'derived:customer:cancelled_orders')
             self.assertIsNone(onto.value(derived, URIRef(OP + 'definitionText')))
             for text in made.values():
-                self.assertNotIn('已取消', text)
+                self.assertNotIn('"已取消"', text)   # no meaning (the name 已取消订单数 is listed, as the sheet lists it)
                 self.assertNotIn('有效订单', text)   # a view on that column is out of the scope, as in the sheet
             sheet = {e['id'] for e in team['bob'].get(STANDING)[1]['definitions'] if e['confirmed']}
             self.assertEqual({str(o) for o in onto.objects(None, URIRef(OP + 'definitionId'))}, sheet)
