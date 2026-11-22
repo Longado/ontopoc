@@ -18,7 +18,7 @@
 .nq-chip { display: inline-flex; align-items: center; min-height: 20px; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 20px; white-space: nowrap; }
 .nq-passes { background: var(--green-soft); color: var(--green-ink); }
 .nq-differs { background: var(--red-soft); color: var(--red-ink); }
-.nq-refused, .nq-not_run { background: var(--grey-soft); color: var(--grey-ink); }
+.nq-refused, .nq-not_run, .nq-not_run_since_change { background: var(--grey-soft); color: var(--grey-ink); }
 .nq-no_expectation { background: var(--bg-subtle); color: var(--ink); }
 .nq-needs_look { background: var(--orange-soft); color: var(--orange-ink); }
 .nq-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }

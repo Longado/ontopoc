@@ -2,7 +2,7 @@
 import { formatDate, t } from "./i18n/index.js";
 import { formatNumber } from "./explorerModel.js";
 
-export const OUTCOMES = ["passes", "differs", "needs_look", "refused", "no_answer", "no_expectation", "not_run"];
+export const OUTCOMES = ["passes", "differs", "needs_look", "refused", "no_answer", "no_expectation", "not_run", "not_run_since_change"];
 
 /** A number as exactly as the service compares it, with thousands marked: 1234.5678 -> "1,234.5678", 0.30000000000000004 as it is. */
 export function exactNumber(value) {
@@ -84,6 +84,7 @@ function answerLines(answer, blocking, distinct) {
 
 /** What a question came back as in the last run, in lines a person reads under the outcome. */
 export function resultLines(result) {
+  if (result.outcome === "not_run_since_change") return [t("needed.result.earlier", { at: formatDate(result.earlier.at), answers: distinctText(result.earlier.distinct) })];   // what was answered then, and no verdict
   let lines;
   if (result.outcome === "passes") lines = [rightText(result)];
   else if (result.outcome === "differs") lines = [rightText(result), gotText(result)];

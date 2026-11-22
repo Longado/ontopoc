@@ -63,6 +63,8 @@ export default {
   "outcome.needs_look": "Needs another look",
   "outcome.not_run": "Not asked",
   "outcome.no_answer": "No answer",
+  "outcome.not_run_since_change": "Not run since it changed",
+  "result.earlier": "Not run since it changed. Answered before the change ({at}): {answers}.",
   "expect.refusedBy": "Should be refused because of “{name}”",
   "result.several": "One question gave different answers: {answers}. Find out which reading is right before writing what it should give.",
   "result.noAnswer": "No answer, which is neither a pass nor a refusal: {reason}",

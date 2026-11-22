@@ -63,6 +63,8 @@ export default {
   "outcome.needs_look": "需要再看",
   "outcome.not_run": "没有问",
   "outcome.no_answer": "没有回答",
+  "outcome.not_run_since_change": "改过之后还没跑",
+  "result.earlier": "改过之后还没跑。改之前（{at}）的回答：{answers}。",
   "expect.refusedBy": "应该因为「{name}」拒答",
   "result.several": "同一个问题给出了不同的回答：{answers}。先弄清哪种读法对，再写它应该给出什么。",
   "result.noAnswer": "没有回答，这既不算通过也不算拒答：{reason}",
