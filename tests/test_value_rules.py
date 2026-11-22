@@ -159,6 +159,74 @@ def started(out):
     return server
 
 
+HOSTILE_NUMBERS = [None, '', ' ', '\t', '\u00a0', '\u200b', '\ufeff', '\u3000', 'NaN', 'nan', 'sNaN', '-nan', '+NaN', 'Infinity', '-Infinity', 'inf', '-inf', '+inf',
+                   '1e999', '-1e999', '1e3', '1E-5', '0x10', '0X1F', '0b101', '0o17', '1,000', '1_000', '1 000', '+5', '.5', '5.', '-.5', '--1', '1-', '-', '.', '0', '-0',
+                   '00', '007', '0.0', '-0.0', '0.1', '0.10000000000000000001', '0.09999999999999999999', '999999999999999', '999999999999999.01',
+                   '99999999999999999999999', '-99999999999999999999.5', '1' + '0' * 400, '0.' + '0' * 400 + '1', ' 7 ', '7\u00a0', '\u200b7', '１２', '٣', '²', 'Ⅻ',
+                   '1.2.3', '1..2', 'abc', 'NULL', 'None', 'true', '1e', 'e1', '½', '10', '11', '100', '100.0', '-1', '-1.0', '0.5', '1', '50', '-0.5']
+HOSTILE_DAYS = [None, '', ' ', '\u200b', '2026-01-05', ' 2026-01-05 ', '2026-01-05 10:00', '2026-01-05T09:00:00', '2026-01-04', '0000-01-01', '0001-01-01', '9999-12-31',
+                '9999-99-99', '2026-02-29', '2024-02-29', '2026-02-30', '2026-13-01', '2026-00-10', '2026-01-00', '2026-01-05 24:00', '2026-01-05 23:60',
+                '2026-01-05 23:59:60', '2026-01-05T10:00Z', '2026-01-05 10:00+08:00', '2026-01-05 10:00:00.5', '2026-01-05  10:00', '2026-01-05t10:00', '-001-01-01',
+                '20260105', '2026/01/05', '2460000', 'now', 'soon', 'NaN', '2026-1-5', '２０２６-０１-０５']
+HOSTILE_MONTHS = [None, '', '2026-01', '2026-12', '2026-13', '2026-00', '0000-01', '9999-12', '2026-1', '202601', '2026-01-01', 'soon', ' 2026-02 ', '\u00a02026-03']
+HOSTILE_CODES = [None, '', ' ', 'A', 'B', 'C', ' A', 'a', 'A\u200b', 'NaN', '\t']
+_BLANK_CHARS = ''.join(c for c in map(chr, range(0x3001)) if c.isspace()) + '\u200b\u200c\u200d\u2060\ufeff'
+
+
+def _plain(text):
+    """The cell without blanks around it, or None when it is empty."""
+    if text is None:
+        return None
+    text = text.strip(_BLANK_CHARS)
+    return text or None
+
+
+def _decimal(text):
+    from decimal import Decimal
+    text = _plain(text)
+    return Decimal(text) if text is not None and re.fullmatch(r'-?[0-9]+(\.[0-9]+)?', text, re.ASCII) else None
+
+
+def _moment(text, kind):
+    text = _plain(text)
+    if text is None:
+        return None
+    if kind == 'month':
+        if not re.fullmatch(r'[0-9]{4}-[0-9]{2}', text, re.ASCII):
+            return None
+        text = text + '-01'
+    elif not re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}([T ][0-9]{2}:[0-9]{2}(:[0-9]{2})?)?', text, re.ASCII):
+        return None
+    try:
+        return datetime.fromisoformat(text) if len(text) > 10 else datetime.combine(date.fromisoformat(text), datetime.min.time())
+    except ValueError:
+        return None
+
+
+def breaks(rule, row, codes) -> bool:
+    """Whether a row breaks a rule, in plain Python: the meaning of each kind written once more, apart from the service's SQL."""
+    from decimal import Decimal
+    cell = row[rule['column']]
+    if rule['check'] == 'not_empty':
+        return _plain(cell) is None
+    if _plain(cell) is None:
+        return False
+    if rule['check'] == 'in_codes':
+        return cell not in codes
+    if rule['check'] == 'not_before':
+        if _plain(row[rule['other']]) is None:
+            return False
+        kind = 'month' if rule['column'].startswith('m') else 'day'
+        a, b = _moment(cell, kind), _moment(row[rule['other']], kind)
+        return a is None or b is None or a < b
+    n = _decimal(cell)
+    if n is None:
+        return True
+    bound = lambda key: Decimal(str(rule[key]))
+    return not {'gt': lambda: n > bound('value'), 'ge': lambda: n >= bound('value'), 'lt': lambda: n < bound('value'), 'le': lambda: n <= bound('value'),
+                'between': lambda: bound('low') <= n <= bound('high')}[rule['check']]()
+
+
 class RuleChecksAgainstSql(unittest.TestCase):
     """The one pass over a table, on cells an upload never stores (an empty text, only spaces, spaces around a number), against the plain queries."""
 
@@ -203,6 +271,27 @@ class RuleChecksAgainstSql(unittest.TestCase):
         found = value_rules.run(conn, 't', [{'column': 'n', 'check': 'not_empty'}, {'column': 'n', 'check': 'gt', 'value': 0}], {'n': 'decimal'}, {}, ['编号'])
         self.assertEqual([k[0] for k in found['rules'][0]['examples']], ['0', '1', '2', '3', '4', '5'])   # all blank but the two numbers
         self.assertEqual(found['rules'][1]['broken'], 0)   # an empty cell is not judged; a number with spaces of any kind around it is a number
+
+    def test_no_hostile_cell_raises_and_every_kind_counts_what_plain_python_counts(self):
+        """Cells that Python's float or Decimal would read but that are not plain numbers, dates that SQLite would read but that name no real day, blanks of
+        every kind: the pass never raises, and each rule's rows equal a reckoning in plain Python."""
+        conn = sqlite3.connect(':memory:')
+        conn.execute('CREATE TABLE t ("编号" TEXT, "n" TEXT, "d1" TEXT, "d2" TEXT, "m1" TEXT, "m2" TEXT, "s" TEXT)')
+        rows = [(f'K{i:03d}', n, HOSTILE_DAYS[i % len(HOSTILE_DAYS)], HOSTILE_DAYS[(i * 7 + 3) % len(HOSTILE_DAYS)], HOSTILE_MONTHS[i % len(HOSTILE_MONTHS)],
+                 HOSTILE_MONTHS[(i * 5 + 1) % len(HOSTILE_MONTHS)], HOSTILE_CODES[i % len(HOSTILE_CODES)]) for i, n in enumerate(HOSTILE_NUMBERS * 3)]
+        conn.executemany('INSERT INTO t VALUES (?, ?, ?, ?, ?, ?, ?)', rows)
+        kinds = {'n': 'decimal', 'd1': 'datetime', 'd2': 'datetime', 'm1': 'month', 'm2': 'month', 's': 'text'}
+        rules = [{'column': 'n', 'check': 'not_empty'}, {'column': 'd1', 'check': 'not_empty'}, {'column': 's', 'check': 'in_codes'},
+                 {'column': 'd1', 'check': 'not_before', 'other': 'd2'}, {'column': 'm1', 'check': 'not_before', 'other': 'm2'}]
+        for bound in (0, 0.1, -1, 1, 100, 999999999999999, -0.5):
+            rules += [{'column': 'n', 'check': check, 'value': bound} for check in ('gt', 'ge', 'lt', 'le')] + [{'column': 'n', 'check': 'between', 'low': bound, 'high': bound + 10}]
+        for start in range(0, len(rules), 20):
+            batch = rules[start:start + 20]
+            found = value_rules.run(conn, 't', batch, kinds, {'s': ['A', 'B']}, ['编号'], examples=len(rows))
+            for rule, result in zip(batch, found['rules']):
+                wanted = [r[0] for r in rows if breaks(rule, dict(zip(['编号', 'n', 'd1', 'd2', 'm1', 'm2', 's'], r)), ['A', 'B'])]
+                self.assertEqual([k[0] for k in result['examples']], wanted, rule)
+        self.assertGreaterEqual(len(HOSTILE_NUMBERS) + len(HOSTILE_DAYS) + len(HOSTILE_MONTHS) + len(HOSTILE_CODES), 100)
 
     def test_a_month_column_is_read_as_months(self):
         conn = plain_sql(sqlite3.connect(':memory:'))
@@ -774,6 +863,236 @@ class ValueRuleTests(SigningTestCase):
                 status, body = ann.post('/api/workspace/types', {**ORDER, 'rules': [{'column': '金额', 'check': 'gt', 'value': bound}]})
                 self.assertEqual(status, 400, (bound, body))
             self.assertEqual(ann.post('/api/workspace/types', {**ORDER, 'rules': [{'column': '金额', 'check': 'gt', 'value': '123456789012345'}]})[0], 200)
+
+    def _older_confirm(self, out, element_id='objtype:order', who='Bob'):
+        """What an older version does when someone confirms: the type becomes confirmed without its value rules being looked at."""
+        from ontology_poc_generator.object_types import element_row, write_confirmation
+        from ontology_poc_generator.workspace_store import current_dataset, open_workspace
+        conn = open_workspace(out / 'workspace.sqlite')
+        try:
+            row = element_row(conn, element_id)
+            content = json.loads(row['content_json'])
+            dataset = current_dataset(conn, content['dataset'])
+            write_confirmation(conn, element_id, content, row['evidence_ref'], who, {'dataset': dataset['name'], 'version': dataset['version']}, {dataset['name']: dataset['version']})
+        finally:
+            conn.close()
+
+    def _sql(self, out, sql, args=()):
+        conn = sqlite3.connect(out / 'workspace.sqlite')
+        try:
+            conn.execute(sql, args)
+            conn.commit()
+        finally:
+            conn.close()
+
+    def told(self, client):
+        return [n for n in client.get('/api/workspace/notices')[1]['notices'] if '退回' in n['text']]
+
+    def test_a_type_an_older_version_confirmed_on_a_broken_rule_goes_back_at_start(self):
+        """Acceptance's sequence: proposed on this version with "金额 > 3000" (the count is kept and shows broken rows), confirmed on an older version, started
+        here again: the type goes back, naming the rule and the rows, and who can confirm it is told once."""
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob, admin = team['ann'], team['bob'], team['admin']
+            self.assertEqual(ann.post('/api/workspace/types', {**ORDER, 'rules': [{'column': '金额', 'check': 'gt', 'value': 3000}]})[0], 200)
+            broken = self.page(ann, 'order')['rules'][0]['broken']
+            self.assertGreater(broken, 0)
+            self.confirm(bob, column='状态码')
+            self._older_confirm(out)
+            started(out)
+            page = self.page(bob, 'order')
+            self.assertEqual(page['state'], 'needs_look')
+            self.assertIn(f'有 {broken} 行不满足', page['reason'])
+            for person in (bob, admin):
+                self.assertEqual(len(self.told(person)), 1)
+            started(out)
+            self.assertEqual(len(self.told(bob)), 1)
+
+    def test_every_way_of_failing_the_rule_invariant_is_found_and_judged(self):
+        """A confirmed type with rules is usable only when its latest kept count is on its current data version, for its current rules and codes, and shows no
+        broken row. Each way of failing that is found: by the invariant itself, and at start, by describe_definitions and by the standing readout."""
+        from ontology_poc_generator.object_types import rules_untrusted
+        from ontology_poc_generator.workspace_store import import_records, open_workspace, records_sha256
+        from tests.test_object_types import ORDERS
+        cases = {
+            'no count at all': lambda out: self._sql(out, "DELETE FROM check_result WHERE check_type = 'value_rules'"),
+            'a count on another version': lambda out: (lambda conn: (import_records(conn, '订单', ORDERS[:-1], 'upload', records_sha256(ORDERS[:-1]), 'Ann'), conn.close()))(open_workspace(out / 'workspace.sqlite')),
+            'a count for other rules': lambda out: self._sql(out, "UPDATE element_state SET content_json = json_set(content_json, '$.rules[0].value', 1) WHERE element_id = 'objtype:order'"),
+            'a count for other codes': lambda out: self._sql(out, "UPDATE element_state SET content_json = json_set(content_json, '$.values[0].value', '7') WHERE element_id = 'enum:order:状态码'"),
+            'a count with a broken rule': lambda out: self._sql(out, "UPDATE check_result SET samples_json = json_set(samples_json, '$.broken[0]', 4) WHERE id = (SELECT MAX(id) FROM check_result WHERE check_type = 'value_rules')"),
+        }
+        for case, spoil in cases.items():
+            with self.subTest(case), self.service() as (base, out):
+                team = self.team(base, 'vera', roles={'vera': 'viewer'})
+                ann, bob, vera = team['ann'], team['bob'], team['vera']
+                rules = [{'column': '金额', 'check': 'gt', 'value': 0}, {'column': '状态码', 'check': 'in_codes'}]
+                self.assertEqual(ann.post('/api/workspace/types', {**ORDER, 'rules': rules})[0], 200)
+                self.confirm(bob, column='状态码')
+                self.confirm(bob)
+                conn = open_workspace(out / 'workspace.sqlite')
+                self.assertIsNone(rules_untrusted(conn, 'objtype:order'))
+                conn.close()
+                spoil(out)
+                conn = open_workspace(out / 'workspace.sqlite')
+                self.assertIsNotNone(rules_untrusted(conn, 'objtype:order'), case)
+                conn.close()
+                listed = [t['id'] for t in vera.get('/api/workspace/agent/definitions')[1]['types']]   # the first readout judges it
+                standing = next(d for d in ann.get('/api/workspace/agent/standing')[1]['definitions'] if d['id'] == 'objtype:order')
+                conn = open_workspace(out / 'workspace.sqlite')
+                trusted = rules_untrusted(conn, 'objtype:order') is None
+                conn.close()
+                state = self.page(bob, 'order')['state']
+                if case in ('a count with a broken rule', 'a count for other codes'):   # the kept count, or a count with the changed codes, has a broken rule
+                    self.assertEqual((state, standing['confirmed'], 'order' in listed), ('needs_look', False, False), case)
+                else:   # counted again on the data as it is: nothing broken, so it stays confirmed with a count kept
+                    self.assertEqual((state, standing['confirmed'], 'order' in listed, trusted), ('confirmed', True, True, True), case)
+
+    def test_counting_that_fails_takes_nothing_down(self):
+        """A pass that raises: the service starts, the type is not trusted (it goes back saying its rules could not be checked, and who can look), people are
+        told once, other types and other requests carry on, and the type's page opens and says so."""
+        import contextlib
+        from unittest import mock
+        from ontology_poc_generator import object_types
+        model = AskModel(cancelled())
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            self.assertEqual(ann.post('/api/workspace/types', {**ORDER, 'rules': [{'column': '金额', 'check': 'gt', 'value': 0}]})[0], 200)
+            self.confirm(bob, column='状态码')
+            self.confirm(bob)
+            self.assertEqual(ann.post('/api/workspace/types', {'english_name': 'stock', 'name': '库存快照', 'dataset': '库存快照', 'key': ['快照月份', '产品编号'], 'properties': [{'column': '库存数量'}]})[0], 200)
+            self.confirm(bob, 'stock')
+            self._sql(out, "DELETE FROM check_result WHERE check_type = 'value_rules'")   # what an older version leaves: rules never counted on this data
+            log = io.StringIO()
+            with mock.patch.object(object_types, 'run_rules', side_effect=RuntimeError('boom 2520')), contextlib.redirect_stderr(log):
+                started(out)   # at start: the service starts
+            page = self.page(bob, 'order')
+            self.assertEqual(page['state'], 'needs_look')
+            self.assertIn('值规则没法检查', page['reason'])
+            self.assertIn('Bob', page['reason'])
+            self.assertIn('objtype:order', log.getvalue())
+            self.assertNotIn('2520', log.getvalue())   # no data value in the service log
+            self.assertEqual(len(self.told(bob)), 1)
+            self.assertEqual(self.page(bob, 'stock')['state'], 'confirmed')
+            # inside a question: the reader gets an answer, not a dropped connection
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [orders_upload()]})[0], 200)
+            self.confirm(bob)
+            self._sql(out, "DELETE FROM check_result WHERE check_type = 'value_rules'")
+            with mock.patch.object(object_types, 'run_rules', side_effect=RuntimeError('boom')), contextlib.redirect_stderr(io.StringIO()):
+                status, body = ann.post('/api/workspace/ask', {'question': '取消的订单有多少？'})
+                self.assertEqual((status, body['status']), (200, 'refused'), body)
+                self.assertIn('值规则没法检查', body['reason'])
+                self.assertEqual(bob.get('/api/workspace/agent/definitions')[0], 200)
+                # on the type page, and confirming: a proper answer that says so
+                status, page = bob.get('/api/workspace/types/order')
+                self.assertEqual(status, 200, page)
+                self.assertEqual((page['rules'][0]['broken'], page['can_confirm']), (None, False))
+                status, body = bob.post('/api/workspace/types/confirm', {'id': 'order', 'version': page['version'], 'seen': page['seen']})
+                self.assertEqual(status, 409, body)
+                self.assertIn('值规则没法检查', body['error'])
+                self.assertEqual(bob.get('/api/workspace/queue')[0], 200)
+            self.assertEqual(len(self.told(bob)), 2)
+
+    def test_a_cell_that_reads_as_nan_breaks_a_number_rule_and_the_page_still_opens(self):
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            self.assertEqual(ann.post('/api/workspace/types', {**ORDER, 'rules': [{'column': '金额', 'check': 'gt', 'value': 0}]})[0], 200)
+            self.confirm(bob, column='状态码')
+            self.confirm(bob)
+            status, body = ann.post('/api/workspace/datasets/upload', {'files': [orders_upload(lambda r, i: {**r, '金额': ['NaN', 'sNaN', '-nan', 'Infinity'][i]} if i < 4 else r)]})
+            self.assertEqual(status, 200, body)
+            self.assertNotIn('recheck_error', json.dumps(body))
+            page = self.page(bob, 'order')
+            self.assertEqual((page['state'], page['rules'][0]['broken']), ('needs_look', 4))
+            self.assertIn('有 4 行不满足', page['reason'])
+
+    def test_requests_at_once_count_an_uncounted_type_once(self):
+        import threading
+        from unittest import mock
+        from ontology_poc_generator import object_types
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            self.assertEqual(ann.post('/api/workspace/types', {**ORDER, 'rules': [{'column': '金额', 'check': 'gt', 'value': 0}]})[0], 200)
+            self.confirm(bob, column='状态码')
+            self.confirm(bob)
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [orders_upload(lambda r, i: {**r, '金额': '-5'} if i == 0 else r)]})[0], 200)
+            self.confirm(bob, expect=409)   # (the upload already sent it back; start over with an older version's state)
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [orders_upload()]})[0], 200)
+            self.confirm(bob)
+            self._sql(out, "UPDATE element_state SET state = 'confirmed' WHERE element_id = 'objtype:order'")
+            self._sql(out, "DELETE FROM check_result WHERE check_type = 'value_rules'")
+            from tests.test_object_types import ORDERS
+            from ontology_poc_generator.workspace_store import import_records, open_workspace, records_sha256
+            records = [{**r, '金额': '-5'} if i == 0 else r for i, r in enumerate(ORDERS)]
+            conn = open_workspace(out / 'workspace.sqlite')
+            import_records(conn, '订单', records, 'upload', records_sha256(records), 'Ann')
+            conn.close()
+            counted = []
+            real = object_types.run_rules
+            results = []
+            import time
+            with mock.patch.object(object_types, 'run_rules', lambda *a, **k: (counted.append(1), time.sleep(0.3), real(*a, **k))[2]):   # slow enough that the eight overlap
+                readers = [threading.Thread(target=lambda: results.append(bob.get('/api/workspace/agent/definitions')[0])) for _ in range(8)]
+                for t in readers:
+                    t.start()
+                for t in readers:
+                    t.join()
+            self.assertEqual(results, [200] * 8)
+            self.assertEqual(len(counted), 1)
+            self.assertEqual(self.page(bob, 'order')['state'], 'needs_look')
+            self.assertEqual(len(self.told(bob)), 2)
+
+    def test_the_start_up_count_runs_after_the_port_is_open_and_before_its_write_lock(self):
+        import time
+        from unittest import mock
+        from ontology_poc_generator import object_types, ontology_server
+        from ontology_poc_generator.workspace_store import open_workspace
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            self.assertEqual(ann.post('/api/workspace/types', {**ORDER, 'rules': [{'column': '金额', 'check': 'gt', 'value': 3000}]})[0], 200)
+            self.confirm(bob, column='状态码')
+            self._older_confirm(out)
+            self._sql(out, "DELETE FROM check_result WHERE check_type = 'value_rules'")
+            statements = []
+
+            def traced(path):
+                conn = open_workspace(path)
+                conn.set_trace_callback(statements.append)
+                return conn
+            real = object_types.run_rules
+            with mock.patch.object(object_types, 'run_rules', lambda *a, **k: (time.sleep(1), real(*a, **k))[1]), mock.patch.object(ontology_server, 'open_workspace', traced):
+                begun = time.perf_counter()
+                server = ontology_server.make_server(port=0, gateway=None, output_dir=out)
+                self.assertLess(time.perf_counter() - begun, 0.9)   # the port is open before the count is done
+                self.assertTrue(server.settled.wait(30))
+                server.server_close()
+            begin = statements.index('BEGIN IMMEDIATE')
+            passes = [i for i, sql in enumerate(statements) if sql.startswith('SELECT COUNT(*), COALESCE(SUM(CASE WHEN')]
+            self.assertEqual(len(passes), 1)
+            self.assertLess(passes[0], begin)
+            self.assertEqual(self.page(bob, 'order')['state'], 'needs_look')
+
+    def test_scope_inside_a_transaction_writes_nothing_and_leaves_an_untrusted_type_out(self):
+        from ontology_poc_generator.workspace_questions import scope
+        from ontology_poc_generator.workspace_store import open_workspace
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            self.assertEqual(ann.post('/api/workspace/types', {**ORDER, 'rules': [{'column': '金额', 'check': 'gt', 'value': 0}]})[0], 200)
+            self.confirm(bob, column='状态码')
+            self.confirm(bob)
+            self._sql(out, "DELETE FROM check_result WHERE check_type = 'value_rules'")
+            conn = open_workspace(out / 'workspace.sqlite')
+            try:
+                conn.execute('BEGIN')
+                self.assertNotIn('order', scope(conn, None)['types'])
+                conn.execute('ROLLBACK')
+                self.assertIn('order', scope(conn, None)['types'])   # outside a transaction it is counted (nothing broken) and used
+            finally:
+                conn.close()
 
     def test_a_type_stored_before_value_rules_takes_rules_with_nothing_added_to_the_file(self):
         """A rule is part of the type's definition (its content), so the file gains no table or column: a type written with no rules takes them on its next edit."""
