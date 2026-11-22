@@ -19,6 +19,7 @@ import json
 from pathlib import Path
 import zipfile
 
+from ontology_poc_generator import other_names
 from ontology_poc_generator.caliber import line_of
 from ontology_poc_generator.derived_properties import derived_id, derived_visible, describe as describe_derived, evaluate
 from ontology_poc_generator.explorer import _load, _object_key, whole_page
@@ -47,25 +48,37 @@ def _stamp(conn, element_id: str) -> dict:
     return {'confirmed_by': line['by'], 'confirmed_on': line['on']}
 
 
+def _called(content: dict) -> dict:
+    """{'other_names': [...]} of a definition that has some, else {}."""
+    return {'other_names': other_names.of(content)} if other_names.of(content) else {}
+
+
+def _meanings_called(row: dict) -> dict:
+    """{'other_names': {label: [...]}} of a code column's meanings that have some, else {}."""
+    found = other_names.meaning_names(_content(row)['values'])
+    return {'other_names': found} if found else {}
+
+
 def definitions(conn, user: dict | None) -> dict:
-    """The confirmed definitions this person may see: {'types', 'relations', 'views', 'derived', 'rules'}. Nothing that is not confirmed, no row, no count of the data."""
+    """The confirmed definitions this person may see: {'types', 'relations', 'views', 'derived', 'rules'}, each with its other names when it has some. Nothing that
+    is not confirmed, no row, no count of the data."""
     sc = scope(conn, user)
     types = []
     for name, t in sc['types'].items():
         content = t['content']
         hidden = hidden_values(conn, type_id(name))
-        meanings = {column: {'values': m['labels'], **_stamp(conn, m['row']['element_id'])} for column, m in sc['meanings'].get(name, {}).items() if column not in hidden}
-        types.append({'id': name, 'name': content['name'], 'description': content['description'], 'dataset': content['dataset'], 'key': content['key'],
-                      'properties': [{'column': p['column'], 'name': p['name'], 'type': p['type'], 'code': p['enum'] and p['column'] in meanings} for p in content['properties']],
+        meanings = {column: {'values': m['labels'], **_meanings_called(m['row']), **_stamp(conn, m['row']['element_id'])} for column, m in sc['meanings'].get(name, {}).items() if column not in hidden}
+        types.append({'id': name, 'name': content['name'], **_called(content), 'description': content['description'], 'dataset': content['dataset'], 'key': content['key'],
+                      'properties': [{'column': p['column'], 'name': p['name'], **_called(p), 'type': p['type'], 'code': p['enum'] and p['column'] in meanings} for p in content['properties']],
                       'meanings': meanings, **_stamp(conn, t['row']['element_id'])})
     relations = [{'id': name, 'name': r['content']['name'], 'from': r['content']['from'], 'to': r['content']['to'], 'cardinality': r['content']['cardinality'],
                   'from_column': r['content']['from_column'], 'to_column': r['content']['to_column'], **_stamp(conn, r['row']['element_id'])} for name, r in sc['relations'].items()]
-    views = [{'id': name, 'name': name, 'type': v['content']['type'], 'says': describe_view(v['content'], sc['types'][v['content']['type']]['content']['name']),
+    views = [{'id': name, 'name': name, **_called(v['content']), 'type': v['content']['type'], 'says': describe_view(v['content'], sc['types'][v['content']['type']]['content']['name']),
               'line': line_of(conn, v['row']['element_id'])['line'], **_stamp(conn, v['row']['element_id'])} for name, v in sc['views'].items()]
-    derived = [{'id': d['content']['english_name'], 'name': d['content']['name'], 'type': d['content']['type'], 'kind': d['content']['kind'], 'output_type': d['content']['output_type'],
+    derived = [{'id': d['content']['english_name'], 'name': d['content']['name'], **_called(d['content']), 'type': d['content']['type'], 'kind': d['content']['kind'], 'output_type': d['content']['output_type'],
                 'says': describe_derived(conn, d['content']), **_stamp(conn, element_id)} for element_id, d in sc['derived'].items()]
     # one that names a column the owner keeps from models is listed, but not the sentence that spells out that column's meaning (its meanings are left out above too)
-    derived += [{'id': d['content']['english_name'], 'name': d['content']['name'], 'type': d['content']['type'], 'kind': d['content']['kind'], 'output_type': d['content']['output_type'],
+    derived += [{'id': d['content']['english_name'], 'name': d['content']['name'], **_called(d['content']), 'type': d['content']['type'], 'kind': d['content']['kind'], 'output_type': d['content']['output_type'],
                  'says': None, **_stamp(conn, element_id)} for element_id, d in sc['derived_kept_back'].items()]
     return {'types': types, 'relations': relations, 'views': views, 'derived': derived, 'rules': REFUSAL_RULES}
 
@@ -92,7 +105,7 @@ def unconfirmed(conn, user: dict | None) -> dict:
 STANDING_PATH = '/api/workspace/agent/standing'
 STANDING_TOOL = 'definition_standing'
 KINDS = ('type', 'meaning', 'relation', 'view', 'derived')
-SHEET_COLUMNS = ('id', 'kind', 'name', 'definition', 'confirmed_by', 'confirmed_at', 'data_versions')
+SHEET_COLUMNS = ('id', 'kind', 'name', 'definition', 'confirmed_by', 'confirmed_at', 'data_versions', 'other_names')
 
 
 def _last_confirmation(conn, element_id: str) -> dict:
@@ -123,13 +136,30 @@ def _standing(conn, user: dict | None) -> tuple[list[dict], dict]:
     entries, says = [], {}
     for row, open_text in _confirmed_rows(conn, sc):
         kind, name = _kind_and_name(conn, row, sc['types'])
-        entries.append({'id': row['element_id'], 'kind': kind, 'name': name, 'state': 'confirmed', 'confirmed': True, **_last_confirmation(conn, row['element_id'])})
+        entries.append({'id': row['element_id'], 'kind': kind, 'name': name, **_standing_called(conn, row, kind), 'state': 'confirmed', 'confirmed': True, **_last_confirmation(conn, row['element_id'])})
         says[row['element_id']] = _says(conn, sc, kind, _content(row)) if open_text else None
     for line in _not_confirmed(conn, user):
-        entries.append({'id': line['id'], 'kind': line['kind'], 'name': line['name'], 'state': line['state'], 'confirmed': False, **_last_confirmation(conn, line['id']),
+        entries.append({'id': line['id'], 'kind': line['kind'], 'name': line['name'], **_standing_called(conn, element_row(conn, line['id']), line['kind']), 'state': line['state'], 'confirmed': False, **_last_confirmation(conn, line['id']),
                         **{k: line[k] for k in ('reason_hidden', 'cause_word', 'stale_word', 'who_can_confirm', 'proposed_by')}, 'proposed_with_token': _proposed_with_token(conn, line['id']),
                         'reason': line['reason'] or (None if line['reason_hidden'] else _state_words(line['state']))})   # one that only waits: its state is the cause
     return sorted(entries, key=lambda e: (KINDS.index(e['kind']), e['id'])), says
+
+
+def _standing_called(conn, row: dict, kind: str) -> dict:
+    """The other names a standing entry carries: a list, or for the meanings of a code column {label: [...]} (none for meanings whose values are kept from models,
+    as their words are not written out either)."""
+    if kind == 'meaning':
+        content = _content(row)
+        return _meanings_called(row) if content['column'] not in hidden_values(conn, type_id(content['type'])) else {}
+    return _called(_content(row)) if kind in ('type', 'view', 'derived') else {}
+
+
+def _called_text(entry: dict) -> str:
+    """The other names of a standing entry in one cell of the sheet."""
+    found = entry.get('other_names')
+    if isinstance(found, dict):
+        return tr('；', '; ').join(f'{label}{tr("：", ": ")}{tr("、", ", ").join(names)}' for label, names in found.items())
+    return tr('、', ', ').join(found or [])
 
 
 def _says(conn, sc: dict, kind: str, content: dict) -> str:
@@ -169,7 +199,7 @@ def standing_sheet(conn, user: dict | None) -> tuple[str, str, bytes]:
     for e in entries:
         if e['confirmed']:
             versions = ' '.join(f'{n} v{v}' for n, v in (e['data_versions'] or {}).items())
-            writer.writerow(_csv_cell(v) for v in (e['id'], e['kind'], e['name'], says[e['id']] or '', e['confirmed_by'], e['confirmed_at'], versions))
+            writer.writerow(_csv_cell(v) for v in (e['id'], e['kind'], e['name'], says[e['id']] or '', e['confirmed_by'], e['confirmed_at'], versions, _called_text(e)))
     return 'text/csv; charset=utf-8', 'ontopoc-confirmed-definitions.csv', out.getvalue().encode('utf-8-sig')
 
 
@@ -210,13 +240,18 @@ def read_derived(conn, user: dict | None, type_name, name, key=None, page=1) -> 
 
 # --- the skill folder ------------------------------------------------------------------------------------------------------------------------------------
 
+def _also(names) -> str:
+    """'（又称 订单、销售单）' after a name that has other names, else ''."""
+    return f'（又称 {"、".join(names)}）' if names else ''
+
+
 def _meaning_lines(t: dict) -> list[str]:
-    return [f'- {column}：' + tr('、', ', ').join(f'{v} = {label}' for v, label in m['values'].items()) + f'（{m["confirmed_by"]} 确认于 {m["confirmed_on"]}）' for column, m in t['meanings'].items()]
+    return [f'- {column}：' + tr('、', ', ').join(f'{v} = {label}{_also(m.get("other_names", {}).get(label))}' for v, label in m['values'].items()) + f'（{m["confirmed_by"]} 确认于 {m["confirmed_on"]}）' for column, m in t['meanings'].items()]
 
 
 def _type_file(t: dict) -> str:
-    props = [f'- {p["name"]}（{p["column"]}，{p["type"]}{"，代码列" if p["code"] else ""}）' for p in t['properties']]
-    return '\n'.join([f'# {t["name"]}（{t["id"]}）', '', t['description'] or '', '', f'来自数据集 {t["dataset"]}；主键 {tr("、", ", ").join(t["key"])}；{t["confirmed_by"]} 确认于 {t["confirmed_on"]}。', '',
+    props = [f'- {p["name"]}（{p["column"]}，{p["type"]}{"，代码列" if p["code"] else ""}）{_also(p.get("other_names"))}' for p in t['properties']]
+    return '\n'.join([f'# {t["name"]}（{t["id"]}）', '', *([f'又称：{"、".join(t["other_names"])}', ''] if t.get('other_names') else []), t['description'] or '', '', f'来自数据集 {t["dataset"]}；主键 {tr("、", ", ").join(t["key"])}；{t["confirmed_by"]} 确认于 {t["confirmed_on"]}。', '',
                       '## 属性', *props, *(['', '## 代码的含义', *_meaning_lines(t)] if t['meanings'] else [])]).strip() + '\n'
 
 
@@ -229,8 +264,8 @@ def skill_files(conn, user: dict | None, today: date | None = None) -> dict[str,
     files['definitions/relations.md'] = '# 关系\n\n' + ('\n'.join(
         f'- {r["name"]}：{by_type[r["from"]]["name"]} → {by_type[r["to"]]["name"]}（{r["cardinality"]}，{r["from_column"]} = {r["to_column"]}；{r["confirmed_by"]} 确认于 {r["confirmed_on"]}）'
         for r in d['relations']) or '还没有已确认的关系。') + '\n'
-    files['definitions/views.md'] = '# 视图（取哪些行）\n\n' + ('\n'.join(f'- {v["name"]}：{v["line"]}' for v in d['views']) or '还没有已确认的视图。') + '\n'
-    files['definitions/derived.md'] = '# 派生属性\n\n' + ('\n'.join(f'- {x["name"]}：{x["says"] or "算法没有写出来（用到的列的含义不对模型开放），值用 read_derived_property 读"}（{x["confirmed_by"]} 确认于 {x["confirmed_on"]}）' for x in d['derived']) or '还没有已确认的派生属性。') + '\n'
+    files['definitions/views.md'] = '# 视图（取哪些行）\n\n' + ('\n'.join(f'- {v["name"]}{_also(v.get("other_names"))}：{v["line"]}' for v in d['views']) or '还没有已确认的视图。') + '\n'
+    files['definitions/derived.md'] = '# 派生属性\n\n' + ('\n'.join(f'- {x["name"]}{_also(x.get("other_names"))}：{x["says"] or "算法没有写出来（用到的列的含义不对模型开放），值用 read_derived_property 读"}（{x["confirmed_by"]} 确认于 {x["confirmed_on"]}）' for x in d['derived']) or '还没有已确认的派生属性。') + '\n'
     files['refusal-rules.md'] = '# 什么时候该拒绝回答\n\n' + '\n'.join(f'{i}. {r}' for i, r in enumerate(d['rules'], 1)) + '\n'
     files['definitions/definitions.json'] = json.dumps({k: d[k] for k in ('types', 'relations', 'views', 'derived')}, ensure_ascii=False, indent=2) + '\n'
     index = '\n'.join(f'- [{t["name"]}](definitions/{t["id"]}.md)' for t in d['types']) or '还没有已确认的对象类型。'
@@ -239,7 +274,7 @@ def skill_files(conn, user: dict | None, today: date | None = None) -> dict[str,
         '# 已确认的业务定义', '', f'导出于 {day}。里面只有已经由两个人确认过的定义，没有数据行，也没有还在等确认的东西。', '',
         f'这是导出那天的快照：定义之后可能被改动，或者不再是已确认的。某条定义现在是不是已确认、谁确认的、在哪个数据版本上，以 GET {STANDING_PATH}（MCP 工具 {STANDING_TOOL}）为准；'
         '最新的定义内容用 MCP 的 describe_definitions。', '',
-        '## 怎么用', '', '1. 先看下面的对象类型，找到问题说的是哪一个。', '2. 代码列的含义、视图的取行条件、派生属性的算式，都以对应文件为准。', '3. 文件里没有的，按 [refusal-rules.md](refusal-rules.md) 拒答。', '',
+        '## 怎么用', '', '1. 先看下面的对象类型，找到问题说的是哪一个。写着“又称”的，是同一个定义的另一个名字，问题用哪个都一样。', '2. 代码列的含义、视图的取行条件、派生属性的算式，都以对应文件为准。', '3. 文件里没有的，按 [refusal-rules.md](refusal-rules.md) 拒答。', '',
         '## 对象类型', '', index, '', '## 其他定义', '', '- [关系](definitions/relations.md)', '- [视图](definitions/views.md)', '- [派生属性](definitions/derived.md)', '- [拒答规则](refusal-rules.md)',
         '- 同样的内容，机器可读：definitions/definitions.json', '', '## 拒答规则', '', *(f'{i}. {r}' for i, r in enumerate(d['rules'], 1)), ''])
     return files

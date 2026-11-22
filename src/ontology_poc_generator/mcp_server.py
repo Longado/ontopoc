@@ -499,8 +499,10 @@ AGENT_GROUPS = 50   # groups an agent is given in one answer; the count of all o
 
 
 def _property(p: dict) -> dict:
-    """A property as an agent needs it: its column and type, its name only when that differs from the column, `code` only when it is a code column."""
-    return {'column': p['column'], **({'name': p['name']} if p.get('name') != p['column'] else {}), 'type': p['type'], **({'code': True} if p.get('code') else {})}
+    """A property as an agent needs it: its column and type, its name only when that differs from the column, its other names when it has some, `code` only when it
+    is a code column."""
+    return {'column': p['column'], **({'name': p['name']} if p.get('name') != p['column'] else {}), **({'other_names': p['other_names']} if p.get('other_names') else {}),
+            'type': p['type'], **({'code': True} if p.get('code') else {})}
 
 
 def describe_definitions(s, a):
@@ -513,7 +515,7 @@ def describe_definitions(s, a):
         wanted = [wanted]
     if not isinstance(wanted, list) or not wanted or not all(isinstance(w, str) for w in wanted):   # [] is not "all": that is leaving types out
         raise ToolError('types 要写成类型的英文名或中文名的列表，例如 ["order", "客户"]；要全部就不写 types')
-    named = {**{t['name']: t['id'] for t in d['types']}, **{t['id']: t['id'] for t in d['types']}}
+    named = {**{n: t['id'] for t in d['types'] for n in t.get('other_names', [])}, **{t['name']: t['id'] for t in d['types']}, **{t['id']: t['id'] for t in d['types']}}   # a type by its English name, its name or an other name
     unknown = [w for w in wanted if w not in named]
     if unknown:
         raise ToolError(f'没有已确认的类型「{"、".join(unknown)}」。有的类型：' + '、'.join(f'{t["name"]}（{t["id"]}）' for t in d['types']))
