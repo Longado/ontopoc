@@ -45,6 +45,8 @@ COMPARE = {'>': 'more_than', '>=': 'at_least', '<': 'less_than', '<=': 'at_most'
 KEYWORDS = {'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'GROUP', 'BY', 'ORDER', 'ASC', 'DESC', 'LIMIT', 'AS', 'IN', 'NOT', 'BETWEEN', 'LIKE', 'IS', 'NULL', 'JOIN', 'ON', 'HAVING'}
 MAX_TEXT = 4000
 MAX_GRAPH = 100   # start objects a SELECT GRAPH may draw: a picture of more is not read, it is counted
+MAX_LIST = 50   # objects one page of a SELECT LIST shows at most: LIMIT n sets a smaller page, a larger one is refused
+TODAY = 'today'   # a range bound that is the date of the day the query runs (with `rows`): the host puts the date in and says which one it used
 QUERY_KEYS = ('start', 'where', 'via', 'group_by', 'share', 'measure', 'top', 'order')
 _TOKEN = re.compile(r"""
     (?P<space>\s+|--[^\n]*)
@@ -115,8 +117,12 @@ class _Reader:
             return self.text[at:at + len(v)]
         return self.take('name', what=what)
 
-    def value(self):
+    def value(self, today: bool = False):
+        """A value: 'text', a number or a $parameter; with `today`, also the word today (a range bound)."""
         k, v, at = self.tokens[self.i]
+        if today and k == 'name' and v.lower() == TODAY:
+            self.i += 1
+            return TODAY
         if k in ('string', 'number'):
             self.i += 1
             if k == 'number' and self.tokens[self.i][0] == 'number' and self.tokens[self.i][1].startswith('-'):   # 2026-01-01 read as 2026, -01, -01
@@ -214,7 +220,8 @@ def _edge(r: _Reader) -> dict:
     return {'relation': name, 'dir': 'any', 'at': at}
 
 
-def _condition(r: _Reader) -> dict:
+def _condition(r: _Reader, today: bool = False) -> dict:
+    """One condition; `today`: a range bound may be the word today."""
     at = r.at()
     var, prop = _ref(r)
     if r.peek('op', '='):
@@ -225,12 +232,12 @@ def _condition(r: _Reader) -> dict:
         return {'var': var, 'prop': prop, 'not': True, 'values': [r.value()], 'at': at}
     if r.tokens[r.i][1] in COMPARE and r.tokens[r.i][0] == 'op':
         op = r.take()
-        return {'var': var, 'prop': prop, 'range': {COMPARE[op]: r.value()}, 'at': at}
+        return {'var': var, 'prop': prop, 'range': {COMPARE[op]: r.value(today)}, 'at': at}
     if r.peek('kw', 'BETWEEN'):
         r.take()
-        low = r.value()
+        low = r.value(today)
         r.take('kw', 'AND', tr('AND：BETWEEN 下限 AND 上限', 'AND: BETWEEN lower AND upper'))
-        return {'var': var, 'prop': prop, 'range': {'at_least': low, 'at_most': r.value()}, 'at': at}
+        return {'var': var, 'prop': prop, 'range': {'at_least': low, 'at_most': r.value(today)}, 'at': at}
     negated = r.peek('kw', 'NOT')
     if negated:
         r.take()
@@ -254,14 +261,42 @@ def param_names(text: str) -> list[str]:
     return list(dict.fromkeys(v[1:] for k, v, _ in _tokens(text) if k == 'param'))
 
 
-def parse(text: str, params: dict | None = None) -> dict:
-    """The text as its parts (no names are looked up yet): select, chains, where, group, order, limit."""
+def _rows_head(r: _Reader) -> dict | None:
+    """SELECT LIST o, SELECT LIST o.p, o.q or SELECT ONE o: {'kind': 'list' | 'one', 'var', 'props': [(var, prop, at)], 'at'}; None when the text says neither."""
+    if not (r.peek('name') and r.tokens[r.i][1].upper() in ('LIST', 'ONE') and (r.peek('name', ahead=1) or r.peek('kw', ahead=1)) and not r.peek('kw', 'FROM', 1)):
+        return None
+    at, kind = r.at(), r.take().lower()
+    kind = 'list' if kind == 'list' else 'one'
+    if kind == 'one' or not r.peek('op', '.', 1):
+        var = r.name(tr('对象的简称，例如 SELECT LIST o', 'the short name of the objects, for example SELECT LIST o'))
+        if r.peek('op', '.'):
+            raise QueryError(tr('SELECT ONE 后面只写对象的简称，例如 SELECT ONE o：它给出这个对象全部能看的属性', 'Write only the short name after SELECT ONE, for example SELECT ONE o: it gives every property of the object you may see'), r.at())
+        if r.peek('op', ','):
+            raise QueryError(tr('只写 SELECT LIST o 就给主键和前 8 个属性；要指定属性，写 SELECT LIST o.属性, o.属性', 'SELECT LIST o alone gives the key and the first 8 properties; to name properties, write SELECT LIST o.property, o.property'), r.at())
+        return {'kind': kind, 'var': var, 'props': [], 'at': at}
+    props = []
+    while True:
+        here = r.at()
+        var, prop = _ref(r)
+        props.append((var, prop, here))
+        if not r.peek('op', ','):
+            break
+        r.take()
+    return {'kind': kind, 'var': props[0][0], 'props': props, 'at': at}
+
+
+def parse(text: str, params: dict | None = None, rows: bool = False) -> dict:
+    """The text as its parts (no names are looked up yet): select, chains, where, group, order, limit. `rows`: SELECT LIST, SELECT ONE and the range bound
+    today are read too (without it they are read as before: not at all)."""
     if not isinstance(text, str) or not text.strip():
         raise QueryError(tr('请写一条查询，例如 SELECT count(o) FROM (o:订单)', 'Write a query, for example SELECT count(o) FROM (o:orders)'))
     if len(text) > MAX_TEXT:
         raise QueryError(tr(f'一条查询最多 {MAX_TEXT} 个字', f'A query can be at most {MAX_TEXT} characters'))
     r = _Reader(text, params)
     r.take('kw', 'SELECT', 'SELECT')
+    listing = _rows_head(r) if rows else None
+    if listing:
+        return _parse_rows(r, listing)
     graph = r.peek('name') and r.tokens[r.i][1].upper() == 'GRAPH' and (r.peek('kw', 'FROM', 1) or r.peek('op', ',', 1))
     if graph:   # SELECT GRAPH: the objects and how they are related, not a number
         r.take()
@@ -288,10 +323,10 @@ def parse(text: str, params: dict | None = None) -> dict:
     where = []
     if r.peek('kw', 'WHERE'):
         r.take()
-        where.append(_condition(r))
+        where.append(_condition(r, rows))
         while r.peek('kw', 'AND'):
             r.take()
-            where.append(_condition(r))
+            where.append(_condition(r, rows))
         if r.peek('kw', 'OR'):
             raise QueryError(tr('现在只能用 AND 连起几个条件；OR 还不支持（同一个属性的几个值可以写 IN）', 'Conditions can only be joined with AND; OR is not supported yet (several values of one property can be written with IN)'), r.at())
     group = []
@@ -338,6 +373,47 @@ def parse(text: str, params: dict | None = None) -> dict:
         k, v, at = r.tokens[r.i]
         raise QueryError(tr(f'第 {at + 1} 个字附近的“{v}”多出来了，或者这个位置还不支持它', f'"{v}" near character {at + 1} is extra, or is not supported in this position'), at)
     return {'select': select, 'chains': chains, 'where': where, 'group': group, 'order': order, 'limit': limit, 'graph': bool(graph)}
+
+
+def _parse_rows(r: _Reader, listing: dict) -> dict:
+    """The rest of a SELECT LIST or SELECT ONE: FROM one node (no relation), WHERE conditions joined by AND (a range bound may be today), and for a list LIMIT n
+    (the page size, at most MAX_LIST)."""
+    word = 'SELECT LIST' if listing['kind'] == 'list' else 'SELECT ONE'
+    r.take('kw', 'FROM', 'FROM')
+    node = _node(r)
+    if r.peek('op', '-') or r.peek('op', '<-') or r.peek('op', ','):
+        raise QueryError(tr(f'{word} 列出的是一个对象类型自己的对象：FROM 里只写一个节点，例如 FROM (o:订单)，不沿关系走', f'{word} lists the objects of one object type: write one node in FROM, for example FROM (o:orders), and follow no relation'), r.at())
+    if r.peek('kw', 'JOIN'):
+        raise QueryError(tr('这里不写 JOIN：在 FROM 里沿关系走，例如 FROM (o:订单)-[:订单属于客户]->(c:客户)', 'Do not write JOIN: follow relations in FROM, for example FROM (o:orders)-[:order_customer]->(c:customers)'), r.at())
+    where = []
+    if r.peek('kw', 'WHERE'):
+        r.take()
+        where.append(_condition(r, today=True))
+        while r.peek('kw', 'AND'):
+            r.take()
+            where.append(_condition(r, today=True))
+        if r.peek('kw', 'OR'):
+            raise QueryError(tr('现在只能用 AND 连起几个条件；OR 还不支持（同一个属性的几个值可以写 IN）', 'Conditions can only be joined with AND; OR is not supported yet (several values of one property can be written with IN)'), r.at())
+    for word_kw in ('GROUP', 'ORDER', 'HAVING'):
+        if r.peek('kw', word_kw):
+            raise QueryError(tr(f'{word} 不分组、不排序：对象按主键排好，一页最多 {MAX_LIST} 个；要算数用 count()、sum()', f'{word} does not group or sort: the objects come in the order of their key, at most {MAX_LIST} a page; to calculate, use count() or sum()'), r.at())
+    limit = None
+    if r.peek('kw', 'LIMIT'):
+        at = r.at()
+        r.take()
+        k, v, _ = r.tokens[r.i]
+        if k != 'number' or not v.isdigit() or int(v) < 1:
+            raise QueryError(tr('LIMIT 后面写一个大于 0 的整数', 'Write a whole number greater than 0 after LIMIT'), at)
+        if listing['kind'] == 'one':
+            raise QueryError(tr('SELECT ONE 只给一个对象，不写 LIMIT', 'SELECT ONE gives one object: do not write LIMIT'), at)
+        if int(v) > MAX_LIST:
+            raise QueryError(tr(f'一页最多列 {MAX_LIST} 个对象，LIMIT 写 1 到 {MAX_LIST}；后面的对象翻页看（page 2、3…），总数在 total 里', f'A page lists at most {MAX_LIST} objects: write LIMIT 1 to {MAX_LIST}. See the rest on the next pages (page 2, 3, ...); the total is in total'), at)
+        r.take()
+        limit = {'n': int(v), 'at': at}
+    if not r.peek('end'):
+        k, v, at = r.tokens[r.i]
+        raise QueryError(tr(f'第 {at + 1} 个字附近的“{v}”多出来了，或者这个位置还不支持它', f'"{v}" near character {at + 1} is extra, or is not supported in this position'), at)
+    return {'select': [], 'chains': [[node]], 'where': where, 'group': [], 'order': None, 'limit': limit, 'graph': False, 'rows': listing}
 
 
 def is_graph(text) -> bool:
@@ -432,9 +508,10 @@ def _paths(start: str, edges: list) -> dict[str, list[str]]:
     return out
 
 
-def compile_query(text: str, catalog: dict, params: dict | None = None) -> dict:
-    """The checked query the text says, with every key (see QUERY_KEYS), or QueryError saying what cannot be said and why."""
-    parsed = parse(text, params)
+def compile_query(text: str, catalog: dict, params: dict | None = None, rows: bool = False) -> dict:
+    """The checked query the text says, with every key (see QUERY_KEYS), or QueryError saying what cannot be said and why. `rows`: SELECT LIST and SELECT ONE
+    are read too, and give the same keys plus 'list' ({'properties', 'limit'?}) or 'lookup' ({key column: value}); a range bound may be today."""
+    parsed = parse(text, params, rows)
     types, edges = _bind(catalog, parsed)
 
     def prop_of(var, prop, at=None):
@@ -444,6 +521,8 @@ def compile_query(text: str, catalog: dict, params: dict | None = None) -> dict:
             raise _no_property(catalog, types[var], prop, at)
         return prop
 
+    if parsed.get('rows'):
+        return _compile_rows(parsed, types, prop_of)
     if parsed['graph']:
         return _compile_graph(catalog, parsed, types, edges, prop_of)
 
@@ -559,8 +638,40 @@ def _compile_graph(catalog: dict, parsed: dict, types: dict, edges: list, prop_o
             'top': parsed['limit']['n'] if parsed['limit'] else None, 'order': None, 'graph': [list(p) for p in drawn]}
 
 
-def canonical(query: dict) -> dict:
-    """A structured query with every key, in the shape compile_query returns (group_by as dimensions, empty parts as None or [])."""
+def _compile_rows(parsed: dict, types: dict, prop_of) -> dict:
+    """SELECT LIST: the objects of the one node that meet the conditions, with the properties named (none: the key and the first ones). SELECT ONE: the object
+    whose key the conditions give, every one an equals (which columns are the key is checked where the type is known)."""
+    listing = parsed['rows']
+    node = parsed['chains'][0][0]
+    var = node['var']
+    if listing['var'] != var:
+        raise QueryError(tr(f'简称 {listing["var"]} 没有在 FROM 里出现', f'The short name {listing["var"]} does not appear in FROM'), listing['at'])
+    for c in parsed['where']:
+        if c['var'] != var:
+            raise QueryError(tr(f'简称 {c["var"]} 没有在 FROM 里出现', f'The short name {c["var"]} does not appear in FROM'), c['at'])
+    base = {'start': types[var], 'via': [], 'group_by': None, 'share': None, 'measure': None, 'top': None, 'order': None}
+    if listing['kind'] == 'one':
+        lookup = {}
+        for c in parsed['where']:
+            if 'range' in c or c['not'] or len(c['values']) != 1:
+                raise QueryError(tr('SELECT ONE 按主键找一个对象：WHERE 里每个条件都写成 o.主键列 = \'值\'，用 AND 连起来；要按条件列出对象，用 SELECT LIST', "SELECT ONE finds one object by its key: write each condition as o.key_column = 'value', joined by AND; to list objects that meet conditions, use SELECT LIST"), c['at'])
+            prop = prop_of(var, c['prop'], c['at'])
+            if prop in lookup:
+                raise QueryError(tr(f'{var}.{prop} 写了两次', f'{var}.{prop} is written twice'), c['at'])
+            lookup[prop] = str(c['values'][0])
+        if not lookup:
+            raise QueryError(tr('SELECT ONE 要写 WHERE o.主键列 = \'值\'：它按主键找一个对象', "SELECT ONE needs WHERE o.key_column = 'value': it finds one object by its key"), listing['at'])
+        return {**base, 'where': [], 'lookup': lookup}
+    for v, _, at in listing['props']:
+        if v != var:
+            raise QueryError(tr(f'简称 {v} 没有在 FROM 里出现', f'The short name {v} does not appear in FROM'), at)
+    named = [prop_of(var, p, at) for _, p, at in listing['props']]
+    return {**base, 'where': _where(parsed, prop_of), 'list': {'properties': list(dict.fromkeys(named)), **({'limit': parsed['limit']['n']} if parsed['limit'] else {})}}
+
+
+def canonical(query: dict, rows: bool = False) -> dict:
+    """A structured query with every key, in the shape compile_query returns (group_by as dimensions, empty parts as None or []). `rows`: a list or a lookup
+    keeps its part ('list', 'lookup')."""
     q = {k: query.get(k) for k in QUERY_KEYS}
     q['where'] = list(q['where'] or [])
     q['via'] = list(q['via'] or [])
@@ -571,6 +682,11 @@ def canonical(query: dict) -> dict:
     q['group_by'] = [{'via': list(d.get('via') or []), 'field': d['field'], **({'by': d['by']} if d.get('by') else {})} for d in gb] if gb else None
     if query.get('graph') is not None:   # SELECT GRAPH: the paths it draws
         q['graph'] = [list(p) for p in query['graph']]
+    if rows and isinstance(query.get('list'), dict):   # SELECT LIST: the properties named, and the page size when one is given
+        props = query['list'].get('properties') or []
+        q['list'] = {'properties': list(dict.fromkeys(props)) if isinstance(props, list) else props, **({'limit': query['list']['limit']} if query['list'].get('limit') is not None else {})}
+    elif rows and isinstance(query.get('lookup'), dict):   # SELECT ONE: the key it looks up
+        q['lookup'] = {str(k): str(v) for k, v in query['lookup'].items()}
     return q
 
 
@@ -588,9 +704,10 @@ def _shown_name(table: dict, key: str) -> str:
     return name if sum(1 for v in table.values() if (v.get('name') or None) == name) == 1 and name not in table else key
 
 
-def to_text(query: dict, catalog: dict) -> str:
-    """The structured query as OntoPoc Query text (compile_query of it gives canonical(query) back). QueryError when it names what the catalog lacks."""
-    q = canonical(query)
+def to_text(query: dict, catalog: dict, rows: bool = False) -> str:
+    """The structured query as OntoPoc Query text (compile_query of it gives canonical(query) back). QueryError when it names what the catalog lacks. `rows`: a
+    list is written SELECT LIST, a lookup SELECT ONE, and the range bound today as the word today."""
+    q = canonical(query, rows)
     if q['start'] not in catalog['types']:
         raise _no_type(catalog, str(q['start']), None)
     used_letters: dict[str, int] = {}
@@ -638,7 +755,10 @@ def to_text(query: dict, catalog: dict) -> str:
     if chains[0] == head and len(chains) > 1 and chains[1].startswith(f'({start_var})'):
         chains[0] = head + chains.pop(1)[len(f'({start_var})'):]
     m, s = q['measure'], q['share']
-    if graph is not None:
+    listed, lookup = q.get('list'), q.get('lookup')
+    if listed is not None or lookup is not None:
+        agg = alias = None
+    elif graph is not None:
         agg = alias = None
     elif m:
         fn = {'sum': 'sum', 'average': 'avg'}.get(m.get('op'))
@@ -654,9 +774,16 @@ def to_text(query: dict, catalog: dict) -> str:
         agg, alias = f'share({start_var}.{_ident(str(s["field"]))} = {_literal(s["equals"])})', _alias('share')
     else:
         agg, alias = f'count({counted})', _alias('count')
-    lines = ['SELECT GRAPH' if graph is not None else f'SELECT {", ".join([*(dim_text(*d) for d in dims), f"{agg} AS {alias}"])}', f'FROM {", ".join(chains)}']
-    conds = []
-    bound = lambda v: str(v) if re.fullmatch(r'-?\d+(\.\d+)?', str(v)) else _literal(v)
+    if lookup is not None:
+        head_line = f'SELECT ONE {start_var}'
+    elif listed is not None:
+        props = listed.get('properties') or []
+        head_line = f'SELECT LIST {", ".join(f"{start_var}.{_ident(str(p))}" for p in props)}' if props else f'SELECT LIST {start_var}'
+    else:
+        head_line = 'SELECT GRAPH' if graph is not None else f'SELECT {", ".join([*(dim_text(*d) for d in dims), f"{agg} AS {alias}"])}'
+    lines = [head_line, f'FROM {", ".join(chains)}']
+    conds = [f'{start_var}.{_ident(str(k))} = {_literal(v)}' for k, v in (lookup or {}).items()]
+    bound = lambda v: TODAY if rows and str(v).lower() == TODAY else str(v) if re.fullmatch(r'-?\d+(\.\d+)?', str(v)) else _literal(v)
     for w in q['where']:
         ranged = [k for k in COMPARE.values() if isinstance(w, dict) and k in w]
         if not isinstance(w, dict) or not isinstance(w.get('field'), str) or not ('equals' in w or 'not_equals' in w or ranged):
@@ -683,4 +810,6 @@ def to_text(query: dict, catalog: dict) -> str:
         lines.append(f'ORDER BY {alias} {"DESC" if q["order"] == "largest" else "ASC"}')
     if q['top']:
         lines.append(f'LIMIT {q["top"]}')
+    if listed is not None and listed.get('limit') is not None:
+        lines.append(f'LIMIT {listed["limit"]}')
     return '\n'.join(lines)
