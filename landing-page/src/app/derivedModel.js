@@ -1,6 +1,6 @@
 // The words and the payload of the Derived tab of a type page, as plain functions of what the service sends, so they can be tested without a browser.
 import { t } from "./i18n/index.js";
-import { joinList } from "./typeModel.js";
+import { joinList, otherNamesFrom, otherNamesText } from "./typeModel.js";
 
 /** {is: "is", is_not: "is not"} in the current language (read it when rendering). */
 export const OP_LABEL = {};
@@ -19,7 +19,7 @@ export const emptyDerivedForm = (kind = "statistic") => ({
 export function formFromLine(line) {
   const d = line.definition;
   return {
-    kind: d.kind, name: d.name, english_name: d.english_name, description: d.description ?? "", expression: d.expression ?? "",
+    kind: d.kind, name: d.name, english_name: d.english_name, otherNames: otherNamesText(d.other_names), description: d.description ?? "", expression: d.expression ?? "",
     path: d.path ?? [], column: d.measure?.column ?? "", fn: d.fn && d.fn !== "value" ? d.fn : "",
     latest: { order: d.latest?.order ?? "", tie: d.latest?.tie ?? "" },
     conditions: d.conditions?.length ? d.conditions.map(({ column, op, label }) => ({ column, op, label })) : [{ column: "", op: "is", label: "" }],
@@ -28,7 +28,7 @@ export function formFromLine(line) {
 
 /** The payload that makes (or changes) a property, from the form. A condition row left without a meaning is not a condition. */
 export function derivedPayload(type, form) {
-  const base = { type, kind: form.kind, english_name: form.english_name.trim(), name: form.name.trim(), description: form.description.trim() };
+  const base = { type, kind: form.kind, english_name: form.english_name.trim(), name: form.name.trim(), ...(form.otherNames === undefined ? {} : { other_names: otherNamesFrom(form.otherNames) }), description: form.description.trim() };
   if (form.kind === "function") return { ...base, expression: form.expression.trim() };
   return {
     ...base, path: form.path, measure: { column: form.column || null }, fn: form.fn || null,

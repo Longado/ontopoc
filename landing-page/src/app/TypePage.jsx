@@ -13,7 +13,7 @@ import { statusOf } from "./statusModel.js";
 import { State } from "./TypesPage.jsx";
 import { TypeDerived } from "./TypeDerived.jsx";
 import { TypeViews } from "./TypeViews.jsx";
-import { confirmersText, joinList, limitedNote, logText, meaningsSummary, offerFirstAction, reconfirmText, stateLine, tabCounts, typeSub, typeTabs, usesSummary } from "./typeModel.js";
+import { alsoCalled, confirmersText, joinList, limitedNote, logText, meaningsSummary, offerFirstAction, otherNamesFrom, otherNamesText, reconfirmText, stateLine, tabCounts, typeSub, typeTabs, usesSummary } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
 import { PageHeader } from "./ui/PageHeader.jsx";
 
@@ -41,11 +41,13 @@ function Standing({ item, noun }) {
 function Meanings({ type, prop, mayBuild, onChanged }) {
   const m = prop.meanings;
   const saved = Object.fromEntries(m.values.map((v) => [v.value, v.label]));
+  const savedOthers = Object.fromEntries(m.values.map((v) => [v.value, otherNamesText(v.other_names)]));
   const [draft, setDraft] = useState(saved);
+  const [others, setOthers] = useState(savedOthers);   // the other names of each meaning, as the text of its box
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const changed = m.values.some((v) => (draft[v.value] ?? "") !== v.label);
+  const changed = m.values.some((v) => (draft[v.value] ?? "") !== v.label || otherNamesText(otherNamesFrom(others[v.value])) !== savedOthers[v.value]);
   const act = async (run) => {
     setBusy(true);
     setError("");
@@ -57,10 +59,11 @@ function Meanings({ type, prop, mayBuild, onChanged }) {
     }
     setBusy(false);
   };
-  const propose = () => act(() => proposeMeanings(type.id, prop.column, m.values.map((v) => ({ value: v.value, label: draft[v.value] ?? "" }))));
+  const propose = () => act(() => proposeMeanings(type.id, prop.column, m.values.map((v) => ({ value: v.value, label: draft[v.value] ?? "", other_names: otherNamesFrom(others[v.value]) }))));
   const confirm = () => act(() => confirmType(type.id, m.version, m.seen, prop.column));
   const cancel = () => {
     setDraft(saved);
+    setOthers(savedOthers);
     setEditing(false);
   };
   const hasThen = m.state === "needs_look";   // what the rows were when it was confirmed matters only once the data has moved
@@ -76,7 +79,7 @@ function Meanings({ type, prop, mayBuild, onChanged }) {
       <div className="table-wrap">
         <table>
           <thead>
-            <tr><th>{t("types.meanings.value")}</th><th>{t("types.meanings.meaning")}</th>{hasThen && !m.limited_note && <th className="num">{t("types.meanings.thenRows")}</th>}{!m.limited_note && <th className="num">{t("types.meanings.nowRows")}</th>}</tr>
+            <tr><th>{t("types.meanings.value")}</th><th>{t("types.meanings.meaning")}</th>{editable && <th>{t("types.form.meaningOthers")}</th>}{hasThen && !m.limited_note && <th className="num">{t("types.meanings.thenRows")}</th>}{!m.limited_note && <th className="num">{t("types.meanings.nowRows")}</th>}</tr>
           </thead>
           <tbody>
             {m.values.map((v) => (
@@ -86,8 +89,12 @@ function Meanings({ type, prop, mayBuild, onChanged }) {
                   {editable ? (
                     <input type="text" aria-label={t("types.meanings.inputAria", { column: prop.column, value: v.value })} value={draft[v.value] ?? ""} placeholder={v.in_data ? t("types.meanings.placeholder") : t("types.meanings.gone")}
                       onChange={(e) => setDraft({ ...draft, [v.value]: e.target.value })} />
-                  ) : (v.label || <span className="faint">{t("types.meanings.unconfirmed")}</span>)}
+                  ) : (v.label ? <>{v.label}{alsoCalled(v.other_names) && <span className="muted small block">{alsoCalled(v.other_names)}</span>}</> : <span className="faint">{t("types.meanings.unconfirmed")}</span>)}
                 </td>
+                {editable && (
+                  <td><input type="text" aria-label={t("types.form.meaningOthersAria", { column: prop.column, value: v.value })} value={others[v.value] ?? ""} placeholder={t("types.otherNamesPlaceholder")}
+                    onChange={(e) => setOthers({ ...others, [v.value]: e.target.value })} /></td>
+                )}
                 {hasThen && !m.limited_note && <td className="num">{v.rows_at_confirmation ?? <span className="faint">—</span>}</td>}
                 {!m.limited_note && <td className="num">{v.rows ?? <span className="faint">{t("types.none")}</span>}</td>}
               </tr>
@@ -136,7 +143,7 @@ function Properties({ type, mayBuild, reload }) {
           <tbody>
             {type.properties.map((p) => (
               <tr key={p.column}>
-                <td>{p.name}{p.fan && <span className="warn small block">{p.fan}</span>}</td>
+                <td>{p.name}{alsoCalled(p.other_names) && <span className="muted small block">{alsoCalled(p.other_names)}</span>}{p.fan && <span className="warn small block">{p.fan}</span>}</td>
                 <td className="muted">{p.column}</td>
                 <td>{p.enum ? <>{t("types.props.code", { type: typeLabel(p.type) })} {p.meanings.state ? <State item={p.meanings} /> : <span className="muted small">{t("types.props.meaningsUnwritten")}</span>}</> : typeLabel(p.type)}</td>
                 <td>{p.key ? t("types.yes") : ""}</td>
@@ -254,6 +261,7 @@ export function TypePage({ route }) {
             )} />
           {error && <p className="error">{error}</p>}
           <div className="type-notes">
+            {alsoCalled(ty.other_names) && <p className="muted">{alsoCalled(ty.other_names)}</p>}
             {ty.description && <p>{ty.description}</p>}
             {ty.columns_kept > 0 && <p className="faint small">{t("types.page.keptColumns", { count: ty.columns_kept })}</p>}
             {ty.visible_to && ty.visible_to !== "everyone" && <p className="muted small">{t("types.page.visibleOnly", { who: ty.visible_to.length ? joinList(ty.visible_to) : t("types.admins") })}</p>}

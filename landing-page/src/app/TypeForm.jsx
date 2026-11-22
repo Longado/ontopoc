@@ -4,7 +4,7 @@ import { typeLabel } from "./format.js";
 import { t } from "./i18n/index.js";
 import { Select } from "./Select.jsx";
 import { hrefFor, parseRoute } from "./routeModel.js";
-import { TYPE_CHOICES, keyProblem, suggestEnglish, typePayload } from "./typeModel.js";
+import { TYPE_CHOICES, keyProblem, otherNamesText, suggestEnglish, typePayload } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
 
 const ENUM_TYPES = ["integer", "text"];
@@ -14,9 +14,10 @@ function columnRows(dataset, was) {
   return dataset.columns.map((c) => {
     const saved = was?.properties.find((p) => p.column === c.name);
     const meanings = Object.fromEntries((saved?.meanings?.values ?? []).map((v) => [v.value, v.label]));
+    const meaningOthers = Object.fromEntries((saved?.meanings?.values ?? []).map((v) => [v.value, otherNamesText(v.other_names)]));
     return {
-      name: c.name, type: c.type, include: Boolean(saved), label: saved?.name ?? "", declared: saved?.type ?? c.type, values: c.values,
-      candidate: ENUM_TYPES.includes(c.type) && c.values != null, enum: Boolean(saved?.enum), meanings,
+      name: c.name, type: c.type, include: Boolean(saved), label: saved?.name ?? "", otherNames: otherNamesText(saved?.other_names), declared: saved?.type ?? c.type, values: c.values,
+      candidate: ENUM_TYPES.includes(c.type) && c.values != null, enum: Boolean(saved?.enum), meanings, meaningOthers,
     };
   });
 }
@@ -61,14 +62,14 @@ export function TypeForm({ id }) {
   useEffect(() => {
     if (ready && editing && !form) {
       const ty = saved.data;
-      getDataset(ty.dataset).then((d) => setForm({ english: ty.id, name: ty.name, description: ty.description, dataset: ty.dataset, key: ty.key, columns: columnRows(d, ty) }),
+      getDataset(ty.dataset).then((d) => setForm({ english: ty.id, name: ty.name, otherNames: otherNamesText(ty.other_names), description: ty.description, dataset: ty.dataset, key: ty.key, columns: columnRows(d, ty) }),
         (e) => setError({ message: e.message }));
     } else if (ready && !editing && !form) {
       const list = datasets.data;
       const wanted = parseRoute(window.location.hash).dataset;   // 用它建对象类型 arrives with the dataset
       const start = list.find((d) => d.name === wanted)?.name ?? (list.length === 1 ? list[0].name : "");   // the only dataset is the one to use
       const name = start;
-      setForm({ english: suggestEnglish(name), name, description: "", dataset: "", key: [], columns: [] });
+      setForm({ english: suggestEnglish(name), name, otherNames: "", description: "", dataset: "", key: [], columns: [] });
       if (start) getDataset(start).then((d) => setForm((f) => ({ ...f, dataset: start, columns: columnRows(d, null) })), (e) => setError({ message: e.message }));
     }
   }, [ready]);
@@ -135,6 +136,11 @@ export function TypeForm({ id }) {
               ? <span className="muted small">{t("types.form.englishAuto", { english: form.english })}</span>
               : <span className="muted small">{form.name.trim() ? t("types.form.englishUnknown") : t("types.form.englishWait")}</span>)}
           </label>
+          <label className="field">
+            <span className="caption">{t("types.otherNames")}</span>
+            <input type="text" value={form.otherNames} placeholder={t("types.otherNamesPlaceholder")} onChange={(e) => setForm({ ...form, otherNames: e.target.value })} />
+            <span className="muted small">{t("types.otherNamesHint")}</span>
+          </label>
           <details className="fold" open={Boolean(form.description)}>
             <summary>{t("types.form.description")}</summary>
             <input type="text" aria-label={t("types.form.descriptionAria")} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
@@ -154,7 +160,7 @@ export function TypeForm({ id }) {
               <div className="table-wrap">
                 <table className="props">
                   <thead>
-                    <tr><th>{t("types.form.col.key")}</th><th>{t("types.form.col.column")}</th><th>{t("types.form.col.use")}</th><th>{t("types.form.col.label")}</th>{advanced && <th>{t("types.form.col.type")}</th>}{advanced && <th>{t("types.form.col.code")}</th>}</tr>
+                    <tr><th>{t("types.form.col.key")}</th><th>{t("types.form.col.column")}</th><th>{t("types.form.col.use")}</th><th>{t("types.form.col.label")}</th><th>{t("types.form.col.other")}</th>{advanced && <th>{t("types.form.col.type")}</th>}{advanced && <th>{t("types.form.col.code")}</th>}</tr>
                   </thead>
                   <tbody>
                     {form.columns.map((c) => {
@@ -165,6 +171,7 @@ export function TypeForm({ id }) {
                           <td>{c.name} <span className="muted small">{typeLabel(c.type)}</span></td>
                           <td><input type="checkbox" aria-label={t("types.form.useAria", { name: c.name })} checked={c.include || isKey} disabled={isKey} onChange={(e) => setColumn(c.name, { include: e.target.checked })} /></td>
                           <td><input type="text" aria-label={t("types.form.labelAria", { name: c.name })} value={c.label} placeholder={c.name} disabled={!(c.include || isKey)} onChange={(e) => setColumn(c.name, { label: e.target.value })} /></td>
+                          <td><input type="text" aria-label={t("types.form.otherAria", { name: c.name })} value={c.otherNames ?? ""} disabled={!(c.include || isKey)} onChange={(e) => setColumn(c.name, { otherNames: e.target.value })} /></td>
                           {advanced && <td>
                             <Select label={t("types.form.typeAria", { name: c.name })} value={c.declared} disabled={!(c.include || isKey) || c.enum} onChange={(v) => setColumn(c.name, { declared: v })}>
                               {TYPE_CHOICES[c.type].map((choice) => <option key={choice} value={choice}>{typeLabel(choice)}</option>)}
@@ -195,7 +202,7 @@ export function TypeForm({ id }) {
                   <h2 className="section">{t("types.form.meaningsOf", { name: c.name })}</h2>
                   <div className="table-wrap">
                     <table>
-                      <thead><tr><th>{t("types.form.value")}</th><th className="num">{t("types.form.rows")}</th><th>{t("types.form.meaning")}</th></tr></thead>
+                      <thead><tr><th>{t("types.form.value")}</th><th className="num">{t("types.form.rows")}</th><th>{t("types.form.meaning")}</th><th>{t("types.form.meaningOthers")}</th></tr></thead>
                       <tbody>
                         {Object.entries(c.values).map(([value, rows]) => (
                           <tr key={value}>
@@ -203,6 +210,8 @@ export function TypeForm({ id }) {
                             <td className="num">{rows}</td>
                             <td><input type="text" aria-label={t("types.meanings.inputAria", { column: c.name, value })} value={c.meanings[value] ?? ""} placeholder={t("types.meanings.placeholder")}
                               onChange={(e) => setColumn(c.name, { meanings: { ...c.meanings, [value]: e.target.value } })} /></td>
+                            <td><input type="text" aria-label={t("types.form.meaningOthersAria", { column: c.name, value })} value={c.meaningOthers?.[value] ?? ""} placeholder={t("types.otherNamesPlaceholder")}
+                              onChange={(e) => setColumn(c.name, { meaningOthers: { ...(c.meaningOthers ?? {}), [value]: e.target.value } })} /></td>
                           </tr>
                         ))}
                       </tbody>
