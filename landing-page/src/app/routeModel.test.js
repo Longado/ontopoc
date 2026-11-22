@@ -94,7 +94,7 @@ test("a viewer sees the main line and the definitions they may read, a builder t
   assert.deepEqual(names({ role: "builder" }).map((g) => g[0]), [null, "定义", "数据", "智能体"]);
   assert.deepEqual(names({ role: "admin" }).map((g) => g[0]), [null, "定义", "数据", "智能体", "设置"]);
   assert.deepEqual(names({ role: "admin" })[4][1], ["工作区", "用户", "权限"]);
-  assert.deepEqual(names({ role: "builder" })[1][1], ["待确认", "对象类型", "关系", "血缘"]);   // the queue first; 血缘 says why a definition went back, so it lives here
+  assert.deepEqual(names({ role: "builder" })[1][1], ["待确认", "要回答的问题", "对象类型", "关系", "血缘"]);   // the queue first, then the questions the definitions must answer; 血缘 says why a definition went back, so it lives here
   assert.deepEqual(names({ role: "builder" })[2][1], ["数据集", "数据源", "管道", "调度"]);   // no 任务: the page stays at its address
   assert.deepEqual(navFor(null).map((g) => g.label ?? null), [null]);
   for (const role of ["viewer", "builder", "admin"]) for (const g of navFor({ role }, { notices: true })) for (const i of g.items) assert.equal(mayOpen(i.key, { role }), true, `${role} ${i.key}`);   // nothing offered leads to a refusal
@@ -183,7 +183,7 @@ test("the screen that confirms what one dataset version moved has an address und
 
 const ADDRESSES = ["#/home", "#/qa", "#/qa/3", "#/datasets", "#/datasets/x", "#/tasks", "#/notices", "#/types", "#/types/new", "#/types/x/edit", "#/types/x/props", "#/types/x/objects/2",
   "#/relations", "#/relations/new", "#/relations/x", "#/relations/x/edit", "#/lineage", "#/confirm", "#/confirm/group/x/2", "#/pipelines", "#/pipelines/new",
-  "#/pipelines/x", "#/sources", "#/sources/x", "#/schedules", "#/permissions", "#/account", "#/users", "#/settings", "#/boards", "#/boards/new", "#/boards/3", "#/boards/3/edit", "#/agents"];
+  "#/pipelines/x", "#/sources", "#/sources/x", "#/schedules", "#/permissions", "#/account", "#/users", "#/settings", "#/boards", "#/boards/new", "#/boards/3", "#/boards/3/edit", "#/agents", "#/needed"];
 
 test("every page an address can open has one entry in the page table, and the table has no page no address opens", () => {
   const opened = new Set(ADDRESSES.map((a) => parseRoute(a).page));
@@ -194,7 +194,7 @@ test("every page an address can open has one entry in the page table, and the ta
 test("who may open which page comes from the table", () => {
   const viewer = { role: "viewer" }, builder = { role: "builder" }, admin = { role: "admin" };
   for (const page of ["qa", "datasets", "types", "type", "relations", "lineage", "boards", "board", "account"]) assert.ok(mayOpen(page, viewer), page);
-  for (const page of ["boardnew", "boardedit", "agents", "confirm", "confirmgroup", "pipelines", "pipelinenew", "pipeline", "sources", "source", "schedules"]) {
+  for (const page of ["boardnew", "boardedit", "agents", "confirm", "confirmgroup", "pipelines", "pipelinenew", "pipeline", "sources", "source", "schedules", "needed"]) {
     assert.ok(!mayOpen(page, viewer), page);
     assert.ok(mayOpen(page, builder), page);
   }
