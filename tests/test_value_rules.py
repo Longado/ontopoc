@@ -1094,6 +1094,75 @@ class ValueRuleTests(SigningTestCase):
             finally:
                 conn.close()
 
+    def test_every_reader_of_a_confirmed_type_shows_it_through_the_rule_invariant_and_counts_nothing(self):
+        """An older version's upload breaks a confirmed rule while this service runs: before anyone opens the type or asks, the explorer, a board and its cards, the
+        type list, the queue count and the OWL and SHACL download read the type through rules_untrusted, not its stored state, and none of them counts a rule."""
+        from unittest import mock
+        from ontology_poc_generator import ontology_server
+        from ontology_poc_generator.workspace_store import import_records, open_workspace, records_sha256
+        from tests.test_object_types import ORDERS
+        statements = []
+
+        def traced(path):
+            conn = open_workspace(path)
+            conn.set_trace_callback(statements.append)
+            return conn
+        with self.service() as (base, out):
+            team = self.team(base, 'vera', roles={'vera': 'viewer'})
+            ann, bob, vera = team['ann'], team['bob'], team['vera']
+            self.assertEqual(ann.post('/api/workspace/types', {**ORDER, 'rules': [{'column': '金额', 'check': 'gt', 'value': 0}]})[0], 200)
+            self.confirm(bob, column='状态码')
+            self.confirm(bob)
+            status, board = ann.post('/api/workspace/dashboards', {'name': '订单看板', 'scope': 'everyone', 'spec': {'components': [
+                {'id': 'recent', 'title': '最近的订单', 'query': {'type': 'order'}, 'chart': {'kind': 'rows'}}], 'filters': []}})
+            self.assertEqual(status, 200, board)
+            self.assertTrue(bob.post('/api/workspace/dashboards/data', {'id': board['id'], 'bar': {}})[1]['components'][0]['result']['standing']['confirmed'])
+            records = [{**r, '金额': '-5'} if i < 2 else r for i, r in enumerate(ORDERS)]   # what an older version's upload leaves: no rule counted on it
+            conn = open_workspace(out / 'workspace.sqlite')
+            import_records(conn, '订单', records, 'upload', records_sha256(records), 'Ann')
+            conn.close()
+            statements.clear()
+            with mock.patch.object(ontology_server, 'open_workspace', traced):
+                status, table = bob.post('/api/workspace/explore/table', {'query': {'type': 'order'}})
+                self.assertEqual(status, 200, table)
+                self.assertFalse(table['standing']['confirmed'])
+                self.assertIn('值规则', ' '.join(table['standing']['reasons']))
+                card = bob.post('/api/workspace/dashboards/data', {'id': board['id'], 'bar': {}})[1]['components'][0]
+                self.assertFalse(card['result']['standing']['confirmed'])
+                told = vera.post('/api/workspace/dashboards/data', {'id': board['id'], 'bar': {}})[1]['components'][0]
+                self.assertEqual(told['status'], 'waiting', told)
+                listed = next(t for t in bob.get('/api/workspace/types')[1]['types'] if t['id'] == 'order')
+                self.assertEqual((listed['state'], listed['can_confirm']), ('needs_look', False))
+                self.assertIn('值规则', listed['reason'])
+                self.assertEqual(next(t for t in vera.get('/api/workspace/types')[1]['types'] if t['id'] == 'order').get('waiting'), True)
+                self.assertEqual(bob.get('/api/workspace/queue?count=1')[0], 200)
+            self.assertEqual([sql for sql in statements if sql.startswith('SELECT') and 'trim("' in sql], [])   # none of them counted a rule
+            self.assertNotIn('BEGIN IMMEDIATE', statements)   # nor sent anything back: that is the judgement's, at the first readout or the type page
+            page = self.page(bob, 'order')   # the type page judges it
+            self.assertEqual(page['state'], 'needs_look')
+            self.assertIn('有 2 行不满足', page['reason'])
+
+    def test_a_type_left_out_by_the_rule_invariant_is_left_out_of_the_owl_and_shacl_download(self):
+        from ontology_poc_generator import owl_export
+        from ontology_poc_generator.workspace_store import open_workspace
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            self.assertEqual(ann.post('/api/workspace/types', {**ORDER, 'rules': [{'column': '金额', 'check': 'gt', 'value': 0}]})[0], 200)
+            self.confirm(bob, column='状态码')
+            self.confirm(bob)
+            conn = open_workspace(out / 'workspace.sqlite')
+            try:
+                self.assertIn('订单', owl_export.files(conn, None)['ontology.ttl'])
+                self._sql(out, "UPDATE check_result SET samples_json = json_set(samples_json, '$.broken[0]', 4) WHERE id = (SELECT MAX(id) FROM check_result WHERE check_type = 'value_rules')")
+                conn.execute('BEGIN')   # inside a transaction nothing is sent back: the invariant alone leaves it out
+                written = owl_export.files(conn, None)
+                conn.execute('ROLLBACK')
+            finally:
+                conn.close()
+            self.assertNotIn('订单', written['ontology.ttl'])
+            self.assertNotIn('订单', written['shapes.ttl'])
+
     def test_a_type_stored_before_value_rules_takes_rules_with_nothing_added_to_the_file(self):
         """A rule is part of the type's definition (its content), so the file gains no table or column: a type written with no rules takes them on its next edit."""
         with self.service() as (base, out):
