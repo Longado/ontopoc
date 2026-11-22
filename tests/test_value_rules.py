@@ -452,6 +452,38 @@ class ValueRuleTests(SigningTestCase):
             self.assertEqual(self.page(ann)['rules'][0]['says'], '“发货日期”不能早于“下单日期”')
             self.assertEqual(self.page(ann, headers=EN)['rules'][0]['says'], '"发货日期" must not be before "下单日期"')
 
+    def test_a_recheck_counts_the_rules_before_it_takes_the_write_lock_and_holds_it_only_for_what_it_held_it_for_before(self):
+        """The rule pass reads a stored version, which never changes; it runs before BEGIN IMMEDIATE, and inside the lock the recheck uses its count."""
+        from ontology_poc_generator.object_types import recheck_after_write
+        from ontology_poc_generator.workspace_store import import_records, open_workspace, records_sha256
+        from tests.test_object_types import ORDERS
+        with self.service() as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            self.assertEqual(ann.post('/api/workspace/types', {**ORDER, 'rules': [{'column': '金额', 'check': 'gt', 'value': 0}, {'column': '订单号', 'check': 'not_empty'}]})[0], 200)
+            self.confirm(bob, column='状态码')
+            self.confirm(bob)
+            conn = open_workspace(out / 'workspace.sqlite')
+            try:
+                records = [{**r, '金额': '-1'} if i < 2 else r for i, r in enumerate(ORDERS)]
+                import_records(conn, '订单', records, 'upload', records_sha256(records), 'Ann')
+                statements = []
+                conn.set_trace_callback(statements.append)
+                recheck_after_write(conn, '订单', 'Ann')
+                conn.set_trace_callback(None)
+            finally:
+                conn.close()
+            begin = statements.index('BEGIN IMMEDIATE')
+            commit = next(i for i in range(begin, len(statements)) if statements[i] == 'COMMIT')
+            reads_rules = lambda sql: sql.startswith('SELECT') and 'trim("金额")' in sql   # the pass, or the keys of rows that break a rule (the check kept in check_result quotes the pass: an INSERT)
+            passes = [i for i, sql in enumerate(statements) if sql.startswith('SELECT COUNT(*), COALESCE(SUM(CASE WHEN')]
+            self.assertEqual(len(passes), 1, passes)
+            self.assertLess(passes[0], begin)
+            self.assertFalse([sql for sql in statements[begin:commit] if reads_rules(sql)])
+            page = self.page(bob, 'order')
+            self.assertEqual(page['state'], 'needs_look')
+            self.assertIn('有 2 行不满足', page['reason'])
+
     def test_a_type_stored_before_value_rules_takes_rules_with_nothing_added_to_the_file(self):
         """A rule is part of the type's definition (its content), so the file gains no table or column: a type written with no rules takes them on its next edit."""
         with self.service() as (base, out):
