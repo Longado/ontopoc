@@ -10,9 +10,11 @@ guessing (sh:path is the column; the comparison and the bound map one to one):
 The bounds are JSON numbers. A type with no rules keeps no "rules" key at all, so its content is what it was before rules existed.
 
 What each rule judges (the same for every reader, the type page, the confirm check and the recheck after new data):
-- empty: no value, or only spaces. "not empty" is broken by an empty cell; every other rule leaves empty cells unjudged.
-- number rules (on an integer or decimal property): a filled cell must be a plain number (-12, 3.5; spaces around it are ignored) that meets the comparison;
-  anything else filled (abc, 1e3, 12., a full-width digit) breaks the rule.
+- empty: no value, or only blanks (spaces and line breaks of every kind, and zero-width characters: BLANKS). "not empty" is broken by an empty cell; every
+  other rule leaves empty cells unjudged.
+- number rules (on an integer or decimal property): a filled cell must be a plain number (-12, 3.5; blanks around it are ignored) that meets the comparison;
+  anything else filled (abc, 1e3, 12., a full-width digit) breaks the rule. The comparison is exact however many digits the cell has: as floats, except near the
+  bound, where the decimal text is compared (a bound has at most 15 significant digits, which a float keeps exactly).
 - codes (on a code column): a filled cell must be one of the values the column's meanings give a meaning to, exactly as stored.
 - date order (two date or date-and-time properties, or two months): a row with either cell empty is not judged; a filled cell that is not a real date
   (2026-02-30, soon) breaks it; a date alone is the start of its day. The column must not be before the other.
@@ -22,6 +24,7 @@ for a rule that some row breaks. Column names come from the type's stored proper
 """
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
 import math
 import re
 
@@ -35,6 +38,10 @@ DAY_TYPES = ('date', 'datetime')
 BOUNDED = ('gt', 'ge', 'lt', 'le')
 CHECKS = ('not_empty', *BOUNDED, 'between', 'in_codes', 'not_before')
 _NUMBER_TEXT = re.compile(r'-?[0-9]{1,15}(\.[0-9]{1,15})?', re.ASCII)
+DIGITS = 15   # a bound has at most this many significant digits: a float keeps every such decimal exactly as written
+# what counts as nothing in a cell: every kind of space and line break, and the zero-width characters (none of them a quote, so they sit in an SQL literal)
+BLANKS = ''.join(c for c in map(chr, range(0x3001)) if c.isspace()) + '\u200b\u200c\u200d\u2060\ufeff'
+_BLANKS_SQL = "'" + BLANKS + "'"
 
 
 class RuleRefused(ValueError):
@@ -59,6 +66,9 @@ def _bound(value, column: str):
         number = None
     if number is None:
         raise RuleRefused(tr(f'“{column}”的规则要写一个数，例如 0 或 12.5', f'The rule on "{column}" needs a number, for example 0 or 12.5'))
+    written = value.strip() if isinstance(value, str) else str(value)
+    if len(Decimal(written).normalize().as_tuple().digits) > DIGITS:
+        raise RuleRefused(tr(f'“{column}”的规则里的数最多写 {DIGITS} 位有效数字', f'The number in the rule on "{column}" can have at most {DIGITS} significant digits'))
     return int(number) if float(number).is_integer() else float(number)
 
 
@@ -112,13 +122,17 @@ def columns_of(rule: dict) -> set[str]:
 
 # --- what breaks a rule, in SQL ----------------------------------------------------------------------------------------------------------------------
 
+def _trim(v: str) -> str:
+    return f'trim({v}, {_BLANKS_SQL})'
+
+
 def _empty(v: str) -> str:
-    return f"({v} IS NULL OR trim({v}) = '')"
+    return f"({v} IS NULL OR {_trim(v)} = '')"
 
 
 def _number(v: str) -> str:
-    """A filled cell that is a plain number: an optional minus, digits, at most one point with digits after it (spaces around are trimmed)."""
-    s = f'trim({v})'
+    """A filled cell that is a plain number: an optional minus, digits, at most one point with digits after it (blanks around it are trimmed)."""
+    s = _trim(v)
     return f"(({s} GLOB '[0-9]*' OR {s} GLOB '-[0-9]*') AND substr({s}, 2) NOT GLOB '*[^0-9.]*' AND {s} NOT GLOB '*.*.*' AND {s} NOT GLOB '*.')"
 
 
@@ -127,7 +141,7 @@ _DAY = "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]"
 
 def _day(v: str, kind: str) -> tuple[str, str]:
     """(the cell is a real date, its moment as a julian day) for a date, date-and-time or month cell."""
-    s = f'trim({v})'
+    s = _trim(v)
     if kind == 'month':
         first = f"({s} || '-01')"
         return f"({s} GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]' AND date({first}) IS {first})", f'julianday({first})'
@@ -136,6 +150,23 @@ def _day(v: str, kind: str) -> tuple[str, str]:
 
 
 _OPS = {'gt': '>', 'ge': '>=', 'lt': '<', 'le': '<='}
+EXACT = 'value_rule_order'   # the SQL function that orders a cell's number against a bound exactly, for the few cells a float cannot tell from the bound
+
+
+def _order(text, bound) -> int | None:
+    try:
+        a, b = Decimal(text), Decimal(bound)
+    except (InvalidOperation, TypeError):
+        return None
+    return (a > b) - (a < b)
+
+
+def _holds(s: str, op: str, bound) -> tuple[str, list]:
+    """(the cell's number meets `op bound`, its parameters): as floats, except within a hair of the bound, where a float may have lost the digits that decide it
+    (0.10000000000000000001 against 0.1) and the decimal text is compared exactly."""
+    near = abs(float(bound)) * 1e-9 + 1e-200
+    return (f'(CASE WHEN abs(CAST({s} AS REAL) - ?) <= ? THEN {EXACT}({s}, ?) {op} 0 ELSE CAST({s} AS REAL) {op} ? END)',
+            [float(bound), near, str(bound), float(bound)])
 
 
 def broken_sql(rule: dict, kinds: dict[str, str], codes: dict[str, list[str]]) -> tuple[str, list]:
@@ -146,9 +177,11 @@ def broken_sql(rule: dict, kinds: dict[str, str], codes: dict[str, list[str]]) -
     if check == 'not_empty':
         return _empty(v), []
     if check in _OPS:
-        return f"(NOT {_empty(v)} AND NOT COALESCE({_number(v)} AND CAST(trim({v}) AS REAL) {_OPS[check]} ?, 0))", [float(rule['value'])]
+        holds, params = _holds(_trim(v), _OPS[check], rule['value'])
+        return f"(NOT {_empty(v)} AND NOT COALESCE({_number(v)} AND {holds}, 0))", params
     if check == 'between':
-        return f"(NOT {_empty(v)} AND NOT COALESCE({_number(v)} AND CAST(trim({v}) AS REAL) BETWEEN ? AND ?, 0))", [float(rule['low']), float(rule['high'])]
+        (low, low_params), (high, high_params) = _holds(_trim(v), '>=', rule['low']), _holds(_trim(v), '<=', rule['high'])
+        return f"(NOT {_empty(v)} AND NOT COALESCE({_number(v)} AND {low} AND {high}, 0))", [*low_params, *high_params]
     if check == 'in_codes':
         allowed = list(codes.get(rule['column']) or [])
         return (f"(NOT {_empty(v)} AND {v} NOT IN ({', '.join('?' * len(allowed))}))" if allowed else f'(NOT {_empty(v)})'), allowed
@@ -160,6 +193,7 @@ def broken_sql(rule: dict, kinds: dict[str, str], codes: dict[str, list[str]]) -
 def run(conn, table: str, rules: list[dict], kinds: dict[str, str], codes: dict[str, list[str]], key: list[str], examples: int = EXAMPLES, only: str | None = None) -> dict:
     """Count, in one pass over the table, the rows that break each rule, and fetch the key of up to `examples` of them per broken rule, in table order.
     `only`: a temporary table of the rowids a reader may see (column r); the rest are not read. {'rows_checked', 'query', 'rules': [{'broken', 'examples'}]}."""
+    conn.create_function(EXACT, 2, _order, deterministic=True)
     within = f' WHERE rowid IN (SELECT r FROM temp.{_quote(only)})' if only else ''
     conditions = [broken_sql(rule, kinds, codes) for rule in rules]
     sums = ', '.join(f'COALESCE(SUM(CASE WHEN {sql} THEN 1 ELSE 0 END), 0)' for sql, _ in conditions)

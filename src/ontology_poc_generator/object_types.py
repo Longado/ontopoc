@@ -28,7 +28,7 @@ from ontology_poc_generator.code_meanings import check_enum, merge_enum
 from ontology_poc_generator.row_rules import keeps, positions, restriction
 from ontology_poc_generator.type_access import can_access, column_allowed, dataset_hidden, hidden_columns, hidden_values, reads_hidden, visible_to
 from ontology_poc_generator.value_rules import EXAMPLES, REASON_EXAMPLES, RuleRefused, broken_text, columns_of, note as rules_note, read_rules, run as run_rules, says as rule_says
-from ontology_poc_generator.workspace_store import fan_note, StaleElement, _canonical, _key_of, _quote, check_key, current_dataset, dataset_records, element_state_writes, fan_marks, log_line, record_result
+from ontology_poc_generator.workspace_store import fan_note, StaleElement, _canonical, _key_of, _quote, check_key, current_dataset, dataset_records, element_state_writes, fan_marks, log_line, now_text, record_result
 
 TYPE_PREFIX = 'objtype:'
 ENUM_PREFIX = 'enum:'
@@ -320,7 +320,7 @@ def _proposed_rules(conn, content: dict, dataset: dict, user: dict | None) -> tu
     each now} and a warning for each broken one (it can be proposed; it cannot be confirmed while one is broken). Nothing for a type without rules."""
     whole = _whole_pass(conn, content, dataset)
     if whole is not None:   # kept, so what is read on every page knows how the rules stand on this version without counting them again
-        _record_rules(conn, content, dataset, whole['found'])
+        keep_count(conn, type_id(content['english_name']), content, whole)
     shown = rules_readout(conn, type_id(content['english_name']), content, dataset, user, whole) if content.get('rules') else None
     if shown is None:
         return {}, []
@@ -548,6 +548,7 @@ def _type_problems(conn, content: dict, record: bool = True, ahead: dict | None 
         names = {p['column']: p['name'] for p in content['properties']}
         return [*problems, *(broken_text(rule_says(rule, names), n, saved['rows_checked'], []) for rule, n in zip(content['rules'], saved['broken']) if n)], key_check['id'], None
     codes = _rule_codes(conn, content, content['rules'])
+    ahead = ahead if ahead is not None else (_COUNTED.get() or {}).get(type_id(content['english_name']))
     same = ahead is not None and (ahead['dataset_id'], ahead['rules'], ahead['codes']) == (dataset['id'], content['rules'], codes)
     found = ahead['found'] if same else _rule_pass(conn, content, dataset, content['rules'], REASON_EXAMPLES)
     names = {p['column']: p['name'] for p in content['properties']}
@@ -589,6 +590,78 @@ def _rules_ahead(conn, readers) -> dict[str, dict]:
         if found is not None:
             ahead[element_id] = found
     return ahead
+
+
+_COUNTED = contextvars.ContextVar('ontopoc_rules_counted', default=None)   # {type id: a count made before a write lock} for the checks run inside counted_ahead
+
+
+@contextlib.contextmanager
+def counted_ahead(conn, element_ids):
+    """Count the value rules of these types on their current data now, before the caller takes the write lock, so the checks it runs under the lock (confirming a
+    group) use these counts instead of reading the rows again (each is used only while its version, rules and codes are unchanged). Yields the counts."""
+    counts = {}
+    for element_id in element_ids:
+        row = element_row(conn, element_id) if element_id.startswith(TYPE_PREFIX) else None
+        content = _content(row) if row and row['content_json'] else {}
+        found = _whole_pass(conn, content, current_dataset(conn, content['dataset'])) if content.get('rules') else None
+        if found is not None:
+            counts[element_id] = found
+    token = _COUNTED.set({**(_COUNTED.get() or {}), **counts})
+    try:
+        yield counts
+    finally:
+        _COUNTED.reset(token)
+
+
+def keep_count(conn, element_id: str, content: dict, found: dict) -> None:
+    """Keep a count made while reading (a page that opened the type), so the reads made on every page can stand on it: one statement, written only when the same
+    count is not already the one kept for this version (two readers at once keep one row), and never inside the caller's transaction."""
+    if conn.in_transaction or found['dataset_id'] is None:
+        return
+    samples = json.dumps({'rules': found['rules'], 'codes': found['codes'], 'broken': [r['broken'] for r in found['found']['rules']]}, ensure_ascii=False)
+    broken = [r['broken'] for r in found['found']['rules']]
+    conn.execute("INSERT INTO check_result(element_id, check_type, query, rows_checked, violations, samples_json, status, checked_at, dataset_id, null_key_rows) "
+                 "SELECT ?, 'value_rules', ?, ?, ?, ?, ?, ?, ?, NULL WHERE NOT EXISTS (SELECT 1 FROM check_result WHERE id = (SELECT MAX(id) FROM check_result "
+                 "WHERE element_id = ? AND check_type = 'value_rules' AND dataset_id = ?) AND samples_json = ?)",
+                 (element_id, found['found']['query'], found['found']['rows_checked'], sum(broken), samples, 'failed' if any(broken) else 'passed', now_text(),
+                  found['dataset_id'], element_id, found['dataset_id'], samples))
+
+
+def settle_unkept_rules(conn, only: list[str] | None = None) -> set[str]:
+    """The confirmed types with value rules that have no count kept on their current data version with their current rules and codes (what an older version of
+    the service leaves after an upload: it does not count rules). Each is counted now, outside any lock; under the write lock the count is kept and a type
+    whose rule is broken goes back to needs another look the way a recheck sends it, and who can confirm it is told once. Finding them reads no data row.
+    Returns the ids that could not be settled because the caller holds a transaction: they are not to be used."""
+    found = {}
+    for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objtype:%' AND state = 'confirmed' AND json_extract(content_json, '$.rules') IS NOT NULL").fetchall():
+        if only is not None and element_id not in only:
+            continue
+        content = _content(element_row(conn, element_id))
+        dataset = current_dataset(conn, content['dataset'])
+        if dataset is not None and _saved_rules(conn, content, dataset) is None:
+            found[element_id] = (content, dataset)
+    if not found:
+        return set()
+    if conn.in_transaction:
+        return set(found)
+    counts = {e: _whole_pass(conn, content, dataset, REASON_EXAMPLES) for e, (content, dataset) in found.items()}   # the slow part, before the lock
+    with one_telling(conn):
+        conn.execute('BEGIN IMMEDIATE')
+        try:
+            moved: list[str] = []
+            for element_id, counted in counts.items():
+                row = element_row(conn, element_id)
+                if counted is None or row is None or row['state'] != 'confirmed':
+                    continue   # gone, or columns gone (the type's own check says so at the next data change), or no longer confirmed
+                content = _content(row)
+                problems = _type_problems(conn, content, ahead=counted)[0]   # keeps the key check and the count, as a recheck does
+                if problems:
+                    _flag(conn, element_id, tr('；', '; ').join(problems), None, moved, 'data')
+            conn.execute('COMMIT')
+        except BaseException:
+            conn.execute('ROLLBACK')
+            raise
+    return set()
 
 
 def _record_rules(conn, content: dict, dataset: dict, found: dict) -> int:
@@ -1181,6 +1254,8 @@ def _meaning_view(conn, content: dict, prop: dict, cols: dict, dataset: dict | N
 def type_page(conn, english_name: str, user: dict | None) -> dict:
     """What the type's page is sent: a viewer's waiting type says so and nothing more; everything else is type_detail. (The objects, log, views and the rest keep
     asking type_detail, which refuses a type a viewer may not read.)"""
+    if element_row(conn, type_id(str(english_name))) is not None:
+        settle_unkept_rules(conn, [type_id(str(english_name))])   # a confirmed type whose rules were never counted on its data is not shown as holding
     row = element_row(conn, type_id(str(english_name)))
     return _waiting_line(conn, row, user) if waiting_for_viewer(conn, row, user) else type_detail(conn, english_name, user)
 
@@ -1197,6 +1272,8 @@ def type_detail(conn, english_name: str, user: dict | None) -> dict:
     props = [{**p, 'key': p['column'] in content['key'], 'hide_values': p['column'] in unsent, 'fan': fan_note() if p['column'] in fanned else None, 'meanings': _meaning_view(conn, content, p, cols, dataset, user) if p['enum'] else None} for p in content['properties']]
     limited = restriction(conn, row['element_id'], user) is not None
     whole = _whole_pass(conn, _content(row), dataset) if not limited and not hidden else None   # one pass serves both what the page lists and whether it can be confirmed
+    if whole is not None:
+        keep_count(conn, row['element_id'], _content(row), whole)   # so the reads made on every page know it from now on
     rules = rules_readout(conn, row['element_id'], _content(row), dataset, user, whole)   # none on a column kept from them, counted on their rows
     from ontology_poc_generator.derived_properties import limited_reads   # derived_properties reads this module: imported here, where it is used
     return {'id': content['english_name'], 'name': content['name'], 'description': content['description'], 'dataset': content['dataset'], 'limited_reads': limited_reads(conn, english_name, user),

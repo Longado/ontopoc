@@ -76,7 +76,7 @@ from ontology_poc_generator.workspace_tasks import list_tasks
 from ontology_poc_generator.sources_http import schedules_get, schedules_post, sources_get, sources_post
 from ontology_poc_generator.workspace_schedules import schedule_loop, tick as schedule_tick
 from ontology_poc_generator.workspace_sources import interrupted_runs
-from ontology_poc_generator.object_types import TypeRefused, _type_row, confirm_element, create_type, hidden_type_count, key_preview, list_types, propose_meanings, type_detail, type_log, type_page, type_id, type_objects, update_type, whole_type_row
+from ontology_poc_generator.object_types import TypeRefused, _type_row, confirm_element, create_type, hidden_type_count, key_preview, list_types, propose_meanings, settle_unkept_rules, type_detail, type_log, type_page, type_id, type_objects, update_type, whole_type_row
 from ontology_poc_generator.object_type_suggest import suggest_types
 from ontology_poc_generator.type_meaning_draft import draft_type_meanings
 from ontology_poc_generator.pipeline_llm import LlmService
@@ -3279,6 +3279,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
         startup = open_workspace(output_dir / 'workspace.sqlite')
         try:
             interrupted_runs(startup)   # a pull or run left "running" by a process that is gone
+            settle_unkept_rules(startup)   # a confirmed type an older version left on data its value rules were never counted on: counted now, sent back if broken
         finally:
             startup.close()
     server = ThreadingHTTPServer(('127.0.0.1', port), Handler)
