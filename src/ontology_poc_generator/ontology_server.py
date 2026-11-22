@@ -1685,8 +1685,8 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
 
         def needed_route(self, method: str):
             """GET /api/workspace/needed: the team's questions we need, their expectations and the last run's results. POST /needed {question, expect?, note?},
-            /needed/update, /needed/delete, /needed/confirm {id, version}, /needed/run {repeats?} (see needed_questions.py). A run asks the model without a lock;
-            what it keeps is written in transactions of its own."""
+            /needed/update, /needed/delete, /needed/confirm {id, version}, /needed/run {repeats?} (see needed_questions.py). A run is answered as it starts and asks
+            the model after, on a connection of its own and without a lock; what it keeps is written in transactions of its own."""
             path = urlsplit(self.path).path
             try:
                 payload = self.read_json(USE_BODY) if method == 'POST' else {}
@@ -1702,7 +1702,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 if method == 'GET' and path == '/api/workspace/needed':
                     body = needed_questions.listing(conn, self.user, gateway is not None)
                 elif method == 'POST' and path == '/api/workspace/needed/run':
-                    body = needed_questions.run(conn, gateway, self.user, payload)
+                    body = needed_questions.start(conn, gateway, self.user, payload, lambda: open_workspace(output_dir / 'workspace.sqlite'))   # the asking goes on after this answer
                 elif method == 'POST' and path in acts:
                     body = acts[path](conn, self.user, payload)
                 else:

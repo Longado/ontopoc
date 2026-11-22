@@ -242,7 +242,7 @@ class Gate:
             token = accounts.start_session(conn, found['id'])
             h.reply(200, {'user': found, **me}, self._cookie(token, int(accounts.ABSOLUTE.total_seconds())))
         elif path == '/api/auth/me':
-            h.reply(200, {'user': user, **me, 'feedback_url': feedback_url()})
+            h.reply(200, {'user': user, **me, 'feedback_url': feedback_url(), 'limited': limited_anywhere(conn, user)})   # limited: a page leaves out what is worked out over every row
         elif path == '/api/auth/logout':
             accounts.end_session(conn, h.session_token)
             h.reply(200, {'ok': True}, self._cookie('', 0))

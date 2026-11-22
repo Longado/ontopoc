@@ -1,49 +1,67 @@
 """Questions we need (要回答的问题): the team's own list of the questions it needs answered, each held against what it should give.
 
-A builder writes a question and, when it is known, what it should give: a number, or that it must be refused. That expectation is proposed by one person and
-confirmed by another while two-person confirmation is on, by a person signed in to the page (never with a token), like any definition; changing the question's
-words or what it should give puts it back to proposed. Confirming keeps the version of every dataset and every definition as they were then.
+A builder writes a question and, when it is known, what it should give: a number, or that it must be refused (optionally: refused because of one named
+definition). That expectation is proposed by one person and confirmed by another while two-person confirmation is on, by a person signed in to the page (never
+with a token), like any definition; changing the question's words or what it should give puts it back to proposed.
+
+What an expectation stands on is what the expected answer read: the datasets and definitions, at their versions, that an answer giving the expected result used
+(answer['datasets'], answer['definitions'], and for a refusal the definitions that blocked it). It is taken at confirmation from the last run's asks of the
+question that gave the expected result, and taken again each time a run passes; with neither, nothing is recorded and a wrong result is a failure.
 
 A builder or an admin whom no type list, column rule or row rule limits runs the list: each question is asked 1 to MAX_REPEATS times through the same path a
 person's question takes (workspace_questions.ask), as the runner, so the gate, the refusals and the labels are the real ones; the asks are the run's, not the
-runner's, and are not kept among their questions. Each question then comes back as one of:
-  passes          every ask gave the expected number (exactly, as the answer states it), or every ask was refused when a refusal is expected
-  differs         an ask gave another number (or a number where a refusal was expected), and nothing it read moved since the expectation was confirmed
-  refused         no ask gave a wrong number but at least one was refused: with the definitions that block it and who can confirm them; never "differs"
-  no_expectation  nothing confirmed to hold it against: the answer is shown, for a person to check against the data and adopt
-  needs_look      it would differ, but a dataset or a definition the answers read has another version than when the expectation was confirmed: the expectation
-                  goes back for a person to confirm again, and it does not count as a failure
-  not_run         the model could not be reached and the run stopped before this question
-with "N of M gave the expected number" and each distinct answer, since one question that gives two numbers is a fault this list exists to catch.
+runner's, and are not kept among their questions. An ask ends as a number (or another answer), as a refusal the gate made (GATE: a definition not confirmed or
+waiting, nothing in scope, a relation that cannot be followed, a query that left out a confirmed definition, a measure waiting for confirming), or with no answer
+(a reply that could not be read, the model saying the question is outside what it knows, a query it could not write or run). Each question then comes back as:
+  passes          every ask gave the expected number (exactly, as the answer states it), or every ask was a refusal the gate made (naming the expected
+                  definition, when one is named)
+  differs         an ask gave another number, or an answer where a refusal was expected, and nothing the expected answer read has moved: a failure
+  needs_look      the same, but a dataset or definition the expected answer read has another version now: the expectation goes back for a person to confirm
+                  again, and it does not count as a failure
+  refused         no wrong answer, but the gate refused at least one ask (not the way the expectation says, if it expects a refusal): with what blocks it and
+                  who can confirm it; never "differs"
+  no_answer       no ask gave an answer or a refusal of the gate: never a pass and never a refusal
+  no_expectation  nothing confirmed to hold it against: every answer is shown, for a person to check against the data and adopt
+  not_run         the run stopped (the model could not be reached, or an error) before this question
+with "N of M gave the expected number" and each distinct answer, since one question that gives two numbers is a fault this list exists to catch; and, when the
+answers now read other definitions than the expected answer did, which.
 
 Cost: at most MAX_QUESTIONS questions; a run makes at most (questions x asks) model calls, one independent call per ask (nothing is chained), and all runs together
 make at most SUITE_LIMIT calls in any SUITE_HOURS hours: their own line, apart from the questions a person may ask an hour (ask_budget), which a run does not
-touch. One run at a time; a token and a demo guest cannot start one. The results are stored once and shown to builders and admins whom nothing limits (a
-limited one sees neither the list nor its results: they are answered over every row and every type). Viewers do not see the list.
+touch. Each call is charged as it goes out. A run goes on in the service after the request that starts it (start); one run at a time; one the service lost
+(it stopped) is closed as stopped on the next request, with the calls it made charged. A token and a demo guest cannot start one. The results are stored once
+and shown to builders and admins whom nothing limits (a limited one sees neither the list nor its results: they are answered over every row and every type).
+Viewers do not see the list.
 """
 from __future__ import annotations
 
+import contextvars
 from datetime import datetime, timedelta, timezone
 import json
 import math
+import re
+import threading
+import traceback
+import uuid
 
 from ontology_poc_generator.accounts import transaction, two_person
 from ontology_poc_generator.checked_numbers import ANSWERED, answer_number
 from ontology_poc_generator.lang import tr
+from ontology_poc_generator.object_types import element_row
 from ontology_poc_generator.ontology_questions import QUESTION_PROMPT_VERSION
-from ontology_poc_generator.workspace_questions import QaRefused, _clean_question, ask
-from ontology_poc_generator.workspace_store import log_line, now_text
+from ontology_poc_generator.workspace_questions import HELD_BACK as GATE, QaRefused, _clean_question, ask
+from ontology_poc_generator.workspace_store import current_dataset, log_line, now_text
 
 MAX_QUESTIONS = 30
 MAX_REPEATS = 5
 MAX_NOTE = 120
 SUITE_LIMIT = 300   # model calls all runs together may make in any SUITE_HOURS hours
 SUITE_HOURS = 24
-STALE_RUN_HOURS = 2   # a run still marked running after this long was cut off (the service stopped): it no longer holds the list
-DEFINITION_PREFIXES = ('objtype:', 'relation:', 'enum:', 'objview:', 'derived:')
-OUTCOMES = ('passes', 'differs', 'refused', 'no_expectation', 'needs_look', 'not_run')
-COLUMNS = ('id, question, expect_kind, expect_value, note, state, version, written_by, written_by_user_id, written_at, confirmed_by, confirmed_by_user_id, confirmed_at, '
-           'self_confirmed, basis_json, look_json')
+OUTCOMES = ('passes', 'differs', 'needs_look', 'refused', 'no_answer', 'no_expectation', 'not_run')
+COLUMNS = ('id, question, expect_kind, expect_value, expect_blocker, note, state, version, written_by, written_by_user_id, written_at, confirmed_by, confirmed_by_user_id, '
+           'confirmed_at, self_confirmed, basis_json, look_json')
+_LIVE: set[str] = set()   # the runs this service is running now, by the token written on their row: a running row with another token was cut off
+_LIVE_LOCK = threading.Lock()
 
 
 def _plain(value):
@@ -93,9 +111,17 @@ def _person(user: dict | None) -> None:
 
 # --- reading ----------------------------------------------------------------------------------------------------------------------------------------------
 
+def _basis_of(stored) -> dict | None:
+    """What an expectation stands on, as recorded: {'datasets': {name: version}, 'definitions': {id: {'name', 'version'}}}. A record of every dataset and every
+    definition in the workspace (kept before what an answer read was recorded) says nothing of what the answer read: none."""
+    if not isinstance(stored, dict) or not all(isinstance(d, dict) for d in (stored.get('definitions') or {}).values()):
+        return None
+    return stored
+
+
 def _row(found) -> dict:
     row = dict(zip([c.strip() for c in COLUMNS.split(',')], found))
-    return {**row, 'basis': json.loads(row.pop('basis_json')) if row['basis_json'] else None, 'look': json.loads(row.pop('look_json')) if row['look_json'] else []}
+    return {**row, 'basis': _basis_of(json.loads(row.pop('basis_json')) if row['basis_json'] else None), 'look': json.loads(row.pop('look_json')) if row['look_json'] else []}
 
 
 def _rows(conn) -> list[dict]:
@@ -116,17 +142,26 @@ def _found(conn, payload: dict) -> dict:
 def _expect_of(row: dict) -> dict | None:
     if row['expect_kind'] == 'number':
         return {'kind': 'number', 'value': _plain(row['expect_value'])}
-    return {'kind': 'refused'} if row['expect_kind'] == 'refused' else None
+    if row['expect_kind'] == 'refused':
+        return {'kind': 'refused', **({'blocker': row['expect_blocker']} if row.get('expect_blocker') else {})}
+    return None
+
+
+RUN_KEYS = ('id', 'by', 'at', 'finished_at', 'status', 'repeats', 'planned', 'calls', 'model', 'prompt_version', 'note')
 
 
 def _last_run(conn) -> dict | None:
-    found = conn.execute("SELECT id, by_name, started_at, finished_at, status, repeats, planned, calls, model, prompt_version, note FROM needed_run "
+    found = conn.execute(f"SELECT {', '.join(k if k not in ('by', 'at') else {'by': 'by_name', 'at': 'started_at'}[k] for k in RUN_KEYS)} FROM needed_run "
                          "WHERE status != 'running' ORDER BY id DESC LIMIT 1").fetchone()
     if found is None:
         return None
-    keys = ('id', 'by', 'at', 'finished_at', 'status', 'repeats', 'planned', 'calls', 'model', 'prompt_version', 'note')
-    run = dict(zip(keys, found))
+    run = dict(zip(RUN_KEYS, found))
     return {**run, 'stale_prompt': run['prompt_version'] != QUESTION_PROMPT_VERSION}   # the question prompt changed since: the model may now read the questions otherwise
+
+
+def _running_now(conn) -> dict | None:
+    found = conn.execute("SELECT id, by_name, started_at, repeats, planned, calls FROM needed_run WHERE status = 'running' ORDER BY id DESC LIMIT 1").fetchone()
+    return dict(zip(('id', 'by', 'at', 'repeats', 'planned', 'calls'), found)) if found else None
 
 
 def _results(conn, run_id) -> dict:
@@ -138,8 +173,8 @@ def _view(row: dict, user: dict | None, result: dict | None) -> dict:
            'written_by': row['written_by'], 'written_at': row['written_at'], 'confirmed_by': row['confirmed_by'], 'confirmed_at': row['confirmed_at'],
            'self_confirmed': bool(row['self_confirmed']), 'look': row['look'], 'mine': user is not None and row['written_by_user_id'] == user['id'], 'result': None}
     if result is not None:
-        asked = result.pop('question')
-        out['result'] = {**result, 'reworded': asked != row['question']}   # asked before the question was worded as it is now
+        shown = {k: v for k, v in result.items() if k not in ('question', 'asks')}   # each ask's record is kept for confirming, not shown
+        out['result'] = {**shown, 'reworded': result['question'] != row['question']}   # asked before the question was worded as it is now
     return out
 
 
@@ -153,8 +188,18 @@ def _since(hours: float) -> str:
     return (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat(timespec='seconds')
 
 
+def _close_cut_off(conn) -> None:
+    """A run still marked running that this service is not running was cut off (the service stopped while it went): closed as stopped, its calls charged."""
+    for run_id, owner in conn.execute("SELECT id, owner FROM needed_run WHERE status = 'running'").fetchall():
+        with _LIVE_LOCK:
+            live = owner in _LIVE
+        if not live:
+            conn.execute("UPDATE needed_run SET status = 'stopped', finished_at = ?, note = ? WHERE id = ? AND status = 'running'",
+                         (now_text(), tr('这次运行没有跑完（服务停了），已经发出的调用照算', 'This run did not finish (the service stopped); the calls it made are charged'), run_id))
+
+
 def _used(conn) -> int:
-    """The model calls of the runs in the last SUITE_HOURS hours; one still running counts what it may make."""
+    """The model calls of the runs in the last SUITE_HOURS hours; the one running counts every call it may make."""
     return conn.execute("SELECT COALESCE(SUM(CASE WHEN status = 'running' THEN planned ELSE calls END), 0) FROM needed_run WHERE started_at > ?", (_since(SUITE_HOURS),)).fetchone()[0]
 
 
@@ -163,8 +208,8 @@ def _budget(conn) -> dict:
     return {'calls': SUITE_LIMIT, 'hours': SUITE_HOURS, 'used': used, 'left': max(0, SUITE_LIMIT - used)}
 
 
-def _running(conn) -> bool:
-    return conn.execute("SELECT 1 FROM needed_run WHERE status = 'running' AND started_at > ?", (_since(STALE_RUN_HOURS),)).fetchone() is not None
+def _busy_text() -> str:
+    return tr('列表正在跑，跑完再来', 'The list is running now. Run it again once that is done')
 
 
 def _why_not(conn, user: dict | None, model_ready: bool, count: int) -> str | None:
@@ -177,8 +222,8 @@ def _why_not(conn, user: dict | None, model_ready: bool, count: int) -> str | No
         return tr('列表里还没有问题：先写一个', 'The list has no question yet. Write one first')
     if not model_ready:
         return tr('本机服务没有模型凭据，不能跑', 'This server has no model credentials, so it cannot run')
-    if _running(conn):
-        return tr('列表正在跑，跑完再来', 'The list is running now. Run it again once that is done')
+    if _running_now(conn):
+        return _busy_text()
     left = _budget(conn)['left']
     if left < count:
         return tr(f'运行的模型调用在 {SUITE_HOURS} 小时内还剩 {left} 次，问一遍要 {count} 次', f'Runs have {left} model calls left in {SUITE_HOURS} hours, and asking each question once takes {count}')
@@ -187,42 +232,59 @@ def _why_not(conn, user: dict | None, model_ready: bool, count: int) -> str | No
 
 def listing(conn, user: dict | None, model_ready: bool) -> dict:
     """The list as a builder or an admin whom nothing limits reads it: each question with its expectation, its state and what it came back as in the last run;
-    the limits, the runs' budget line, the last run, and whether this person may start one now and why not."""
+    the limits, the runs' budget line, the run going now and the last one, and whether this person may start one now and why not."""
     _reader(conn, user)
+    _close_cut_off(conn)
     rows = _rows(conn)
     run = _last_run(conn)
     results = _results(conn, run['id']) if run else {}
     why = _why_not(conn, user, model_ready, len(rows))
     return {'questions': [_view(r, user, results.get(r['id'])) for r in rows], 'limits': {'questions': MAX_QUESTIONS, 'repeats': MAX_REPEATS},
-            'budget': _budget(conn), 'last_run': run, 'can_run': {'ok': why is None, 'why': why}, 'two_person': two_person(conn)['active']}
+            'budget': _budget(conn), 'running': _running_now(conn), 'last_run': run, 'can_run': {'ok': why is None, 'why': why}, 'two_person': two_person(conn)['active']}
 
 
 # --- writing ------------------------------------------------------------------------------------------------------------------------------------------------
 
+_PLAIN_NUMBER = re.compile(r'[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?', re.ASCII)   # 1234, 1,234, 1234.5, 1,234.5: thousands with commas, a point for the fraction
+
+
 def _number(raw) -> float:
-    """What was typed: 1234, 1,234 or 1234.5 read as a number."""
-    bad = QaRefused(tr('期望的数要写成数字，例如 119810 或 119,810', 'The expected number must be a number, for example 119810 or 119,810'))
+    """What was typed, read only when it is plainly a number: 1234, 1,234, 1234.5 or 1,234.5 (a full-width comma counts as a comma). "1.234,5", "1,2,3" or
+    "1 234" are refused rather than guessed."""
+    bad = QaRefused(tr('期望的数要写成数字，例如 119810、119,810 或 1,234.5', 'The expected number must be a number, for example 119810, 119,810 or 1,234.5'))
     if isinstance(raw, bool) or not isinstance(raw, (int, float, str)):
         raise bad
-    try:
-        value = float(raw.replace(',', '').replace('，', '').replace(' ', '')) if isinstance(raw, str) else float(raw)
-    except ValueError:
-        raise bad from None
+    if isinstance(raw, str):
+        text = raw.strip().replace('，', ',')
+        if not _PLAIN_NUMBER.fullmatch(text):
+            raise bad
+        value = float(text.replace(',', ''))
+    else:
+        value = float(raw)
     if not math.isfinite(value):
         raise bad
     return value
 
 
-def _expect(raw) -> tuple[str | None, float | None]:
-    """(kind, value) of what the question should give: (None, None) when nothing is known yet."""
+def _blocker(raw) -> str | None:
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        return None
+    text = raw.strip() if isinstance(raw, str) else None
+    if text is None or len(text) > MAX_NOTE or '\n' in text:
+        raise QaRefused(tr(f'挡住它的定义写名字，一行，最多 {MAX_NOTE} 个字', f'Name the definition that must block it on one line, at most {MAX_NOTE} characters'))
+    return text
+
+
+def _expect(raw) -> tuple[str | None, float | None, str | None]:
+    """(kind, value, blocker) of what the question should give: (None, None, None) when nothing is known yet."""
     if raw is None:
-        return None, None
+        return None, None, None
     if isinstance(raw, dict) and raw.get('kind') == 'number':
-        return 'number', _number(raw.get('value'))
+        return 'number', _number(raw.get('value')), None
     if isinstance(raw, dict) and raw.get('kind') == 'refused':
-        return 'refused', None
-    raise QaRefused(tr('期望要写成一个数（{"kind": "number", "value": 16}），或者必须拒答（{"kind": "refused"}）',
-                       'What it should give is a number ({"kind": "number", "value": 16}) or that it must be refused ({"kind": "refused"})'))
+        return 'refused', None, _blocker(raw.get('blocker'))
+    raise QaRefused(tr('期望要写成一个数（{"kind": "number", "value": 16}），或者必须拒答（{"kind": "refused"}，可以加上挡住它的定义 "blocker"）',
+                       'What it should give is a number ({"kind": "number", "value": 16}) or that it must be refused ({"kind": "refused"}, with "blocker", the definition that must block it, if you like)'))
 
 
 def _note(raw) -> str | None:
@@ -252,16 +314,16 @@ def write(conn, user: dict | None, payload: dict) -> dict:
     _reader(conn, user)
     _person(user)
     question = _clean_question(payload.get('question'))
-    kind, value = _expect(payload.get('expect'))
+    kind, value, blocker = _expect(payload.get('expect'))
     note = _note(payload.get('note'))
     with transaction(conn):
         if conn.execute('SELECT COUNT(*) FROM needed_question').fetchone()[0] >= MAX_QUESTIONS:
             raise QaRefused(tr(f'列表最多 {MAX_QUESTIONS} 个问题：先删掉一个再加', f'The list holds at most {MAX_QUESTIONS} questions. Remove one first'))
         _not_twice(conn, question)
-        cursor = conn.execute('INSERT INTO needed_question(question, expect_kind, expect_value, note, state, version, written_by, written_by_user_id, written_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)',
-                              (question, kind, value, note, 'proposed' if kind else 'none', _name(user), _uid(user), now_text()))
+        cursor = conn.execute('INSERT INTO needed_question(question, expect_kind, expect_value, expect_blocker, note, state, version, written_by, written_by_user_id, written_at) '
+                              'VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)', (question, kind, value, blocker, note, 'proposed' if kind else 'none', _name(user), _uid(user), now_text()))
         qid = cursor.lastrowid
-        _log(conn, user, qid, 'written', after={'question': question, 'expect': _expect_of({'expect_kind': kind, 'expect_value': value}), 'note': note})
+        _log(conn, user, qid, 'written', after={'question': question, 'expect': _expect_of({'expect_kind': kind, 'expect_value': value, 'expect_blocker': blocker}), 'note': note})
     return _one(conn, user, qid)
 
 
@@ -273,17 +335,17 @@ def update(conn, user: dict | None, payload: dict) -> dict:
     with transaction(conn):
         row = _found(conn, payload)
         question = _clean_question(payload['question']) if 'question' in payload else row['question']
-        kind, value = _expect(payload['expect']) if 'expect' in payload else (row['expect_kind'], row['expect_value'])
+        kind, value, blocker = _expect(payload['expect']) if 'expect' in payload else (row['expect_kind'], row['expect_value'], row['expect_blocker'])
         note = _note(payload['note']) if 'note' in payload else row['note']
-        reworded = question != row['question'] or kind != row['expect_kind'] or (kind == 'number' and value != row['expect_value'])
+        reworded = (question, kind, value if kind == 'number' else None, blocker) != (row['question'], row['expect_kind'], row['expect_value'] if row['expect_kind'] == 'number' else None, row['expect_blocker'])
         if not reworded and note == row['note']:
             return _one(conn, user, row['id'])
         if question != row['question']:
             _not_twice(conn, question, row['id'])
         if reworded:
-            conn.execute('UPDATE needed_question SET question = ?, expect_kind = ?, expect_value = ?, note = ?, state = ?, version = version + 1, written_by = ?, written_by_user_id = ?, written_at = ?, '
-                         'confirmed_by = NULL, confirmed_by_user_id = NULL, confirmed_at = NULL, self_confirmed = 0, basis_json = NULL, look_json = NULL WHERE id = ?',
-                         (question, kind, value, note, 'proposed' if kind else 'none', _name(user), _uid(user), now_text(), row['id']))
+            conn.execute('UPDATE needed_question SET question = ?, expect_kind = ?, expect_value = ?, expect_blocker = ?, note = ?, state = ?, version = version + 1, written_by = ?, '
+                         'written_by_user_id = ?, written_at = ?, confirmed_by = NULL, confirmed_by_user_id = NULL, confirmed_at = NULL, self_confirmed = 0, basis_json = NULL, look_json = NULL WHERE id = ?',
+                         (question, kind, value, blocker, note, 'proposed' if kind else 'none', _name(user), _uid(user), now_text(), row['id']))
         else:
             conn.execute('UPDATE needed_question SET note = ?, version = version + 1 WHERE id = ?', (note, row['id']))
         after = _row(conn.execute(f'SELECT {COLUMNS} FROM needed_question WHERE id = ?', (row['id'],)).fetchone())
@@ -303,17 +365,29 @@ def delete(conn, user: dict | None, payload: dict) -> dict:
     return {'ok': True}
 
 
-def _basis(conn) -> dict:
-    """What an expectation is confirmed on: the version of every current dataset and of every definition, as they are now."""
-    datasets = {name: version for name, version in conn.execute('SELECT c.name, d.version FROM current_dataset c JOIN dataset d ON d.id = c.dataset_id')}
-    like = ' OR '.join('element_id LIKE ?' for _ in DEFINITION_PREFIXES)
-    definitions = {e: v for e, v in conn.execute(f'SELECT element_id, version FROM element_state WHERE {like}', [p + '%' for p in DEFINITION_PREFIXES])}
-    return {'datasets': datasets, 'definitions': definitions}
+def _reads(asks: list[dict]) -> dict | None:
+    """What these asks read, at the versions they read it: the datasets and definitions their answers used, and the definitions a refusal named. None for none."""
+    datasets, definitions = {}, {}
+    for a in asks:
+        datasets.update(a.get('datasets') or {})
+        for d in [*(a.get('definitions') or []), *(b for b in a.get('blocking') or [] if b.get('id'))]:
+            definitions[d['id']] = {'name': d['name'], 'version': d.get('version')}
+    return {'datasets': datasets, 'definitions': definitions} if datasets or definitions else None
+
+
+def _answered_basis(conn, row: dict) -> dict | None:
+    """What the expected answer read, from the last run's asks of this question (worded as it is now) that gave what is expected."""
+    found = conn.execute('SELECT question, result_json FROM needed_result WHERE question_id = ? ORDER BY run_id DESC LIMIT 1', (row['id'],)).fetchone()
+    if found is None or found[0] != row['question']:
+        return None
+    expect = _expect_of(row)
+    return _reads([a for a in json.loads(found[1]).get('asks') or [] if _class(expect, a) == 'right'])
 
 
 def confirm(conn, user: dict | None, payload: dict) -> dict:
     """{id, version}: confirm what the question should give. While two-person confirmation is on, not by the person who wrote it. A person signed in to the page
-    only (access.PERSON_ONLY_POSTS): "confirmed by" carries their name."""
+    only (access.PERSON_ONLY_POSTS): "confirmed by" carries their name. What the expected answer read is recorded when the last run gave it; else the next
+    passing run records it."""
     _reader(conn, user)
     _person(user)
     with transaction(conn):
@@ -325,8 +399,9 @@ def confirm(conn, user: dict | None, payload: dict) -> dict:
         own = user is not None and row['written_by_user_id'] is not None and row['written_by_user_id'] == user['id']
         if own and two_person(conn)['active']:
             raise QaRefused(tr('这一条是你自己提的，要另一位来确认', 'You put this forward yourself, so someone else must confirm it'), 403)
+        basis = _answered_basis(conn, row)
         conn.execute("UPDATE needed_question SET state = 'confirmed', version = version + 1, confirmed_by = ?, confirmed_by_user_id = ?, confirmed_at = ?, self_confirmed = ?, "
-                     'basis_json = ?, look_json = NULL WHERE id = ?', (_name(user), _uid(user), now_text(), int(own), json.dumps(_basis(conn), ensure_ascii=False), row['id']))
+                     'basis_json = ?, look_json = NULL WHERE id = ?', (_name(user), _uid(user), now_text(), int(own), json.dumps(basis, ensure_ascii=False) if basis else None, row['id']))
         _log(conn, user, row['id'], 'confirmed', before=_logged(row), after={**_logged({**row, 'state': 'confirmed'}), **({'self_confirmed': True} if own else {})})
     return _one(conn, user, row['id'])
 
@@ -334,10 +409,10 @@ def confirm(conn, user: dict | None, payload: dict) -> dict:
 # --- running ------------------------------------------------------------------------------------------------------------------------------------------------
 
 class _RunGateway:
-    """The service's model, for one run: each call is counted, and its line in the model call log is marked as this run's."""
+    """The service's model, for one run: each call is charged on the run's row as it goes out, and its line in the model call log is marked as this run's."""
 
-    def __init__(self, gateway, run_id: int):
-        self._gateway, self.run_id, self.calls = gateway, run_id, 0
+    def __init__(self, gateway, conn, run_id: int):
+        self._gateway, self._conn, self.run_id, self.calls, self.failure = gateway, conn, run_id, 0, None
 
     @property
     def model(self):
@@ -345,7 +420,12 @@ class _RunGateway:
 
     def complete_json(self, **request):
         self.calls += 1
-        return self._gateway.complete_json(**request)
+        self._conn.execute('UPDATE needed_run SET calls = ? WHERE id = ?', (self.calls, self.run_id))
+        try:
+            return self._gateway.complete_json(**request)
+        except Exception as exc:   # kept in its own words, for the line that says why the run stopped
+            self.failure = str(exc)[:200]
+            raise
 
     def log_call(self, record: dict) -> None:
         log = getattr(self._gateway, 'log_call', None)
@@ -361,55 +441,87 @@ def _repeats(raw) -> int:
     return raw
 
 
-def _start(conn, user: dict | None, repeats: int, count: int) -> int:
-    """The run's row, written only when no other run is going and the runs' budget has room for every call this one may make."""
+def _start(conn, user: dict | None, repeats: int, count: int) -> tuple[int, str]:
+    """(the run's id, its token): the row, written only when no other run is going and the runs' budget has room for every call this one may make."""
     planned = count * repeats
     with transaction(conn):
-        conn.execute("UPDATE needed_run SET status = 'stopped', finished_at = ?, note = ? WHERE status = 'running' AND started_at <= ?",
-                     (now_text(), tr('这次运行没有跑完（服务停了）', 'This run did not finish (the service stopped)'), _since(STALE_RUN_HOURS)))
-        if _running(conn):
-            raise QaRefused(tr('列表正在跑，跑完再来', 'The list is running now. Run it again once that is done'), 409)
+        _close_cut_off(conn)
+        if _running_now(conn):
+            raise QaRefused(_busy_text(), 409)
         used = _used(conn)
         if used + planned > SUITE_LIMIT:
             raise QaRefused(tr(f'运行的模型调用在任意 {SUITE_HOURS} 小时内最多 {SUITE_LIMIT} 次：已经用了 {used} 次，还剩 {max(0, SUITE_LIMIT - used)} 次，这次最多要 {planned} 次'
                                f'（{count} 个问题，每个问 {repeats} 次）。少问几次，或者晚些再跑。',
                                f'Runs may make {SUITE_LIMIT} model calls in any {SUITE_HOURS} hours. {used} are used, so {max(0, SUITE_LIMIT - used)} are left, and this run could make {planned} '
                                f'({count} questions, each asked {repeats} {"time" if repeats == 1 else "times"}). Ask fewer times, or run it later.'), 429)
-        cursor = conn.execute("INSERT INTO needed_run(by_name, by_user_id, started_at, status, repeats, planned, calls, prompt_version) VALUES (?, ?, ?, 'running', ?, ?, 0, ?)",
-                              (_name(user), _uid(user), now_text(), repeats, planned, QUESTION_PROMPT_VERSION))
-        return cursor.lastrowid
+        owner = uuid.uuid4().hex
+        cursor = conn.execute("INSERT INTO needed_run(by_name, by_user_id, started_at, status, repeats, planned, calls, prompt_version, owner) VALUES (?, ?, ?, 'running', ?, ?, 0, ?, ?)",
+                              (_name(user), _uid(user), now_text(), repeats, planned, QUESTION_PROMPT_VERSION, owner))
+        with _LIVE_LOCK:
+            _LIVE.add(owner)
+        return cursor.lastrowid, owner
 
 
-def _ask_said(result: dict) -> dict:
-    """What one ask came back as, kept with the run: the number, or the refusal with the definitions that block it and who can confirm them; and what it read."""
-    answered = result['status'] in ANSWERED
+def _blocking(conn, result: dict) -> list[dict]:
+    """What a refusal of the gate names: each definition not confirmed or waiting (with its version now and who can confirm it), or what the query left out."""
+    if result['status'] == 'definition_unmet':
+        return [{'kind': 'unmet', 'name': u.get('definition'), 'why': u.get('why')} for u in result.get('unmet') or [] if isinstance(u, dict)]
     refusal = result.get('refusal') or {}
-    blocking = [{k: d.get(k) for k in ('id', 'kind', 'name', 'state', 'who_can_confirm', 'text')} for d in refusal.get('definitions', []) if isinstance(d, dict) and d.get('id')] \
-        if refusal.get('kind') in ('unsettled', 'unwalkable') else []
+    if result['status'] != 'refused' or refusal.get('kind') not in ('unsettled', 'unwalkable'):
+        return []
+    out = []
+    for d in refusal.get('definitions', []):
+        if isinstance(d, dict) and d.get('id'):
+            row = element_row(conn, d['id'])
+            out.append({**{k: d.get(k) for k in ('id', 'kind', 'name', 'state', 'who_can_confirm')}, 'version': row['version'] if row else None})
+    return out
+
+
+def _ask_said(conn, result: dict) -> dict:
+    """What one ask came back as, kept with the run: the number, or the refusal with what blocks it; and what it read."""
+    answered = result['status'] in ANSWERED
     return {'status': result['status'], 'number': _plain(answer_number(result)) if answered else None, 'reason': None if answered else result.get('reason'),
-            'blocking': blocking, 'query_text': result.get('query_text'), 'datasets': dict(result.get('datasets') or {}),
+            'blocking': _blocking(conn, result) if result['status'] in GATE else [], 'query_text': result.get('query_text'), 'datasets': dict(result.get('datasets') or {}),
             'definitions': [{'id': d['id'], 'name': d['name'], 'version': d['version']} for d in result.get('definitions') or []], 'model': result.get('model')}
 
 
-def _moved(conn, basis: dict | None, asks: list[dict]) -> list[dict]:
-    """What the answers read that has another version than when the expectation was confirmed: datasets, definitions they stood on, definitions a refusal named."""
+def _class(expect: dict | None, a: dict) -> str:
+    """One ask against the expectation: 'right', 'wrong' (an answer that is not the expected one), 'gate' (a refusal of the gate that is not the expected one) or
+    'none' (no answer and no refusal of the gate)."""
+    gate, answered = a['status'] in GATE, a['status'] in ANSWERED
+    if expect is None:
+        return 'gate' if gate else 'none' if not answered else 'wrong'
+    if expect['kind'] == 'number':
+        return 'right' if answered and same_number(expect['value'], a['number']) else 'wrong' if answered else 'gate' if gate else 'none'
+    named = expect.get('blocker') is None or any(expect['blocker'] in (b.get('id'), b.get('name')) for b in a['blocking'])
+    return 'right' if gate and named else 'wrong' if answered else 'gate' if gate else 'none'
+
+
+def _moved(conn, basis: dict | None) -> list[dict]:
+    """What the expected answer read that has another version now (or is gone)."""
     if not basis:
         return []
-    out, seen = [], set()
-    for a in asks:
-        for name, version in a['datasets'].items():
-            then = basis['datasets'].get(name)
-            if then != version and ('dataset', name) not in seen:
-                seen.add(('dataset', name))
-                out.append({'kind': 'dataset', 'name': name, 'from': then, 'to': version})
-        read = [(d['id'], d['name'], d['version']) for d in a['definitions']]
-        read += [(b['id'], b['name'], (conn.execute('SELECT version FROM element_state WHERE element_id = ?', (b['id'],)).fetchone() or (None,))[0]) for b in a['blocking']]
-        for element_id, name, version in read:
-            then = basis['definitions'].get(element_id)
-            if then != version and ('definition', element_id) not in seen:
-                seen.add(('definition', element_id))
-                out.append({'kind': 'definition', 'name': name, 'from': then, 'to': version})
+    out = []
+    for name, version in basis['datasets'].items():
+        now = current_dataset(conn, name)
+        if (now['version'] if now else None) != version:
+            out.append({'kind': 'dataset', 'name': name, 'from': version, 'to': now['version'] if now else None})
+    for element_id, d in basis['definitions'].items():
+        now = element_row(conn, element_id)
+        if (now['version'] if now else None) != d['version']:
+            out.append({'kind': 'definition', 'name': d['name'], 'from': d['version'], 'to': now['version'] if now else None})
     return out
+
+
+def _reads_otherwise(basis: dict | None, asks: list[dict]) -> dict | None:
+    """{'now', 'not_now'}: the definitions the answers read now that the expected answer did not, and the other way round; None when they read the same."""
+    answered = [a for a in asks if a['status'] in ANSWERED]
+    if not basis or not answered:
+        return None
+    now = {d['id']: d['name'] for a in answered for d in a['definitions']}
+    then = {k: d['name'] for k, d in basis['definitions'].items()}
+    added, gone = [now[k] for k in now if k not in then], [then[k] for k in then if k not in now]
+    return {'now': added, 'not_now': gone} if added or gone else None
 
 
 def _distinct(asks: list[dict]) -> list[dict]:
@@ -423,31 +535,27 @@ def _distinct(asks: list[dict]) -> list[dict]:
 def judge(conn, row: dict, asks: list[dict]) -> dict:
     """One question's outcome in a run, from its asks and its expectation as it stood when the run began."""
     expect = _expect_of(row) if row['state'] == 'confirmed' else None
-    first = asks[0]
-    out = {'outcome': None, 'asked': len(asks), 'right': None, 'distinct': _distinct(asks), 'expected': expect}
+    classes = [_class(expect, a) for a in asks]
+    gate = next((a for a, c in zip(asks, classes) if c == 'gate'), None)
+    none = next((a for a, c in zip(asks, classes) if c == 'none'), None)
+    out = {'outcome': None, 'asked': len(asks), 'right': None, 'distinct': _distinct(asks), 'expected': expect, 'asks': asks}
     if expect is None:
-        return {**out, 'outcome': 'no_expectation', 'answer': {k: first[k] for k in ('status', 'number', 'reason', 'query_text')}, 'blocking': first['blocking']}
-    refusals = [a for a in asks if a['status'] not in ANSWERED]
-    if expect['kind'] == 'refused':
-        right = len(refusals)
-    else:
-        right = sum(1 for a in asks if same_number(expect['value'], a['number']))
-    wrong = len(asks) - right - (0 if expect['kind'] == 'refused' else len(refusals))
-    out['right'] = right
-    if not wrong and right == len(asks):
+        return {**out, 'outcome': 'no_expectation', 'answer': {k: asks[0][k] for k in ('status', 'number', 'reason', 'query_text')}, 'blocking': asks[0]['blocking']}
+    out['right'] = classes.count('right')
+    otherwise = _reads_otherwise(row['basis'], asks)
+    if otherwise:
+        out['reads_otherwise'] = otherwise
+    if out['right'] == len(asks):
         return {**out, 'outcome': 'passes'}
-    if not wrong:   # only refusals beside the right answers: refused, with what blocks it; never "differs"
-        said = refusals[0]
-        return {**out, 'outcome': 'refused', 'reason': said['reason'], 'blocking': said['blocking']}
-    moved = _moved(conn, row['basis'], asks)
-    return {**out, 'outcome': 'needs_look' if moved else 'differs', 'moved': moved}
+    if 'wrong' in classes:
+        moved = _moved(conn, row['basis'])
+        return {**out, 'outcome': 'needs_look' if moved else 'differs', 'moved': moved}
+    if gate is not None:   # refused by the gate, not the way expected: what blocks it; never "differs"
+        return {**out, 'outcome': 'refused', 'reason': gate['reason'], 'blocking': gate['blocking']}
+    return {**out, 'outcome': 'no_answer', 'reason': none['reason']}
 
 
-def run(conn, gateway, user: dict | None, payload: dict) -> dict:
-    """{repeats?}: ask every question on the list 1 to MAX_REPEATS times (default 1) as this person, through workspace_questions.ask without keeping the asks as
-    theirs, and store what each came back as. Refused (403) to anyone but a builder or an admin whom nothing limits, to a token and to a demo guest; 400 for an
-    empty list, 503 without a model, 409 while another run goes, 429 when the runs' budget has no room for every call this one may make. A model that cannot be
-    reached stops the run: the questions not asked come back as not run. Returns the list as listing() reads it."""
+def _prepare(conn, gateway, user: dict | None, payload: dict) -> tuple[list[dict], int]:
     if user is not None and user['role'] not in ('builder', 'admin'):
         raise QaRefused(tr('“要回答的问题”只给建设者和管理员', 'Questions we need are for builders and admins'), 403)
     _person(user)
@@ -461,39 +569,85 @@ def run(conn, gateway, user: dict | None, payload: dict) -> dict:
     if gateway is None:
         raise QaRefused(tr('本机服务没有模型凭据：设置 DEEPSEEK_API_KEY 或 OPENROUTER_API_KEY 后重启 ontology_server，再来跑。',
                            'This server has no model credentials. Set DEEPSEEK_API_KEY or OPENROUTER_API_KEY and restart ontology_server, then run it.'), 503)
-    run_id = _start(conn, user, repeats, len(rows))
-    counted = _RunGateway(gateway, run_id)
+    return rows, repeats
+
+
+def run(conn, gateway, user: dict | None, payload: dict) -> dict:
+    """{repeats?}: ask every question on the list 1 to MAX_REPEATS times (default 1) as this person and store what each came back as, before returning the list
+    as listing() reads it. Refused (403) to anyone but a builder or an admin whom nothing limits, to a token and to a demo guest; 400 for an empty list, 503
+    without a model, 409 while another run goes, 429 when the runs' budget has no room for every call this one may make."""
+    rows, repeats = _prepare(conn, gateway, user, payload)
+    run_id, owner = _start(conn, user, repeats, len(rows))
+    _execute(conn, gateway, user, run_id, owner, rows, repeats)
+    return listing(conn, user, True)
+
+
+def start(conn, gateway, user: dict | None, payload: dict, connect) -> dict:
+    """The same as run(), refused the same way, but the asking goes on in the service after this returns (a run of many calls outlives a proxy's timeout); the
+    list returned says it is running. `connect()` opens the workspace for the run."""
+    rows, repeats = _prepare(conn, gateway, user, payload)
+    run_id, owner = _start(conn, user, repeats, len(rows))
+    context = contextvars.copy_context()   # the run says what it says in the language of the person who started it
+
+    def go():
+        own = connect()
+        try:
+            _execute(own, gateway, user, run_id, owner, rows, repeats)
+        finally:
+            own.close()
+    try:
+        threading.Thread(target=context.run, args=(go,), name=f'needed-run-{run_id}', daemon=True).start()
+    except BaseException:
+        with _LIVE_LOCK:
+            _LIVE.discard(owner)
+        raise
+    return listing(conn, user, True)
+
+
+def _execute(conn, gateway, user: dict | None, run_id: int, owner: str, rows: list[dict], repeats: int) -> None:
+    """Ask each question, judge it and store the run once. A model that cannot be reached, or any error, stops it: the questions not asked come back as not run,
+    and the run is closed as stopped with the calls it made."""
+    counted = _RunGateway(gateway, conn, run_id)
     judged, stopped, model = {}, None, None
     try:
         for row in rows:
             asks = []
             for _ in range(repeats if stopped is None else 0):
                 try:
-                    said = _ask_said(ask(conn, counted, user, row['question'], keep=False))
+                    said = _ask_said(conn, ask(conn, counted, user, row['question'], keep=False))
                 except QaRefused as exc:
                     if exc.status in (502, 503):   # the model could not be reached: nothing more is asked
-                        stopped = str(exc)
+                        stopped = tr(f'模型连不上，运行停了（{counted.failure or exc}）', f'The model could not be reached, so the run stopped ({counted.failure or exc})')
                         break
-                    said = {'status': 'refused', 'number': None, 'reason': str(exc), 'blocking': [], 'query_text': None, 'datasets': {}, 'definitions': [], 'model': None}
+                    said = {'status': 'not_asked', 'number': None, 'reason': str(exc), 'blocking': [], 'query_text': None, 'datasets': {}, 'definitions': [], 'model': None}
                 model = model or said['model']
                 asks.append(said)
             if stopped is not None:
                 judged[row['id']] = (row, {'outcome': 'not_run', 'asked': 0, 'right': None, 'distinct': [], 'expected': _expect_of(row) if row['state'] == 'confirmed' else None})
             else:
                 judged[row['id']] = (row, judge(conn, row, asks))
-    except BaseException:   # whatever stopped it, the run is closed with what it asked, so the list is not left running
-        _finish(conn, user, run_id, counted.calls, model, stopped or tr('这次运行出错停了，详情见服务日志', 'This run stopped on an error; see the service log'), judged)
-        raise
-    _finish(conn, user, run_id, counted.calls, model, stopped, judged)
-    return listing(conn, user, True)
+    except Exception:   # whatever stopped it, the run is closed with what it asked, so the list is not left running
+        traceback.print_exc()
+        stopped = tr('这次运行出错停了，详情见服务日志', 'This run stopped on an error; see the service log')
+        for row in rows:
+            judged.setdefault(row['id'], (row, {'outcome': 'not_run', 'asked': 0, 'right': None, 'distinct': [], 'expected': _expect_of(row) if row['state'] == 'confirmed' else None}))
+    finally:
+        try:
+            _finish(conn, user, run_id, counted.calls, model, stopped, judged)
+        finally:
+            with _LIVE_LOCK:
+                _LIVE.discard(owner)
 
 
 def _finish(conn, user: dict | None, run_id: int, calls: int, model, stopped, judged: dict) -> None:
-    """Store the run once: what each question came back as, and every expectation that needs another look goes back for a person (unless it was changed meanwhile)."""
+    """Store the run once: what each question came back as; a passing question's expectation now stands on what this run read; every expectation that needs another
+    look goes back for a person (unless it was changed meanwhile)."""
     with transaction(conn):
         for qid, (row, result) in judged.items():
             conn.execute('INSERT INTO needed_result(run_id, question_id, question, outcome, result_json) VALUES (?, ?, ?, ?, ?)',
                          (run_id, qid, row['question'], result['outcome'], json.dumps(result, ensure_ascii=False)))
+            if result['outcome'] == 'passes' and (basis := _reads(result['asks'])):
+                conn.execute("UPDATE needed_question SET basis_json = ? WHERE id = ? AND version = ? AND state = 'confirmed'", (json.dumps(basis, ensure_ascii=False), qid, row['version']))
             if result['outcome'] == 'needs_look':
                 changed = conn.execute("UPDATE needed_question SET state = 'needs_look', version = version + 1, look_json = ? WHERE id = ? AND version = ? AND state = 'confirmed'",
                                        (json.dumps(result['moved'], ensure_ascii=False), qid, row['version'])).rowcount
