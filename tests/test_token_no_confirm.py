@@ -22,18 +22,23 @@ except ImportError:   # before 3.11
 
 COVERED = ('/api/workspace/types/confirm', '/api/workspace/types/views/confirm', '/api/workspace/types/derived/confirm', '/api/workspace/relations/confirm',
            '/api/workspace/pipelines/confirm', '/api/workspace/actions/confirm', '/api/workspace/actions/decide', '/api/workspace/queue/confirm',
-           '/api/workspace/queue/confirm-group', '/api/workspace/checked')
+           '/api/workspace/queue/confirm-group', '/api/workspace/checked', '/api/workspace/needed/confirm')
 REFUSED_ZH = '确认和批准要由本人登录页面来做'
 REFUSED_EN = 'Confirming and approving are done by a person signed in to the page'
 CHECKED = '/api/workspace/checked'   # a checked number is recorded on a board card or a saved answer, not in the review queue: its own sentence
 CHECKED_ZH = '核对过的数要由本人登录页面来记'
 CHECKED_EN = 'A checked number is recorded by a person signed in to the page'
+NEEDED = '/api/workspace/needed/confirm'   # an expected answer on the list of questions we need: its own sentence, which names the list
+NEEDED_ZH = '要回答的问题由本人登录页面来写、确认和运行'
+NEEDED_EN = 'Questions we need are written, confirmed and run by a person signed in to the page'
 
 
 def refusal(path, english=False):
     """The start of the sentence a token is refused with on this route."""
     if path == CHECKED:
         return CHECKED_EN if english else CHECKED_ZH
+    if path == NEEDED:
+        return NEEDED_EN if english else NEEDED_ZH
     return REFUSED_EN if english else REFUSED_ZH
 
 
@@ -205,8 +210,8 @@ class PersonOnlyListTests(unittest.TestCase):
 
 
 PACKAGE = Path(access.__file__).parent
-# where a person's name is written as the one who vouches: a confirmation of any definition, an approved change, a checked number
-SINKS = {('object_types', 'write_confirmation'), ('object_actions', 'decide'), ('checked_numbers', 'record')}
+# where a person's name is written as the one who vouches: a confirmation of any definition, an approved change, a checked number, an expected answer confirmed
+SINKS = {('object_types', 'write_confirmation'), ('object_actions', 'decide'), ('checked_numbers', 'record'), ('needed_questions', 'confirm')}
 ROUTERS = {('ontology_server', 'make_server'), ('ontology_server', 'main'), ('demo', 'seed'), ('demo', 'main'), ('use_layer', 'post')}   # they reach everything: the server, the demo seed, the use layer's dispatch
 ON_A_COPY = {'/api/workspace/impact': 'what confirming would do to the boards, worked out on a copy of the workspace that is thrown away (change_preview.impact)'}
 
