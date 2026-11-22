@@ -179,6 +179,10 @@ Ontology 先约定「有哪些对象、怎么识别、对象之间可以有什�
 
 你们的指标可能已经在数仓的语义层里定义好了。谁签过字？底下的数据变了，谁会知道？OntoPoc 管的就是这一段：每个定义带着确认人和数据版本，数据一动就回到“需再看”，在有人重新确认之前，AI 不会拿它回答。它用自己复制的一份数据。已经用 dbt 的，可以在对象类型页上传 `manifest.json`：OntoPoc 读其中的模型测试（unique、not_null、relationships、accepted_values），提出对象类型和关系，一次最多 50 个，写入前先给出预览；每一个仍要另一位建设者对着数据确认。复合主键、dbt 的 constraints、metrics、语义层和 dbt Cloud 都不读，manifest 之后的改动也不会跟着同步，导入本身不确认任何东西。目前也还不能导出到某个具体的语义层。
 
+### OntoPoc 用 OWL 或 RDF 吗？
+
+内部不用。团队应用用自己的对象模型，也不运行 OWL 推理机：OWL 按开放世界读数据，主键相同的两个对象会被读成同一个，而 OntoPoc 会拒绝重复的主键。你能看到的已确认定义可以下载成两个 Turtle 文件，在“AI 工具接入”页或 `GET /api/workspace/agent/schema`：OWL 写对象类型、主键、属性和关系，SKOS 写代码含义，SHACL 规则写主键、代码和基数的检查。视图和派生属性在里面是文字，不是 OWL 公理，也不含任何数据行。目前读过它们的只有 OntoPoc 测试里的 rdflib 和 pyshacl。什么对应什么、哪些放不进去，见 [docs/STANDARDS.md](docs/STANDARDS.md)。早期界面另有一个自己的 Turtle 导出。
+
 ### 什么是 ontology MCP？可以怎么用？
 
 这里的 ontology MCP 指智能体通过 MCP 工具读一个团队已确认的本体。设了 `ONTOPOC_TOOLSET=read` 或用只读令牌时，OntoPoc 的 MCP 服务给智能体 6 个只读工具（读定义、提问、用本体查询直接算、列出未确认项、读派生属性、看每条定义现在是否已确认），按个人令牌的权限算，供 Claude Code、Claude Desktop、Cursor 等客户端通过本机 stdio 调用。接法见[给智能体用](#给智能体用mcp--claude)，清单见 [docs/MCP.md](docs/MCP.md)。
@@ -204,8 +208,8 @@ Ontology 先约定「有哪些对象、怎么识别、对象之间可以有什�
 ## 开发
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # 后端测试（2026-11-21 共 2,399 个；先 pip install -e ".[check,sources]"，否则 TTL 校验等会跳过）
-npm --prefix landing-page run test:unit                       # 前端测试（2026-11-21 共 797 个）
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # 后端测试（2026-11-22 共 2,411 个；先 pip install -e ".[check,sources]"，否则 Turtle、OWL 和 SHACL 的测试等会跳过）
+npm --prefix landing-page run test:unit                       # 前端测试（2026-11-22 共 798 个）
 PYTHONPATH=src:. python3 scripts/real_model_check.py --out /tmp/check   # 真实模型对照 SQL 的检查（要模型 key；只有错数才算失败）
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # 试跑用另一个数据目录
 ```
@@ -219,6 +223,7 @@ PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp
 | [docs/MCP.md](docs/MCP.md) | MCP 工具清单 |
 | [docs/AGENTS.md](docs/AGENTS.md) | 每一次模型调用的定义卡与调用记录 |
 | [docs/DEVELOPMENT_GUARDRAILS.md](docs/DEVELOPMENT_GUARDRAILS.md) | 开发红线与待触发的方向 |
+| [docs/STANDARDS.md](docs/STANDARDS.md) | OWL、SHACL 和 SKOS：已确认定义的下载里有什么，哪些放不进去 |
 
 ## 许可证
 

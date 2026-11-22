@@ -47,7 +47,7 @@ OntoPoc 是团队数据和回答问题的 AI 之间的确认关口：AI 只按�
 - **对建设者**：待确认队列、需再看的原因、问题统计（答了、被检查挡下、没算出，以及挡得最多的未确认定义）。
 - **留下来的记录**：每次确认的快照（定义、证据、数据版本、提出人和确认人），每个回答连同它用到的定义。
 
-**不是**可执行的运行时契约，也不导出到别的语义层。已确认定义能带出去的有两种：一是 `GET /api/workspace/agent/standing?format=csv` 下载的已确认定义表（也可以用 MCP 的 `describe_definitions` 和 `definition_standing` 实时读）；二是“AI 工具接入”页的技能包（zip），它是已确认定义和拒答规则的快照，写着谁在哪天确认，但不带数据版本和审计记录，数据变了也不会更新。
+**不是**可执行的运行时契约，也不导出到某个具体的语义层产品。已确认定义能带出去的有三种：一是 `GET /api/workspace/agent/standing?format=csv` 下载的已确认定义表（也可以用 MCP 的 `describe_definitions` 和 `definition_standing` 实时读）；二是 `GET /api/workspace/agent/schema` 下载的 OWL 和 SHACL 文件（只有结构，视图和派生属性在里面只是文字，见 [STANDARDS.md](STANDARDS.md)），给读这些 W3C 标准的工具，它同样是快照，数据变了不会跟着变；三是“AI 工具接入”页的技能包（zip），它是已确认定义和拒答规则的快照，写着谁在哪天确认，但不带数据版本和审计记录，数据变了也不会更新。
 
 ## 5. 一份定义的一生
 

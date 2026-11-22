@@ -177,6 +177,10 @@ Recent work has a language model do most of the building of an ontology or a gra
 
 Your metrics may already be defined in a semantic layer on a warehouse. Who signed them? Who notices when the data changes underneath? OntoPoc is about that part: each definition carries the person who confirmed it and the data version, goes back for another look when the data moves, and the AI refuses to use it until someone confirms it again. It keeps its own copy of the data. If you use dbt, upload `manifest.json` on the object types page: OntoPoc reads its model tests (unique, not_null, relationships, accepted_values) and proposes object types and relations, at most 50 per import and shown as a preview before anything is written; another builder still confirms each against the data. It does not read composite keys, dbt constraints, metrics, the semantic layer or dbt Cloud, it does not follow later changes to the manifest, and the import confirms nothing. It does not export to a specific semantic layer yet.
 
+### Does OntoPoc use OWL or RDF?
+
+Not inside. The team app keeps its own object model and does not run an OWL reasoner: OWL reads data under an open world, so two objects with the same key become one object, where OntoPoc refuses the repeated key. The confirmed definitions you may see download as two Turtle files, from the AI tool access page or `GET /api/workspace/agent/schema`: OWL for object types, keys, properties and relations, SKOS for code meanings, and SHACL shapes for the key, code and cardinality checks. Views and derived properties are in them as text, not as OWL axioms, and no row of data is. So far only rdflib and pyshacl, in OntoPoc's tests, have read them. What maps where, and what does not fit, is in [docs/STANDARDS.en.md](docs/STANDARDS.en.md). The earlier screen has a separate Turtle export of its own.
+
 ### What is an ontology MCP, and how do I use it here?
 
 Here, ontology MCP means an agent reading a team's confirmed ontology through MCP tools. With `ONTOPOC_TOOLSET=read` or a read-only personal token, OntoPoc's MCP server gives an agent six read-only tools (read definitions, ask, run an OntoPoc Query, list unconfirmed items, read a derived property, see whether each definition is confirmed now) for clients such as Claude Code, Claude Desktop and Cursor, over local stdio. Setup is under [For agents](#for-agents-mcp--claude); the list is in [docs/MCP.md](docs/MCP.md).
@@ -202,8 +206,8 @@ Issues and pull requests are welcome. Read the [development guardrails](docs/DEV
 ## Development
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (2,399 on 2026-11-21; install ".[check,sources]" first, or TTL and some source checks are skipped)
-npm --prefix landing-page run test:unit                       # page tests (797 on 2026-11-21)
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (2,411 on 2026-11-22; install ".[check,sources]" first, or the Turtle, OWL and SHACL tests and some source checks are skipped)
+npm --prefix landing-page run test:unit                       # page tests (798 on 2026-11-22)
 PYTHONPATH=src:. python3 scripts/real_model_check.py --out /tmp/check   # real model against SQL (needs a model key; fails only on a wrong number)
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # a trial run in another data directory
 ```
@@ -217,6 +221,7 @@ Page code: the team app is in `landing-page/src/app/` and uses only `/api/worksp
 | [docs/MCP.md](docs/MCP.md) | The MCP tools |
 | [docs/AGENTS.md](docs/AGENTS.md) | Every model call: its definition card and the call log |
 | [docs/DEVELOPMENT_GUARDRAILS.md](docs/DEVELOPMENT_GUARDRAILS.md) | Red lines, and directions waiting for a trigger |
+| [docs/STANDARDS.en.md](docs/STANDARDS.en.md) | OWL, SHACL and SKOS: what the download of confirmed definitions holds, and what does not fit (in English and Chinese) |
 
 ## License
 
