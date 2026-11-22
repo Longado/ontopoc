@@ -293,7 +293,7 @@ def definition_check(question: str, query: dict, ontology: dict, views: list[dic
     uses = _uses(query, types, {r['key']: r for r in normalized['relations']})
     read_fields = {f for k in query_types(ontology, query) if k in types for f in _fields(types[k])}
     read_derived = _read_derived(query, types, uses, derived)
-    through = lambda v: _same_rows(read_derived, v['source'], {(f['column'], f['op'], f['label']) for f in v['filters']}) if v.get('filters') and not v.get('latest') and v['source'] not in tables else None
+    through = lambda v: _same_rows(read_derived, v['source'], {(f['column'], f['op'], f['label']) for f in v['filters']}) if v.get('filters') and not v.get('latest') and not v.get('derived') and v['source'] not in tables else None   # a view with a per-row formula keeps rows no derived count's conditions say
     by_derived = lambda d, v: tr(f'读派生属性 {d["name"]}（它的条件和视图 {v["name"]} 一样）', f'Reads the derived property {d["name"]} (its conditions are those of the view {v["name"]})')
     unmet, apply, understood, omitted = [], [], [], []
     known = {v['name'] for v in views if v['definition'] is not None}
@@ -331,7 +331,7 @@ def definition_check(question: str, query: dict, ontology: dict, views: list[dic
             understood.append(_says(direction, v['name'], by_derived(d, v)))
         elif v['source'] not in tables:
             unmet.append({'definition': v['name'], 'kind': 'view', 'why': tr(f'它是「{v["source"]}」表上的定义，这条查询没有读这张表', f'It is defined on the table "{v["source"]}", which the query does not read')
-                          + (_not_through(read_derived, v['source'], {(f['column'], f['op'], f['label']) for f in v['filters']}) if v.get('filters') else '')})
+                          + (_not_through(read_derived, v['source'], {(f['column'], f['op'], f['label']) for f in v['filters']}) if v.get('filters') and not v.get('derived') else '')})
             understood.append(_says(direction, v['name'], tr('查询没有读它的表', 'The query does not read its table')))
         else:
             apply.append(v)
