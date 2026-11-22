@@ -206,7 +206,7 @@ Issues and pull requests are welcome. Read the [development guardrails](docs/DEV
 ## Development
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (2,411 on 2026-11-22; install ".[check,sources]" first, or the Turtle, OWL and SHACL tests and some source checks are skipped)
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (2,416 on 2026-11-22; install ".[check,sources]" first, or the Turtle, OWL and SHACL tests and some source checks are skipped)
 npm --prefix landing-page run test:unit                       # page tests (798 on 2026-11-22)
 PYTHONPATH=src:. python3 scripts/real_model_check.py --out /tmp/check   # real model against SQL (needs a model key; fails only on a wrong number)
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # a trial run in another data directory
