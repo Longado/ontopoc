@@ -541,7 +541,7 @@ def _lean(body: dict, keys: tuple, narrow: str = 'ORDER BY 那个数 DESC LIMIT 
 
 def ask(s, a):
     body = s.request('/api/workspace/ask', {'question': _text(a.get('question'), 'question')})
-    out = _lean(body, ('id', 'question', 'status', 'answer', 'beside', 'path', 'reason', 'refusal', 'query_text', 'definitions', 'datasets', 'limited_by_rule'),
+    out = _lean(body, ('id', 'question', 'status', 'answer', 'beside', 'path', 'reason', 'refusal', 'query_text', 'definitions', 'datasets', 'limited_by_rule', 'today'),
                 '把 query_text 加上 ORDER BY 那个数 DESC LIMIT n 或 WHERE，用 ontopoc_query 再跑（不调用模型）')
     if body.get('status') in ('answered', 'no_data') and re.search(r'\bWHERE\b', str(body.get('query_text') or ''), re.I):   # the number is the model's reading, not a confirmed view: say so, not "valid orders"
         where = re.split(r'\bWHERE\b', str(body['query_text']), maxsplit=1, flags=re.I)[1]
@@ -555,8 +555,10 @@ def ontopoc_query(s, a):
     body = {'text': _text(a.get('text'), 'text')}
     if a.get('params') is not None:
         body['params'] = a['params']
+    if a.get('page') is not None:   # a page of a list (SELECT LIST): 50 objects a page at most
+        body['page'] = a['page']
     body = s.request('/api/workspace/query', body)
-    return _lean(body, ('status', 'answer', 'beside', 'reason', 'refusal', 'text', 'definitions', 'datasets', 'limited_by_rule'), '要前几名就加 ORDER BY 那个数 DESC LIMIT n，要某一部分就加 WHERE')   # text, not the compiled query: it compiles to it
+    return _lean(body, ('status', 'answer', 'beside', 'reason', 'refusal', 'text', 'definitions', 'datasets', 'limited_by_rule', 'today'), '要前几名就加 ORDER BY 那个数 DESC LIMIT n，要某一部分就加 WHERE')   # text, not the compiled query: it compiles to it
 
 
 def list_unconfirmed(s, a):
@@ -707,7 +709,11 @@ TOOLS = [
           {'types': {'type': 'array', 'items': {'type': 'string'}, 'description': '只要这几个类型（英文名或中文名），不写就是全部'}}),
     _tool(ask, '只在写不出 ontopoc_query 时用（问题里的说法对不上任何属性或关系，要模型来理解）：用已确认的定义回答一句话问的业务问题（模型把问题写成查询，代码在数据上算）。答得出来给 answer 和它用到的定义 definitions；beside 里是同一个问法换成别的行算出的数：answer 算的是全部能看的行时，是这个类型上每个已确认视图各自的数和确认人；answer 只算一个已确认视图时，第一条（all_rows）是全部行的数。转述时把它们一起说。用到的定义没确认、问题超出范围、取值没有含义时是拒绝：'
           'status 是 refused 或 ontology_gap / query_limit / definition_unmet，reason 说原因，refusal 说拒绝的种类和涉及的定义。拒绝就把原因原样转告人，不要换问法绕过，更不要自己猜一个答案。'
-          'query_text 是这道题写成的本体查询，改条件、重跑都用 ontopoc_query，不再调用模型。会调用模型，慢且花钱；每问一次都记进问答历史、算一次提问，不要为了重试再问。',
+          'query_text 是这道题写成的本体查询，改条件、重跑都用 ontopoc_query，不再调用模型。'
+          '问“哪些”时 answer 是对象列表：answer.total 是令牌主人能看到的全部符合的个数，answer.objects 有 columns（代码列带确认过的 meanings）和这一页的 rows（按主键排，一页最多 50 个）；'
+          '问某一个编号的对象（例如 订单 DD20260004 的状态）时 answer.lookup 是那个主键，answer.objects 里是它能看的属性，看不到的和不存在的编号回答一样，都是 no_data。'
+          '后面的页用 ontopoc_query 跑 query_text 并给 page。条件里用了 today 时，today 字段说用的是哪一天。'
+          '会调用模型，慢且花钱；每问一次都记进问答历史、算一次提问，不要为了重试再问。',
           {'question': {'type': 'string', 'maxLength': 300, 'description': '要问的业务问题'}}, ('question',)),
     _tool(ontopoc_query, '用本体查询（OntoPoc Query，像 SQL）直接算一个数：代码按令牌主人能看的行和已确认的定义算，不调用模型，快，结果和 ask 一样带 definitions 和 limited_by_rule；没有条件时还带 beside（这个类型上每个已确认视图各自的数）。'
           '写法：SELECT 分组列, 一个数 FROM 路径 [WHERE 条件 AND …] [GROUP BY 分组列] [ORDER BY 那个数 DESC|ASC] [LIMIT n]。'
@@ -716,11 +722,15 @@ TOOLS = [
           'WHERE 只写在被数或被算的对象上，用 =、<>、NOT IN (…)、>、>=、<、<=、BETWEEN 下限 AND 上限（数字或日期），代码列可以直接写含义（\'已取消\'）；值可以写 $名字，放在 params 里传。'
           '日期可以按月、按年分组：SELECT month(o.下单日期), sum(o.金额) … GROUP BY month(o.下单日期)。'
           '例：SELECT p.品类, count(o) AS 数量 FROM (o:订单)-[:订单买的产品]->(p:产品) GROUP BY p.品类 ORDER BY 数量 DESC LIMIT 3。'
+          '要对象本身而不是数：SELECT LIST o FROM (o:订单) WHERE o.状态码 = \'已取消\'（主键和前 8 个属性，或写 SELECT LIST o.金额, o.状态码 指定属性；只能一个类型、不沿关系走；LIMIT n 是每页个数，最多 50，超过会报错），'
+          'answer.total 是全部符合的个数，answer.objects.rows 是这一页（按主键排），page 给第几页；按主键找一个：SELECT ONE o FROM (o:订单) WHERE o.订单号 = \'DD20260004\'，看不到的和不存在的编号回答一样。'
+          '日期可以和今天比：WHERE o.承诺日期 < today（不加引号），today 字段说用的是哪一天；没有别的相对时间写法。'
           '类型、属性、关系的名字来自 describe_definitions。写错或写了还不支持的（OR、LIKE、跨对象的条件）会报错并说明能写什么；'
           'status 是 refused 时把 reason 原样转告人，不要换写法绕过。分组超过 50 组只给前 50 组，groups_cut 说一共几组、怎么收窄。'
           '不记进问答历史、不算提问次数，可以重试：同样的查询在数据和定义没变时结果相同。',
           {'text': {'type': 'string', 'maxLength': 4000, 'description': '一条本体查询'},
-           'params': {'type': 'object', 'description': '参数名 → 值（文字或数字），对应查询里的 $名字'}}, ('text',)),
+           'params': {'type': 'object', 'description': '参数名 → 值（文字或数字），对应查询里的 $名字'},
+           'page': {'type': 'integer', 'minimum': 1, 'description': 'SELECT LIST 的第几页，从 1 起；每页最多 50 个对象'}}, ('text',)),
     _tool(list_unconfirmed, '现在不是“已确认”的定义（提出了还没确认、需要再看、被退回），每条有状态、原因和可以确认它的人。这些不能拿来回答问题。确认要那个人自己登录页面做，用令牌确认会被拒绝（不论令牌范围），不要替人去确认。令牌的主人是只读的人时这里是空的。只是读，可以重试。'),
     _tool(definition_standing, '每条定义现在的状态（实时读，不是技能包那样的快照）：是不是已确认（confirmed）、谁确认的、什么时候、在哪个数据版本上（data_versions）；'
           '没确认的写明状态、原因和可以确认它的人。给 id（例如 objtype:order、enum:order:状态码、derived:customer:cancelled_orders）只看那一条，没有或看不到的都是“没有这条定义”。'
