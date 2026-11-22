@@ -511,6 +511,147 @@ class WhoMayTests(NeededCase):
             conn.close()
 
 
+VIEWED = {'reasoning': 'test', 'query': ALL_ORDERS, 'definitions_used': [{'id': '有效订单', 'direction': 'include', 'basis': '有效订单'}]}   # all orders read as the valid ones
+Q_UNREADABLE = '订单的数是多少？'
+Q_EMPTY = '订单数是多少？'
+Q_GAP = '订单颜色有几种？'
+Q_WRONG_BLOCKER = '有效订单一共有几张？'
+
+
+class VerdictTests(NeededCase):
+    def confirm_view(self, client):
+        shown = next(v for v in client.get('/api/workspace/types/order/views')[1]['views'] if v['name'] == '有效订单')
+        self.assertEqual(client.post('/api/workspace/types/views/confirm', {'id': '有效订单', 'version': shown['version'], 'seen': shown['seen']})[0], 200)
+
+    def test_must_be_refused_passes_only_on_a_refusal_the_gate_made_and_a_reply_that_cannot_be_read_is_no_answer(self):
+        """The gate's refusals are the ones a check makes: a definition that is not confirmed or waits (or nothing in scope, or a relation that cannot be followed),
+        a query that left out a confirmed definition, a measure that waits for confirming. A reply that is not JSON, an empty one, or the model saying the
+        question is outside what it knows is no answer: never a pass, and never a refusal."""
+        model = ByQuestion({Q_UNREADABLE: ['this is not JSON'], Q_EMPTY: [json.dumps({'questions': []})], Q_GAP: [{'reasoning': 'no', 'query': None, 'missing': 'ontology'}],
+                            Q_ALL: ['not JSON either']})
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            for question in (Q_UNREADABLE, Q_EMPTY, Q_GAP, Q_VALID):
+                self.write(ann, question, REFUSED)
+            made = self.write(ann, Q_VALID_AMOUNT, {'kind': 'refused', 'blocker': '有效订单'})
+            self.assertEqual(made['expect'], {'kind': 'refused', 'blocker': '有效订单'})
+            self.write(ann, Q_WRONG_BLOCKER, {'kind': 'refused', 'blocker': '客户'})
+            self.write(ann, Q_ALL, number(len(ORDERS)))
+            for question in (Q_UNREADABLE, Q_EMPTY, Q_GAP, Q_VALID, Q_VALID_AMOUNT, Q_WRONG_BLOCKER, Q_ALL):
+                self.confirm(bob, question)
+            results = self.results(self.run_list(bob, 2))
+            self.assertEqual({q: (r['outcome'], r['right']) for q, r in results.items()},
+                             {Q_UNREADABLE: ('no_answer', 0), Q_EMPTY: ('no_answer', 0), Q_GAP: ('no_answer', 0), Q_VALID: ('passes', 2), Q_VALID_AMOUNT: ('passes', 2),
+                              Q_WRONG_BLOCKER: ('refused', 0), Q_ALL: ('no_answer', 0)})
+            self.assertEqual(results[Q_UNREADABLE]['distinct'], [{'number': None, 'status': 'no_query', 'times': 2}])
+            self.assertEqual(results[Q_GAP]['distinct'], [{'number': None, 'status': 'ontology_gap', 'times': 2}])
+            self.assertTrue(results[Q_UNREADABLE]['reason'])
+            self.assertEqual([b['name'] for b in results[Q_WRONG_BLOCKER]['blocking']], ['有效订单'])   # refused, but not by the definition it should have been
+            self.assertIn('120', self.write(ann, '另一个问题？', {'kind': 'refused', 'blocker': '定' * 121}, status=400)['error'])
+
+    def test_a_wrong_number_is_a_failure_unless_what_the_expected_answer_read_has_moved(self):
+        """What the expected answer read is recorded when it passes; a data change that leaves the number right moves that record on. A later misreading on the
+        new data is a failure, and its other reading is said."""
+        model = ByQuestion({Q_ALL: [said(ALL_ORDERS), said(ALL_ORDERS), VIEWED]})
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base)
+            ann, bob = team['ann'], team['bob']
+            self.confirm_view(bob)
+            self.write(ann, Q_ALL, number(len(ORDERS)))
+            self.confirm(bob, Q_ALL)
+            self.assertEqual(self.results(self.run_list(bob))[Q_ALL]['outcome'], 'passes')
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [orders_upload(lambda r, i: {**r, '金额': str(int(float(r['金额'])) + 1)} if i == 0 else r)]})[0], 200)
+            self.assertEqual(self.results(self.run_list(bob))[Q_ALL]['outcome'], 'passes')   # the data moved, the number still holds
+            wrong = self.results(self.run_list(bob))[Q_ALL]
+            self.assertEqual((wrong['outcome'], wrong['distinct'][0]['number'], wrong.get('moved')), ('differs', 144, []))
+            self.assertEqual(wrong['reads_otherwise'], {'now': ['有效订单'], 'not_now': []})
+            self.assertEqual(self.item(bob, Q_ALL)['state'], 'confirmed')
+
+    def test_an_expectation_confirmed_on_an_answer_records_what_that_answer_read(self):
+        model = ByQuestion({Q_CANCELLED: [cancelled()]})
+        with self.service(gateway=model) as (base, out):
+            team = self.team(base, valid=False)
+            ann, bob = team['ann'], team['bob']
+            self.write(ann, Q_CANCELLED)
+            self.run_list(bob)
+            found = self.item(ann, Q_CANCELLED)
+            self.assertEqual(ann.post(f'{NEEDED}/update', {'id': found['id'], 'version': found['version'], 'expect': number(CANCELLED)})[0], 200)
+            self.confirm(bob, Q_CANCELLED)
+            self.assertEqual(ann.post('/api/workspace/datasets/upload', {'files': [orders_upload(one_more_cancelled)]})[0], 200)
+            moved = self.results(self.run_list(bob))[Q_CANCELLED]   # no run passed since the confirmation: what it read is the adopted answer's
+            self.assertEqual((moved['outcome'], moved['moved']), ('needs_look', [{'kind': 'dataset', 'name': '订单', 'from': 1, 'to': 2}]))
+
+    def test_typed_numbers_are_read_only_as_they_are_plainly_written(self):
+        with self.service(gateway=ByQuestion(SCRIPT)) as (base, out):
+            ann = self.team(base, valid=False)['ann']
+            for typed in ('1.234,5', '1,2,3', '12,34', '1 234'):
+                self.assertIn('must be a number', self.write(ann, Q_ALL, number(typed), status=400, **ENGLISH)['error'], typed)
+            self.assertEqual(self.write(ann, Q_ALL, number('1,234.5'))['expect'], number(1234.5))
+
+
+class ChargingTests(NeededCase):
+    def test_each_call_is_charged_as_it_goes_out(self):
+        seen = []
+
+        class Watching(ByQuestion):
+            def complete_json(self, **request):
+                conn = sqlite3.connect(self.out / 'workspace.sqlite')
+                seen.append(conn.execute("SELECT calls FROM needed_run WHERE status = 'running'").fetchone()[0])
+                conn.close()
+                return super().complete_json(**request)
+        model = Watching(SCRIPT)
+        with self.service(gateway=model) as (base, out):
+            model.out = out
+            team = self.team(base, valid=False)
+            for question in (Q_CANCELLED, Q_ALL, Q_MAKING):
+                self.write(team['ann'], question)
+            self.assertEqual(self.run_list(team['bob'])['last_run']['calls'], 3)
+            self.assertEqual(seen, [1, 2, 3])
+
+    def test_a_run_cut_off_is_closed_as_stopped_on_the_next_request_with_the_calls_it_made_charged(self):
+        with self.service(gateway=ByQuestion(SCRIPT)) as (base, out):
+            team = self.team(base, valid=False)
+            self.write(team['ann'], Q_CANCELLED)
+            conn = open_workspace(out / 'workspace.sqlite')
+            conn.execute("INSERT INTO needed_run(by_name, by_user_id, started_at, status, repeats, planned, calls, owner) VALUES ('Ann', 2, ?, 'running', 5, 150, 7, 'a service that stopped')",
+                         (workspace_store.now_text(),))
+            conn.close()
+            listing = self.listing(team['bob'], **ENGLISH)
+            self.assertEqual((listing['running'], listing['last_run']['status'], listing['last_run']['calls'], listing['budget']['used']), (None, 'stopped', 7, 7))
+            self.assertIn('did not finish', listing['last_run']['note'])
+            self.assertTrue(listing['can_run']['ok'])
+            done = self.run_list(team['bob'])
+            self.assertEqual((done['last_run']['status'], done['budget']['used']), ('done', 8))
+
+    def test_an_error_during_a_run_closes_it_as_stopped_and_charges_what_it_made(self):
+        with self.service(gateway=ByQuestion({**SCRIPT, Q_ALL: [ValueError('boom')]})) as (base, out):
+            team = self.team(base, valid=False)
+            for question in (Q_CANCELLED, Q_ALL, Q_MAKING):
+                self.write(team['ann'], question)
+            body = self.run_list(team['bob'], **ENGLISH)
+            self.assertEqual((body['last_run']['status'], body['last_run']['calls']), ('stopped', 2))
+            self.assertIn('stopped on an error', body['last_run']['note'])
+            self.assertEqual({q: r['outcome'] for q, r in self.results(body).items()}, {Q_CANCELLED: 'no_expectation', Q_ALL: 'not_run', Q_MAKING: 'not_run'})
+
+    def test_a_model_that_cannot_be_reached_is_said_in_the_runners_language(self):
+        with self.service(gateway=ByQuestion({Q_ALL: [RecognitionError('connection refused')]})) as (base, out):
+            team = self.team(base, valid=False)
+            self.write(team['ann'], Q_ALL)
+            note = self.run_list(team['bob'], **ENGLISH)['last_run']['note']
+            self.assertTrue(note.startswith('The model could not be reached'), note)
+            self.assertIn('connection refused', note)
+            self.assertTrue(self.run_list(team['bob'])['last_run']['note'].startswith('模型连不上'))
+
+
+class SignedInTests(NeededCase):
+    def test_the_page_is_told_whether_a_rule_limits_the_person_so_it_can_leave_the_list_out(self):
+        with self.service(gateway=ByQuestion(SCRIPT)) as (base, out):
+            team = self.team(base)
+            self.assertEqual(team['admin'].post('/api/workspace/permissions', {'type': 'order', 'visible_to': [self.user_id(out, 'ann')]})[0], 200)
+            self.assertEqual([team[n].get('/api/auth/me')[1]['limited'] for n in ('admin', 'ann', 'bob', 'vera')], [False, False, True, True])
+
+
 class UnchangedAnswersTests(NeededCase):
     def test_a_persons_answers_and_what_is_kept_of_them_are_the_same_byte_for_byte_whether_the_list_is_used_or_not(self):
         """The same scripted asks in two workspaces: in one nobody touches the list; in the other a question is written, confirmed and run between the asks.
