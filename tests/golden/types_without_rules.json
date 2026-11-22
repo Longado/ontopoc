@@ -1,0 +1,2339 @@
+{
+ "confirm_again": [
+  200,
+  {
+   "state": "confirmed"
+  }
+ ],
+ "confirm_meanings": [
+  200,
+  {
+   "state": "confirmed"
+  }
+ ],
+ "confirm_type": [
+  200,
+  {
+   "state": "confirmed"
+  }
+ ],
+ "create": [
+  200,
+  {
+   "id": "order",
+   "warnings": []
+  }
+ ],
+ "definitions_vera": [
+  200,
+  {
+   "derived": [],
+   "relations": [],
+   "rules": [
+    "只按这里列出的、已经确认的定义回答。定义里没有的东西，不要猜。",
+    "问到的对象类型、关系、视图或派生属性不在这里：回答“这个还没有确认的定义”，不要用常识或字面意思补一个；可以说一句让谁去确认（见 list_unconfirmed）。",
+    "代码列（例如 状态码）只用这里写出的含义。取值没有写含义，或者含义不在这里：不解释它，不从取值的大小或排列推测含义。",
+    "数字一定带上口径：它按哪些确认的定义算出（视图的条件、派生属性的算式）。口径里有任何一条不在这里，就不要报这个数。",
+    "定义被标成“需要再看”或还没确认时，它背后的数据可能已经变了：不要用它回答，告诉人它现在不是已确认的状态。",
+    "这里没有数据行，也没有全部数据的行数。要数字，先用 ontopoc_query 写本体查询（不调用模型），写不出来再用 ask；要某个对象的派生属性的值，用 read_derived_property。被拒绝就把拒绝的原因原样转告。"
+   ],
+   "types": [
+    {
+     "confirmed_by": "Bob",
+     "confirmed_on": "订单 v1",
+     "dataset": "订单",
+     "description": "客户下的一张订单",
+     "id": "order",
+     "key": [
+      "订单号"
+     ],
+     "meanings": {
+      "状态码": {
+       "confirmed_by": "Bob",
+       "confirmed_on": "订单 v1",
+       "values": {
+        "0": "已交付",
+        "1": "生产中",
+        "2": "已取消"
+       }
+      }
+     },
+     "name": "订单",
+     "properties": [
+      {
+       "code": false,
+       "column": "订单号",
+       "name": "订单号",
+       "type": "text"
+      },
+      {
+       "code": false,
+       "column": "金额",
+       "name": "金额",
+       "type": "integer"
+      },
+      {
+       "code": true,
+       "column": "状态码",
+       "name": "状态码",
+       "type": "integer"
+      }
+     ]
+    }
+   ],
+   "views": []
+  }
+ ],
+ "edit_names": [
+  200,
+  {
+   "id": "order",
+   "reset": [],
+   "state": "confirmed",
+   "warnings": []
+  }
+ ],
+ "edit_properties": [
+  200,
+  {
+   "id": "order",
+   "reset": [
+    "属性的类型"
+   ],
+   "state": "checked",
+   "warnings": []
+  }
+ ],
+ "list_ann": [
+  200,
+  {
+   "hidden": 0,
+   "types": [
+    {
+     "can_confirm": false,
+     "cause": null,
+     "cause_word": null,
+     "confirmed_at": null,
+     "confirmed_by": null,
+     "confirmed_on": null,
+     "confirmers": [],
+     "dataset": "订单",
+     "dataset_version": 1,
+     "drafted": null,
+     "evidence": null,
+     "id": "order",
+     "limited_by_rule": false,
+     "meanings_blocking": [
+      "状态码"
+     ],
+     "meanings_waiting": 1,
+     "model_draft": false,
+     "name": "订单",
+     "pipelines_blocking": [],
+     "proposed_by": "Ann",
+     "reason": null,
+     "reason_hidden": null,
+     "rows": 160,
+     "stale_word": null,
+     "state": "checked",
+     "version": 1,
+     "via": null,
+     "written_at": "<time>"
+    }
+   ]
+  }
+ ],
+ "list_vera": [
+  200,
+  {
+   "hidden": 0,
+   "types": [
+    {
+     "dataset": null,
+     "dataset_version": null,
+     "id": "order",
+     "meanings_waiting": 0,
+     "name": "订单",
+     "rows": null,
+     "state": "needs_look",
+     "waiting": true,
+     "waiting_for": [
+      "Bob",
+      "管理员"
+     ]
+    }
+   ]
+  }
+ ],
+ "log_bob": [
+  200,
+  {
+   "log": [
+    {
+     "at": "<time>",
+     "caused_by": "Ann",
+     "change": "needs_look",
+     "column": null,
+     "element": "type",
+     "from": "confirmed",
+     "reason": "它用的“状态码”的含义需要再看（原因见那一组含义）",
+     "record": null,
+     "self_confirmed": false,
+     "text": null,
+     "to": "needs_look",
+     "visible_to": null,
+     "who": "system",
+     "with_token": null
+    },
+    {
+     "at": "<time>",
+     "caused_by": "Ann",
+     "change": "needs_look",
+     "column": "状态码",
+     "element": "meaning",
+     "from": "confirmed",
+     "reason": "订单 第 3 版（Ann上传）里，“状态码”的取值变了：新出现 3（16 行，没有含义）；不再出现 0（原来是「已交付」）。确认时的取值是 0、1、2",
+     "record": null,
+     "self_confirmed": false,
+     "text": null,
+     "to": "needs_look",
+     "visible_to": null,
+     "who": "system",
+     "with_token": null
+    },
+    {
+     "at": "<time>",
+     "caused_by": null,
+     "change": "import v3: 160 rows in the file, 160 stored, 0 dropped",
+     "column": null,
+     "element": "dataset",
+     "from": null,
+     "reason": null,
+     "record": null,
+     "self_confirmed": false,
+     "text": "import v3: 160 rows in the file, 160 stored, 0 dropped",
+     "to": null,
+     "visible_to": null,
+     "who": "Ann",
+     "with_token": null
+    },
+    {
+     "at": "<time>",
+     "caused_by": null,
+     "change": "import v2: 160 rows in the file, 160 stored, 0 dropped",
+     "column": null,
+     "element": "dataset",
+     "from": null,
+     "reason": null,
+     "record": null,
+     "self_confirmed": false,
+     "text": "import v2: 160 rows in the file, 160 stored, 0 dropped",
+     "to": null,
+     "visible_to": null,
+     "who": "Ann",
+     "with_token": null
+    },
+    {
+     "at": "<time>",
+     "caused_by": null,
+     "change": "confirmed",
+     "column": null,
+     "element": "type",
+     "from": "checked",
+     "reason": null,
+     "record": null,
+     "self_confirmed": false,
+     "text": null,
+     "to": "confirmed",
+     "visible_to": null,
+     "who": "Bob",
+     "with_token": null
+    },
+    {
+     "at": "<time>",
+     "caused_by": null,
+     "change": "checked",
+     "column": null,
+     "element": "type",
+     "from": "confirmed",
+     "reason": null,
+     "record": null,
+     "self_confirmed": false,
+     "text": null,
+     "to": "checked",
+     "visible_to": null,
+     "who": "Ann",
+     "with_token": null
+    },
+    {
+     "at": "<time>",
+     "caused_by": null,
+     "change": "edited",
+     "column": null,
+     "element": "type",
+     "from": null,
+     "reason": null,
+     "record": null,
+     "self_confirmed": false,
+     "text": "订单",
+     "to": "confirmed",
+     "visible_to": null,
+     "who": "Ann",
+     "with_token": null
+    },
+    {
+     "at": "<time>",
+     "caused_by": null,
+     "change": "confirmed",
+     "column": null,
+     "element": "type",
+     "from": "checked",
+     "reason": null,
+     "record": null,
+     "self_confirmed": false,
+     "text": null,
+     "to": "confirmed",
+     "visible_to": null,
+     "who": "Bob",
+     "with_token": null
+    },
+    {
+     "at": "<time>",
+     "caused_by": null,
+     "change": "confirmed",
+     "column": "状态码",
+     "element": "meaning",
+     "from": "checked",
+     "reason": null,
+     "record": null,
+     "self_confirmed": false,
+     "text": null,
+     "to": "confirmed",
+     "visible_to": null,
+     "who": "Bob",
+     "with_token": null
+    },
+    {
+     "at": "<time>",
+     "caused_by": null,
+     "change": "checked",
+     "column": "状态码",
+     "element": "meaning",
+     "from": null,
+     "reason": null,
+     "record": null,
+     "self_confirmed": false,
+     "text": null,
+     "to": "checked",
+     "visible_to": null,
+     "who": "Ann",
+     "with_token": null
+    },
+    {
+     "at": "<time>",
+     "caused_by": null,
+     "change": "checked",
+     "column": null,
+     "element": "type",
+     "from": null,
+     "reason": null,
+     "record": null,
+     "self_confirmed": false,
+     "text": null,
+     "to": "checked",
+     "visible_to": null,
+     "who": "Ann",
+     "with_token": null
+    },
+    {
+     "at": "<time>",
+     "caused_by": null,
+     "change": "import v1: 160 rows in the file, 160 stored, 0 dropped",
+     "column": null,
+     "element": "dataset",
+     "from": null,
+     "reason": null,
+     "record": null,
+     "self_confirmed": false,
+     "text": "import v1: 160 rows in the file, 160 stored, 0 dropped",
+     "to": null,
+     "visible_to": null,
+     "who": "Ann",
+     "with_token": null
+    }
+   ]
+  }
+ ],
+ "negative_amount": 200,
+ "notices_bob": [
+  200,
+  {
+   "notices": [
+    {
+     "action": null,
+     "at": "<time>",
+     "definition": {
+      "can_confirm": false,
+      "column": "状态码",
+      "id": "order",
+      "kind": "meaning",
+      "state": "needs_look"
+     },
+     "id": 2,
+     "read": false,
+     "record": null,
+     "text": "“订单”的“状态码”含义退回到“需要再看”（数据变了）：订单 第 3 版（Ann上传）里，“状态码”的取值变了：新出现 3（16 行，没有含义）；不再出现 0（原来是「已交付」）。确认时的取值是 0、1、2。同一次变动里还有 1 项你能看到的定义也退回了。"
+    }
+   ],
+   "unread": 1
+  }
+ ],
+ "page_after_edit": [
+  200,
+  {
+   "can_confirm": true,
+   "cause": null,
+   "cause_word": null,
+   "columns": [
+    {
+     "enum_candidate": false,
+     "name": "订单号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": false,
+     "name": "客户编号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": true,
+     "name": "产品编号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": true,
+     "name": "数量",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "金额",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "下单日期",
+     "type": "date"
+    },
+    {
+     "enum_candidate": true,
+     "name": "状态码",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "交付天数",
+     "type": "integer"
+    }
+   ],
+   "columns_kept": 0,
+   "confirmed_at": "<time>",
+   "confirmed_by": "Bob",
+   "confirmed_on": {
+    "订单": 1
+   },
+   "confirmers": [
+    "Bob",
+    "管理员"
+   ],
+   "dataset": "订单",
+   "dataset_version": 1,
+   "description": "一张订单",
+   "drafted": null,
+   "evidence": "check_result:2,dataset:订单@v1",
+   "id": "order",
+   "key": [
+    "订单号"
+   ],
+   "limited_by_rule": false,
+   "limited_reads": [],
+   "meanings_blocking": [],
+   "model_draft": false,
+   "name": "订单",
+   "pipelines_blocking": [],
+   "properties": [
+    {
+     "column": "订单号",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": true,
+     "meanings": null,
+     "name": "订单号",
+     "type": "text"
+    },
+    {
+     "column": "金额",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "金额",
+     "type": "integer"
+    },
+    {
+     "column": "状态码",
+     "enum": true,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": {
+      "can_confirm": false,
+      "cause": null,
+      "cause_word": null,
+      "column": "状态码",
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "confirmed_on": {
+       "订单": 1
+      },
+      "confirmers": [],
+      "drafted": null,
+      "evidence": "dataset:订单@v1",
+      "limited_by_rule": false,
+      "meanings_blocking": [],
+      "model_draft": false,
+      "pipelines_blocking": [],
+      "proposed_by": "Ann",
+      "reason": null,
+      "reason_hidden": null,
+      "seen": {
+       "counts": {
+        "0": 96,
+        "1": 48,
+        "2": 16
+       },
+       "dataset_version": 1
+      },
+      "stale_word": null,
+      "state": "confirmed",
+      "values": [
+       {
+        "description": "",
+        "in_data": true,
+        "label": "已交付",
+        "rows": 96,
+        "rows_at_confirmation": 96,
+        "value": "0"
+       },
+       {
+        "description": "",
+        "in_data": true,
+        "label": "生产中",
+        "rows": 48,
+        "rows_at_confirmation": 48,
+        "value": "1"
+       },
+       {
+        "description": "",
+        "in_data": true,
+        "label": "已取消",
+        "rows": 16,
+        "rows_at_confirmation": 16,
+        "value": "2"
+       }
+      ],
+      "version": 2,
+      "via": null,
+      "written_at": "<time>"
+     },
+     "name": "状态码",
+     "type": "integer"
+    },
+    {
+     "column": "数量",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "数量",
+     "type": "integer"
+    }
+   ],
+   "proposed_by": "Ann",
+   "reason": null,
+   "reason_hidden": null,
+   "rows": 160,
+   "rows_limited": false,
+   "seen": {
+    "dataset_version": 1,
+    "rows": 160
+   },
+   "stale_word": null,
+   "state": "checked",
+   "version": 4,
+   "via": null,
+   "visible_to": "everyone",
+   "written_at": "<time>"
+  }
+ ],
+ "page_after_negative": [
+  200,
+  {
+   "can_confirm": false,
+   "cause": null,
+   "cause_word": null,
+   "columns": [
+    {
+     "enum_candidate": false,
+     "name": "订单号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": false,
+     "name": "客户编号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": true,
+     "name": "产品编号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": true,
+     "name": "数量",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "金额",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "下单日期",
+     "type": "date"
+    },
+    {
+     "enum_candidate": true,
+     "name": "状态码",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "交付天数",
+     "type": "integer"
+    }
+   ],
+   "columns_kept": 0,
+   "confirmed_at": "<time>",
+   "confirmed_by": "Bob",
+   "confirmed_on": {
+    "订单": 1
+   },
+   "confirmers": [],
+   "dataset": "订单",
+   "dataset_version": 2,
+   "description": "一张订单",
+   "drafted": null,
+   "evidence": "check_result:5,dataset:订单@v1",
+   "id": "order",
+   "key": [
+    "订单号"
+   ],
+   "limited_by_rule": false,
+   "limited_reads": [],
+   "meanings_blocking": [],
+   "model_draft": false,
+   "name": "订单",
+   "pipelines_blocking": [],
+   "properties": [
+    {
+     "column": "订单号",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": true,
+     "meanings": null,
+     "name": "订单号",
+     "type": "text"
+    },
+    {
+     "column": "金额",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "金额",
+     "type": "integer"
+    },
+    {
+     "column": "状态码",
+     "enum": true,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": {
+      "can_confirm": false,
+      "cause": null,
+      "cause_word": null,
+      "column": "状态码",
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "confirmed_on": {
+       "订单": 1
+      },
+      "confirmers": [],
+      "drafted": null,
+      "evidence": "dataset:订单@v1",
+      "limited_by_rule": false,
+      "meanings_blocking": [],
+      "model_draft": false,
+      "pipelines_blocking": [],
+      "proposed_by": "Ann",
+      "reason": null,
+      "reason_hidden": null,
+      "seen": {
+       "counts": {
+        "0": 96,
+        "1": 48,
+        "2": 16
+       },
+       "dataset_version": 2
+      },
+      "stale_word": null,
+      "state": "confirmed",
+      "values": [
+       {
+        "description": "",
+        "in_data": true,
+        "label": "已交付",
+        "rows": 96,
+        "rows_at_confirmation": 96,
+        "value": "0"
+       },
+       {
+        "description": "",
+        "in_data": true,
+        "label": "生产中",
+        "rows": 48,
+        "rows_at_confirmation": 48,
+        "value": "1"
+       },
+       {
+        "description": "",
+        "in_data": true,
+        "label": "已取消",
+        "rows": 16,
+        "rows_at_confirmation": 16,
+        "value": "2"
+       }
+      ],
+      "version": 2,
+      "via": null,
+      "written_at": "<time>"
+     },
+     "name": "状态码",
+     "type": "integer"
+    },
+    {
+     "column": "数量",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "数量",
+     "type": "integer"
+    }
+   ],
+   "proposed_by": "Ann",
+   "reason": null,
+   "reason_hidden": null,
+   "rows": 160,
+   "rows_limited": false,
+   "seen": {
+    "dataset_version": 2,
+    "rows": 160
+   },
+   "stale_word": null,
+   "state": "confirmed",
+   "version": 5,
+   "via": null,
+   "visible_to": "everyone",
+   "written_at": "<time>"
+  }
+ ],
+ "page_ann": [
+  200,
+  {
+   "can_confirm": false,
+   "cause": null,
+   "cause_word": null,
+   "columns": [
+    {
+     "enum_candidate": false,
+     "name": "订单号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": false,
+     "name": "客户编号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": true,
+     "name": "产品编号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": true,
+     "name": "数量",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "金额",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "下单日期",
+     "type": "date"
+    },
+    {
+     "enum_candidate": true,
+     "name": "状态码",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "交付天数",
+     "type": "integer"
+    }
+   ],
+   "columns_kept": 0,
+   "confirmed_at": null,
+   "confirmed_by": null,
+   "confirmed_on": null,
+   "confirmers": [],
+   "dataset": "订单",
+   "dataset_version": 1,
+   "description": "客户下的一张订单",
+   "drafted": null,
+   "evidence": null,
+   "id": "order",
+   "key": [
+    "订单号"
+   ],
+   "limited_by_rule": false,
+   "limited_reads": [],
+   "meanings_blocking": [
+    "状态码"
+   ],
+   "model_draft": false,
+   "name": "订单",
+   "pipelines_blocking": [],
+   "properties": [
+    {
+     "column": "订单号",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": true,
+     "meanings": null,
+     "name": "订单号",
+     "type": "text"
+    },
+    {
+     "column": "金额",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "金额",
+     "type": "integer"
+    },
+    {
+     "column": "状态码",
+     "enum": true,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": {
+      "can_confirm": false,
+      "cause": null,
+      "cause_word": null,
+      "column": "状态码",
+      "confirmed_at": null,
+      "confirmed_by": null,
+      "confirmed_on": null,
+      "confirmers": [
+       "Bob",
+       "管理员"
+      ],
+      "drafted": null,
+      "evidence": null,
+      "limited_by_rule": false,
+      "meanings_blocking": [],
+      "model_draft": false,
+      "pipelines_blocking": [],
+      "proposed_by": "Ann",
+      "reason": null,
+      "reason_hidden": null,
+      "seen": {
+       "counts": {
+        "0": 96,
+        "1": 48,
+        "2": 16
+       },
+       "dataset_version": 1
+      },
+      "stale_word": null,
+      "state": "checked",
+      "values": [
+       {
+        "description": "",
+        "in_data": true,
+        "label": "已交付",
+        "rows": 96,
+        "rows_at_confirmation": 96,
+        "value": "0"
+       },
+       {
+        "description": "",
+        "in_data": true,
+        "label": "生产中",
+        "rows": 48,
+        "rows_at_confirmation": 48,
+        "value": "1"
+       },
+       {
+        "description": "",
+        "in_data": true,
+        "label": "已取消",
+        "rows": 16,
+        "rows_at_confirmation": 16,
+        "value": "2"
+       }
+      ],
+      "version": 1,
+      "via": null,
+      "written_at": "<time>"
+     },
+     "name": "状态码",
+     "type": "integer"
+    }
+   ],
+   "proposed_by": "Ann",
+   "reason": null,
+   "reason_hidden": null,
+   "rows": 160,
+   "rows_limited": false,
+   "seen": {
+    "dataset_version": 1,
+    "rows": 160
+   },
+   "stale_word": null,
+   "state": "checked",
+   "version": 1,
+   "via": null,
+   "visible_to": "everyone",
+   "written_at": "<time>"
+  }
+ ],
+ "page_bob": [
+  200,
+  {
+   "can_confirm": false,
+   "cause": null,
+   "cause_word": null,
+   "columns": [
+    {
+     "enum_candidate": false,
+     "name": "订单号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": false,
+     "name": "客户编号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": true,
+     "name": "产品编号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": true,
+     "name": "数量",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "金额",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "下单日期",
+     "type": "date"
+    },
+    {
+     "enum_candidate": true,
+     "name": "状态码",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "交付天数",
+     "type": "integer"
+    }
+   ],
+   "columns_kept": 0,
+   "confirmed_at": null,
+   "confirmed_by": null,
+   "confirmed_on": null,
+   "confirmers": [],
+   "dataset": "订单",
+   "dataset_version": 1,
+   "description": "客户下的一张订单",
+   "drafted": null,
+   "evidence": null,
+   "id": "order",
+   "key": [
+    "订单号"
+   ],
+   "limited_by_rule": false,
+   "limited_reads": [],
+   "meanings_blocking": [
+    "状态码"
+   ],
+   "model_draft": false,
+   "name": "订单",
+   "pipelines_blocking": [],
+   "properties": [
+    {
+     "column": "订单号",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": true,
+     "meanings": null,
+     "name": "订单号",
+     "type": "text"
+    },
+    {
+     "column": "金额",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "金额",
+     "type": "integer"
+    },
+    {
+     "column": "状态码",
+     "enum": true,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": {
+      "can_confirm": true,
+      "cause": null,
+      "cause_word": null,
+      "column": "状态码",
+      "confirmed_at": null,
+      "confirmed_by": null,
+      "confirmed_on": null,
+      "confirmers": [
+       "Bob",
+       "管理员"
+      ],
+      "drafted": null,
+      "evidence": null,
+      "limited_by_rule": false,
+      "meanings_blocking": [],
+      "model_draft": false,
+      "pipelines_blocking": [],
+      "proposed_by": "Ann",
+      "reason": null,
+      "reason_hidden": null,
+      "seen": {
+       "counts": {
+        "0": 96,
+        "1": 48,
+        "2": 16
+       },
+       "dataset_version": 1
+      },
+      "stale_word": null,
+      "state": "checked",
+      "values": [
+       {
+        "description": "",
+        "in_data": true,
+        "label": "已交付",
+        "rows": 96,
+        "rows_at_confirmation": 96,
+        "value": "0"
+       },
+       {
+        "description": "",
+        "in_data": true,
+        "label": "生产中",
+        "rows": 48,
+        "rows_at_confirmation": 48,
+        "value": "1"
+       },
+       {
+        "description": "",
+        "in_data": true,
+        "label": "已取消",
+        "rows": 16,
+        "rows_at_confirmation": 16,
+        "value": "2"
+       }
+      ],
+      "version": 1,
+      "via": null,
+      "written_at": "<time>"
+     },
+     "name": "状态码",
+     "type": "integer"
+    }
+   ],
+   "proposed_by": "Ann",
+   "reason": null,
+   "reason_hidden": null,
+   "rows": 160,
+   "rows_limited": false,
+   "seen": {
+    "dataset_version": 1,
+    "rows": 160
+   },
+   "stale_word": null,
+   "state": "checked",
+   "version": 1,
+   "via": null,
+   "visible_to": "everyone",
+   "written_at": "<time>"
+  }
+ ],
+ "page_shifted_bob": [
+  200,
+  {
+   "can_confirm": false,
+   "cause": "data",
+   "cause_word": "数据变了",
+   "columns": [
+    {
+     "enum_candidate": false,
+     "name": "订单号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": false,
+     "name": "客户编号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": true,
+     "name": "产品编号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": true,
+     "name": "数量",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "金额",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "下单日期",
+     "type": "date"
+    },
+    {
+     "enum_candidate": true,
+     "name": "状态码",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "交付天数",
+     "type": "integer"
+    }
+   ],
+   "columns_kept": 0,
+   "confirmed_at": "<time>",
+   "confirmed_by": "Bob",
+   "confirmed_on": {
+    "订单": 1
+   },
+   "confirmers": [],
+   "dataset": "订单",
+   "dataset_version": 3,
+   "description": "一张订单",
+   "drafted": null,
+   "evidence": "check_result:5,dataset:订单@v1",
+   "id": "order",
+   "key": [
+    "订单号"
+   ],
+   "limited_by_rule": false,
+   "limited_reads": [],
+   "meanings_blocking": [
+    "状态码"
+   ],
+   "model_draft": false,
+   "name": "订单",
+   "pipelines_blocking": [],
+   "properties": [
+    {
+     "column": "订单号",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": true,
+     "meanings": null,
+     "name": "订单号",
+     "type": "text"
+    },
+    {
+     "column": "金额",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "金额",
+     "type": "integer"
+    },
+    {
+     "column": "状态码",
+     "enum": true,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": {
+      "can_confirm": false,
+      "cause": "data",
+      "cause_word": "数据变了",
+      "column": "状态码",
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "confirmed_on": {
+       "订单": 1
+      },
+      "confirmers": [],
+      "drafted": null,
+      "evidence": "dataset:订单@v1",
+      "limited_by_rule": false,
+      "meanings_blocking": [],
+      "model_draft": false,
+      "pipelines_blocking": [],
+      "proposed_by": "Ann",
+      "reason": "订单 第 3 版（Ann上传）里，“状态码”的取值变了：新出现 3（16 行，没有含义）；不再出现 0（原来是「已交付」）。确认时的取值是 0、1、2",
+      "reason_hidden": null,
+      "seen": {
+       "counts": {
+        "1": 96,
+        "2": 48,
+        "3": 16
+       },
+       "dataset_version": 3
+      },
+      "stale_word": "数据变了",
+      "state": "needs_look",
+      "values": [
+       {
+        "description": "",
+        "in_data": false,
+        "label": "已交付",
+        "rows": null,
+        "rows_at_confirmation": 96,
+        "value": "0"
+       },
+       {
+        "description": "",
+        "in_data": true,
+        "label": "生产中",
+        "rows": 96,
+        "rows_at_confirmation": 48,
+        "value": "1"
+       },
+       {
+        "description": "",
+        "in_data": true,
+        "label": "已取消",
+        "rows": 48,
+        "rows_at_confirmation": 16,
+        "value": "2"
+       },
+       {
+        "description": "",
+        "in_data": true,
+        "label": "",
+        "rows": 16,
+        "rows_at_confirmation": null,
+        "value": "3"
+       }
+      ],
+      "version": 3,
+      "via": "self",
+      "written_at": "<time>"
+     },
+     "name": "状态码",
+     "type": "integer"
+    },
+    {
+     "column": "数量",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "数量",
+     "type": "integer"
+    }
+   ],
+   "proposed_by": "Ann",
+   "reason": "它用的“状态码”的含义需要再看（原因见那一组含义）",
+   "reason_hidden": null,
+   "rows": 160,
+   "rows_limited": false,
+   "seen": {
+    "dataset_version": 3,
+    "rows": 160
+   },
+   "stale_word": "上一步过时",
+   "state": "needs_look",
+   "version": 6,
+   "via": "parent",
+   "visible_to": "everyone",
+   "written_at": "<time>"
+  }
+ ],
+ "page_shifted_vera": [
+  200,
+  {
+   "id": "order",
+   "name": "订单",
+   "state": "needs_look",
+   "waiting": true,
+   "waiting_for": [
+    "Bob",
+    "管理员"
+   ]
+  }
+ ],
+ "page_vera": [
+  200,
+  {
+   "can_confirm": false,
+   "cause": null,
+   "cause_word": null,
+   "columns": [
+    {
+     "enum_candidate": false,
+     "name": "订单号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": false,
+     "name": "客户编号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": true,
+     "name": "产品编号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": true,
+     "name": "数量",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "金额",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "下单日期",
+     "type": "date"
+    },
+    {
+     "enum_candidate": true,
+     "name": "状态码",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "交付天数",
+     "type": "integer"
+    }
+   ],
+   "columns_kept": 0,
+   "confirmed_at": "<time>",
+   "confirmed_by": "Bob",
+   "confirmed_on": {
+    "订单": 1
+   },
+   "confirmers": [],
+   "dataset": "订单",
+   "dataset_version": 1,
+   "description": "客户下的一张订单",
+   "drafted": null,
+   "evidence": "check_result:2,dataset:订单@v1",
+   "id": "order",
+   "key": [
+    "订单号"
+   ],
+   "limited_by_rule": false,
+   "limited_reads": [],
+   "meanings_blocking": [],
+   "model_draft": false,
+   "name": "订单",
+   "pipelines_blocking": [],
+   "properties": [
+    {
+     "column": "订单号",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": true,
+     "meanings": null,
+     "name": "订单号",
+     "type": "text"
+    },
+    {
+     "column": "金额",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "金额",
+     "type": "integer"
+    },
+    {
+     "column": "状态码",
+     "enum": true,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": {
+      "can_confirm": false,
+      "cause": null,
+      "cause_word": null,
+      "column": "状态码",
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "confirmed_on": {
+       "订单": 1
+      },
+      "confirmers": [],
+      "drafted": null,
+      "evidence": "dataset:订单@v1",
+      "limited_by_rule": false,
+      "meanings_blocking": [],
+      "model_draft": false,
+      "pipelines_blocking": [],
+      "proposed_by": "Ann",
+      "reason": null,
+      "reason_hidden": null,
+      "seen": {
+       "counts": {
+        "0": 96,
+        "1": 48,
+        "2": 16
+       },
+       "dataset_version": 1
+      },
+      "stale_word": null,
+      "state": "confirmed",
+      "values": [
+       {
+        "description": "",
+        "in_data": true,
+        "label": "已交付",
+        "rows": 96,
+        "rows_at_confirmation": 96,
+        "value": "0"
+       },
+       {
+        "description": "",
+        "in_data": true,
+        "label": "生产中",
+        "rows": 48,
+        "rows_at_confirmation": 48,
+        "value": "1"
+       },
+       {
+        "description": "",
+        "in_data": true,
+        "label": "已取消",
+        "rows": 16,
+        "rows_at_confirmation": 16,
+        "value": "2"
+       }
+      ],
+      "version": 2,
+      "via": null,
+      "written_at": "<time>"
+     },
+     "name": "状态码",
+     "type": "integer"
+    }
+   ],
+   "proposed_by": "Ann",
+   "reason": null,
+   "reason_hidden": null,
+   "rows": 160,
+   "rows_limited": false,
+   "seen": {
+    "dataset_version": 1,
+    "rows": 160
+   },
+   "stale_word": null,
+   "state": "confirmed",
+   "version": 2,
+   "via": null,
+   "visible_to": null,
+   "written_at": "<time>"
+  }
+ ],
+ "queue_after": [
+  200,
+  {
+   "count": 0,
+   "groups": [
+    {
+     "dataset": "订单",
+     "hidden": 0,
+     "items": [
+      "enum:order:状态码",
+      "objtype:order"
+     ],
+     "key": "订单@3",
+     "uploaded_at": "<time>",
+     "uploaded_by": "Ann",
+     "version": 3
+    }
+   ],
+   "hidden_by_rules": 0,
+   "items": [
+    {
+     "can_confirm": false,
+     "cause": "data",
+     "cause_word": "数据变了",
+     "column": "状态码",
+     "confirmed_at": "<time>",
+     "confirmed_by": "Bob",
+     "confirmed_on": {
+      "订单": 1
+     },
+     "confirmers": [],
+     "drafted": null,
+     "element": "enum:order:状态码",
+     "evidence": "dataset:订单@v1",
+     "group": "订单@3",
+     "id": "order",
+     "kind": "meaning",
+     "limited_by_rule": false,
+     "lines": [
+      {
+       "ok": false,
+       "text": "订单 第 3 版（Ann上传）里，“状态码”的取值变了：新出现 3（16 行，没有含义）；不再出现 0（原来是「已交付」）。确认时的取值是 0、1、2"
+      },
+      {
+       "ok": true,
+       "text": "0 = 已交付（提出时 96 行）"
+      },
+      {
+       "ok": true,
+       "text": "1 = 生产中（提出时 48 行）"
+      },
+      {
+       "ok": true,
+       "text": "2 = 已取消（提出时 16 行）"
+      }
+     ],
+     "meanings_blocking": [],
+     "model_draft": false,
+     "pipelines_blocking": [],
+     "proposed_by": "Ann",
+     "reason": "订单 第 3 版（Ann上传）里，“状态码”的取值变了：新出现 3（16 行，没有含义）；不再出现 0（原来是「已交付」）。确认时的取值是 0、1、2",
+     "reason_hidden": null,
+     "seen": {
+      "counts": {
+       "1": 96,
+       "2": 48,
+       "3": 16
+      },
+      "dataset_version": 3
+     },
+     "stale_word": "数据变了",
+     "state": "needs_look",
+     "title": "订单.状态码",
+     "version": 3,
+     "via": "self",
+     "written_at": "<time>"
+    },
+    {
+     "can_confirm": false,
+     "cause": "data",
+     "cause_word": "数据变了",
+     "confirmed_at": "<time>",
+     "confirmed_by": "Bob",
+     "confirmed_on": {
+      "订单": 1
+     },
+     "confirmers": [],
+     "drafted": null,
+     "element": "objtype:order",
+     "evidence": "check_result:5,dataset:订单@v1",
+     "group": "订单@3",
+     "id": "order",
+     "kind": "type",
+     "limited_by_rule": false,
+     "lines": [
+      {
+       "ok": false,
+       "text": "它用的“状态码”的含义需要再看（原因见那一组含义）"
+      },
+      {
+       "ok": true,
+       "text": "4 个属性，来自 订单"
+      },
+      {
+       "ok": false,
+       "text": "“状态码”的含义还没有确认"
+      }
+     ],
+     "meanings_blocking": [
+      "状态码"
+     ],
+     "model_draft": false,
+     "pipelines_blocking": [],
+     "proposed_by": "Ann",
+     "reason": "它用的“状态码”的含义需要再看（原因见那一组含义）",
+     "reason_hidden": null,
+     "seen": {
+      "dataset_version": 3,
+      "rows": 160
+     },
+     "stale_word": "上一步过时",
+     "state": "needs_look",
+     "title": "订单",
+     "version": 6,
+     "via": "parent",
+     "written_at": "<time>"
+    }
+   ]
+  }
+ ],
+ "queue_bob": [
+  200,
+  {
+   "count": 1,
+   "groups": [],
+   "hidden_by_rules": 0,
+   "items": [
+    {
+     "can_confirm": true,
+     "cause": null,
+     "cause_word": null,
+     "column": "状态码",
+     "confirmed_at": null,
+     "confirmed_by": null,
+     "confirmed_on": null,
+     "confirmers": [
+      "Bob",
+      "管理员"
+     ],
+     "drafted": null,
+     "element": "enum:order:状态码",
+     "evidence": null,
+     "id": "order",
+     "kind": "meaning",
+     "limited_by_rule": false,
+     "lines": [
+      {
+       "ok": true,
+       "text": "0 = 已交付（提出时 96 行）"
+      },
+      {
+       "ok": true,
+       "text": "1 = 生产中（提出时 48 行）"
+      },
+      {
+       "ok": true,
+       "text": "2 = 已取消（提出时 16 行）"
+      }
+     ],
+     "meanings_blocking": [],
+     "model_draft": false,
+     "pipelines_blocking": [],
+     "proposed_by": "Ann",
+     "reason": null,
+     "reason_hidden": null,
+     "seen": {
+      "counts": {
+       "0": 96,
+       "1": 48,
+       "2": 16
+      },
+      "dataset_version": 1
+     },
+     "stale_word": null,
+     "state": "checked",
+     "title": "订单.状态码",
+     "version": 1,
+     "via": null,
+     "written_at": "<time>"
+    },
+    {
+     "can_confirm": false,
+     "cause": null,
+     "cause_word": null,
+     "confirmed_at": null,
+     "confirmed_by": null,
+     "confirmed_on": null,
+     "confirmers": [],
+     "drafted": null,
+     "element": "objtype:order",
+     "evidence": null,
+     "id": "order",
+     "kind": "type",
+     "limited_by_rule": false,
+     "lines": [
+      {
+       "ok": true,
+       "text": "主键“订单号”在 订单 第 1 版的全部 160 行上唯一，没有空值"
+      },
+      {
+       "ok": true,
+       "text": "3 个属性，来自 订单"
+      },
+      {
+       "ok": false,
+       "text": "“状态码”的含义还没有确认"
+      }
+     ],
+     "meanings_blocking": [
+      "状态码"
+     ],
+     "model_draft": false,
+     "pipelines_blocking": [],
+     "proposed_by": "Ann",
+     "reason": null,
+     "reason_hidden": null,
+     "seen": {
+      "dataset_version": 1,
+      "rows": 160
+     },
+     "stale_word": null,
+     "state": "checked",
+     "title": "订单",
+     "version": 1,
+     "via": null,
+     "written_at": "<time>"
+    }
+   ]
+  }
+ ],
+ "shifted": 200,
+ "standing_ann": [
+  200,
+  {
+   "definitions": [
+    {
+     "cause_word": "数据变了",
+     "confirmed": false,
+     "confirmed_at": "<time>",
+     "confirmed_by": "Bob",
+     "data_versions": {
+      "订单": 1
+     },
+     "id": "objtype:order",
+     "kind": "type",
+     "name": "订单",
+     "proposed_by": "Ann",
+     "proposed_with_token": null,
+     "reason": "它用的“状态码”的含义需要再看（原因见那一组含义）",
+     "reason_hidden": null,
+     "stale_word": "上一步过时",
+     "state": "needs_look",
+     "who_can_confirm": [
+      "Bob",
+      "管理员"
+     ]
+    },
+    {
+     "cause_word": "数据变了",
+     "confirmed": false,
+     "confirmed_at": "<time>",
+     "confirmed_by": "Bob",
+     "data_versions": {
+      "订单": 1
+     },
+     "id": "enum:order:状态码",
+     "kind": "meaning",
+     "name": "订单.状态码",
+     "proposed_by": "Ann",
+     "proposed_with_token": null,
+     "reason": "订单 第 3 版（Ann上传）里，“状态码”的取值变了：新出现 3（16 行，没有含义）；不再出现 0（原来是「已交付」）。确认时的取值是 0、1、2",
+     "reason_hidden": null,
+     "stale_word": "数据变了",
+     "state": "needs_look",
+     "who_can_confirm": [
+      "Bob",
+      "管理员"
+     ]
+    }
+   ],
+   "note": "这是现在的状态：只有 confirmed 为 true 的定义可以拿来回答；技能包是导出那天的快照，以这里为准。"
+  }
+ ],
+ "standing_vera": [
+  200,
+  {
+   "definitions": [],
+   "note": "这是现在的状态：只有 confirmed 为 true 的定义可以拿来回答；技能包是导出那天的快照，以这里为准。"
+  }
+ ],
+ "stored": {
+  "check_result": [
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "key:订单(订单号)",
+    "id": 1,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_6\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "key:订单(订单号)",
+    "id": 2,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_6\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "key:订单(订单号)",
+    "id": 3,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_6\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "key:订单(订单号)",
+    "id": 4,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_6\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "key:订单(订单号)",
+    "id": 5,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_6\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 8,
+    "element_id": "key:订单(订单号)",
+    "id": 6,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_8\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   }
+  ],
+  "confirmation": [
+   {
+    "confirmed_at": "<time>",
+    "confirmed_by": "Bob",
+    "confirmed_by_user_id": 3,
+    "content_json": "{\"column\": \"状态码\", \"dataset\": \"订单\", \"type\": \"order\", \"values\": [{\"description\": \"\", \"label\": \"已交付\", \"value\": \"0\"}, {\"description\": \"\", \"label\": \"生产中\", \"value\": \"1\"}, {\"description\": \"\", \"label\": \"已取消\", \"value\": \"2\"}]}",
+    "dataset_versions_json": "{\"订单\": 1}",
+    "element_id": "enum:order:状态码",
+    "evidence_ref": "dataset:订单@v1",
+    "id": 1,
+    "proposed_by": "Ann",
+    "self_confirmed": 0,
+    "snapshot_json": null
+   },
+   {
+    "confirmed_at": "<time>",
+    "confirmed_by": "Bob",
+    "confirmed_by_user_id": 3,
+    "content_json": "{\"dataset\": \"订单\", \"description\": \"客户下的一张订单\", \"english_name\": \"order\", \"key\": [\"订单号\"], \"name\": \"订单\", \"properties\": [{\"column\": \"订单号\", \"enum\": false, \"name\": \"订单号\", \"type\": \"text\"}, {\"column\": \"金额\", \"enum\": false, \"name\": \"金额\", \"type\": \"integer\"}, {\"column\": \"状态码\", \"enum\": true, \"name\": \"状态码\", \"type\": \"integer\"}]}",
+    "dataset_versions_json": "{\"订单\": 1}",
+    "element_id": "objtype:order",
+    "evidence_ref": "check_result:2,dataset:订单@v1",
+    "id": 2,
+    "proposed_by": "Ann",
+    "self_confirmed": 0,
+    "snapshot_json": null
+   },
+   {
+    "confirmed_at": "<time>",
+    "confirmed_by": "Bob",
+    "confirmed_by_user_id": 3,
+    "content_json": "{\"dataset\": \"订单\", \"description\": \"一张订单\", \"english_name\": \"order\", \"key\": [\"订单号\"], \"name\": \"订单\", \"properties\": [{\"column\": \"订单号\", \"enum\": false, \"name\": \"订单号\", \"type\": \"text\"}, {\"column\": \"金额\", \"enum\": false, \"name\": \"金额\", \"type\": \"integer\"}, {\"column\": \"状态码\", \"enum\": true, \"name\": \"状态码\", \"type\": \"integer\"}, {\"column\": \"数量\", \"enum\": false, \"name\": \"数量\", \"type\": \"integer\"}]}",
+    "dataset_versions_json": "{\"订单\": 1}",
+    "element_id": "objtype:order",
+    "evidence_ref": "check_result:5,dataset:订单@v1",
+    "id": 3,
+    "proposed_by": "Ann",
+    "self_confirmed": 0,
+    "snapshot_json": null
+   }
+  ],
+  "element_dep": [
+   {
+    "depends_on": "column:订单.状态码",
+    "element_id": "enum:order:状态码"
+   },
+   {
+    "depends_on": "dataset:订单",
+    "element_id": "objtype:order"
+   },
+   {
+    "depends_on": "enum:order:状态码",
+    "element_id": "objtype:order"
+   }
+  ],
+  "element_state": [
+   {
+    "anchors_json": "{\"counts\": {\"0\": 96, \"1\": 48, \"2\": 16}, \"dataset\": \"订单\", \"version\": 1}",
+    "cause": "data",
+    "confirmed_at": "<time>",
+    "confirmed_by": "Bob",
+    "confirmed_by_user_id": 3,
+    "content_json": "{\"column\": \"状态码\", \"dataset\": \"订单\", \"type\": \"order\", \"values\": [{\"description\": \"\", \"label\": \"已交付\", \"value\": \"0\"}, {\"description\": \"\", \"label\": \"生产中\", \"value\": \"1\"}, {\"description\": \"\", \"label\": \"已取消\", \"value\": \"2\"}]}",
+    "element_id": "enum:order:状态码",
+    "evidence_ref": "dataset:订单@v1",
+    "proposed_by": "Ann",
+    "proposed_by_user_id": 2,
+    "reason": "订单 第 3 版（Ann上传）里，“状态码”的取值变了：新出现 3（16 行，没有含义）；不再出现 0（原来是「已交付」）。确认时的取值是 0、1、2",
+    "state": "needs_look",
+    "version": 3,
+    "via": "self"
+   },
+   {
+    "anchors_json": "{\"dataset\": \"订单\", \"version\": 1}",
+    "cause": "data",
+    "confirmed_at": "<time>",
+    "confirmed_by": "Bob",
+    "confirmed_by_user_id": 3,
+    "content_json": "{\"dataset\": \"订单\", \"description\": \"一张订单\", \"english_name\": \"order\", \"key\": [\"订单号\"], \"name\": \"订单\", \"properties\": [{\"column\": \"订单号\", \"enum\": false, \"name\": \"订单号\", \"type\": \"text\"}, {\"column\": \"金额\", \"enum\": false, \"name\": \"金额\", \"type\": \"integer\"}, {\"column\": \"状态码\", \"enum\": true, \"name\": \"状态码\", \"type\": \"integer\"}, {\"column\": \"数量\", \"enum\": false, \"name\": \"数量\", \"type\": \"integer\"}]}",
+    "element_id": "objtype:order",
+    "evidence_ref": "check_result:5,dataset:订单@v1",
+    "proposed_by": "Ann",
+    "proposed_by_user_id": 2,
+    "reason": "它用的“状态码”的含义需要再看（原因见那一组含义）",
+    "state": "needs_look",
+    "version": 6,
+    "via": "parent"
+   }
+  ],
+  "log": [
+   {
+    "after_json": "{\"username\": \"root\", \"role\": \"admin\"}",
+    "before_json": null,
+    "change": "user_created",
+    "element_id": "user:1",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "host"
+   },
+   {
+    "after_json": null,
+    "before_json": null,
+    "change": "login",
+    "element_id": "user:1",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "root"
+   },
+   {
+    "after_json": "{\"username\": \"ann\", \"role\": \"builder\"}",
+    "before_json": null,
+    "change": "user_created",
+    "element_id": "user:2",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "root"
+   },
+   {
+    "after_json": null,
+    "before_json": null,
+    "change": "login",
+    "element_id": "user:2",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "ann"
+   },
+   {
+    "after_json": null,
+    "before_json": null,
+    "change": "password_changed",
+    "element_id": "user:2",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "ann"
+   },
+   {
+    "after_json": "{\"username\": \"bob\", \"role\": \"builder\"}",
+    "before_json": null,
+    "change": "user_created",
+    "element_id": "user:3",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "root"
+   },
+   {
+    "after_json": null,
+    "before_json": null,
+    "change": "login",
+    "element_id": "user:3",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "bob"
+   },
+   {
+    "after_json": null,
+    "before_json": null,
+    "change": "password_changed",
+    "element_id": "user:3",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "bob"
+   },
+   {
+    "after_json": "{\"username\": \"vera\", \"role\": \"viewer\"}",
+    "before_json": null,
+    "change": "user_created",
+    "element_id": "user:4",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "root"
+   },
+   {
+    "after_json": null,
+    "before_json": null,
+    "change": "login",
+    "element_id": "user:4",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "vera"
+   },
+   {
+    "after_json": null,
+    "before_json": null,
+    "change": "password_changed",
+    "element_id": "user:4",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "vera"
+   },
+   {
+    "after_json": "{\"version\": 1, \"rows_in\": 12, \"rows_stored\": 12, \"dropped\": {}, \"file_sha256\": \"d14a03a10616f13f56a0974fc7f77f3cedb5bbb9ae00b94738c1fbf43839c3bc\"}",
+    "before_json": null,
+    "change": "import v1: 12 rows in the file, 12 stored, 0 dropped",
+    "element_id": "dataset:交付统计",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": "{\"version\": 1, \"rows_in\": 12, \"rows_stored\": 12, \"dropped\": {}, \"file_sha256\": \"46c0e62e6f3a77051fff8dcb471a00c98072d6116d133e765053b10fd764a4b8\"}",
+    "before_json": null,
+    "change": "import v1: 12 rows in the file, 12 stored, 0 dropped",
+    "element_id": "dataset:产品",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": "{\"version\": 1, \"rows_in\": 45, \"rows_stored\": 45, \"dropped\": {}, \"file_sha256\": \"a2c4918d7b4ed91a87a9fad99dc71b0e6f3b4b47c1e8d07e9bcc3e990423b5e1\"}",
+    "before_json": null,
+    "change": "import v1: 45 rows in the file, 45 stored, 0 dropped",
+    "element_id": "dataset:售后工单",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": "{\"version\": 1, \"rows_in\": 31, \"rows_stored\": 31, \"dropped\": {}, \"file_sha256\": \"489123c69b477cc6e891096b2e07f5b8b5ce67b05d30756056955188da9c58e2\"}",
+    "before_json": null,
+    "change": "import v1: 31 rows in the file, 31 stored, 0 dropped",
+    "element_id": "dataset:客户",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": "{\"version\": 1, \"rows_in\": 72, \"rows_stored\": 72, \"dropped\": {}, \"file_sha256\": \"a2a0437fa00a4dbb4a4d9ed3f2385575747746029cb46e7b53ac72a7bd8e8acf\"}",
+    "before_json": null,
+    "change": "import v1: 72 rows in the file, 72 stored, 0 dropped",
+    "element_id": "dataset:库存快照",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": "{\"version\": 1, \"rows_in\": 160, \"rows_stored\": 160, \"dropped\": {}, \"file_sha256\": \"baa10801dfeed98586e56a450981d7070b21043a583a8b2349e349f06466c4b6\"}",
+    "before_json": null,
+    "change": "import v1: 160 rows in the file, 160 stored, 0 dropped",
+    "element_id": "dataset:订单",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": "{\"version\": 1, \"rows_in\": 121, \"rows_stored\": 121, \"dropped\": {}, \"file_sha256\": \"b80e79d214944f950c6622aaf7979292304915445524a15b76878e394ac819a9\"}",
+    "before_json": null,
+    "change": "import v1: 121 rows in the file, 121 stored, 0 dropped",
+    "element_id": "dataset:订单承诺",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": "{\"state\": \"checked\", \"evidence_ref\": \"check_result:1,dataset:订单@v1\", \"confirmed_by\": \"Ann\", \"confirmed_at\": \"<time>\", \"version\": 1, \"content_json\": \"{\\\"dataset\\\": \\\"订单\\\", \\\"description\\\": \\\"客户下的一张订单\\\", \\\"english_name\\\": \\\"order\\\", \\\"key\\\": [\\\"订单号\\\"], \\\"name\\\": \\\"订单\\\", \\\"properties\\\": [{\\\"column\\\": \\\"订单号\\\", \\\"enum\\\": false, \\\"name\\\": \\\"订单号\\\", \\\"type\\\": \\\"text\\\"}, {\\\"column\\\": \\\"金额\\\", \\\"enum\\\": false, \\\"name\\\": \\\"金额\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"状态码\\\", \\\"enum\\\": true, \\\"name\\\": \\\"状态码\\\", \\\"type\\\": \\\"integer\\\"}]}\", \"anchors_json\": \"48 bytes, sha256 dc2eed7becf8\"}",
+    "before_json": null,
+    "change": "checked",
+    "element_id": "objtype:order",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": "{\"state\": \"checked\", \"evidence_ref\": \"dataset:订单@v1\", \"confirmed_by\": \"Ann\", \"confirmed_at\": \"<time>\", \"version\": 1, \"content_json\": \"{\\\"column\\\": \\\"状态码\\\", \\\"dataset\\\": \\\"订单\\\", \\\"type\\\": \\\"order\\\", \\\"values\\\": [{\\\"description\\\": \\\"\\\", \\\"label\\\": \\\"已交付\\\", \\\"value\\\": \\\"0\\\"}, {\\\"description\\\": \\\"\\\", \\\"label\\\": \\\"生产中\\\", \\\"value\\\": \\\"1\\\"}, {\\\"description\\\": \\\"\\\", \\\"label\\\": \\\"已取消\\\", \\\"value\\\": \\\"2\\\"}]}\", \"anchors_json\": \"70 bytes, sha256 553b16a02822\"}",
+    "before_json": null,
+    "change": "checked",
+    "element_id": "enum:order:状态码",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": "{\"state\": \"confirmed\", \"evidence_ref\": \"dataset:订单@v1\", \"confirmed_by\": \"Bob\", \"confirmed_at\": \"<time>\", \"version\": 2, \"content_json\": \"{\\\"column\\\": \\\"状态码\\\", \\\"dataset\\\": \\\"订单\\\", \\\"type\\\": \\\"order\\\", \\\"values\\\": [{\\\"description\\\": \\\"\\\", \\\"label\\\": \\\"已交付\\\", \\\"value\\\": \\\"0\\\"}, {\\\"description\\\": \\\"\\\", \\\"label\\\": \\\"生产中\\\", \\\"value\\\": \\\"1\\\"}, {\\\"description\\\": \\\"\\\", \\\"label\\\": \\\"已取消\\\", \\\"value\\\": \\\"2\\\"}]}\", \"anchors_json\": \"70 bytes, sha256 553b16a02822\"}",
+    "before_json": "{\"state\": \"checked\", \"evidence_ref\": \"dataset:订单@v1\", \"confirmed_by\": \"Ann\", \"confirmed_at\": \"<time>\", \"version\": 1, \"content_json\": \"{\\\"column\\\": \\\"状态码\\\", \\\"dataset\\\": \\\"订单\\\", \\\"type\\\": \\\"order\\\", \\\"values\\\": [{\\\"description\\\": \\\"\\\", \\\"label\\\": \\\"已交付\\\", \\\"value\\\": \\\"0\\\"}, {\\\"description\\\": \\\"\\\", \\\"label\\\": \\\"生产中\\\", \\\"value\\\": \\\"1\\\"}, {\\\"description\\\": \\\"\\\", \\\"label\\\": \\\"已取消\\\", \\\"value\\\": \\\"2\\\"}]}\", \"anchors_json\": \"70 bytes, sha256 553b16a02822\"}",
+    "change": "confirmed",
+    "element_id": "enum:order:状态码",
+    "time": "<time>",
+    "user_id": 3,
+    "via_token": null,
+    "who": "Bob"
+   },
+   {
+    "after_json": "{\"state\": \"confirmed\", \"evidence_ref\": \"check_result:2,dataset:订单@v1\", \"confirmed_by\": \"Bob\", \"confirmed_at\": \"<time>\", \"version\": 2, \"content_json\": \"{\\\"dataset\\\": \\\"订单\\\", \\\"description\\\": \\\"客户下的一张订单\\\", \\\"english_name\\\": \\\"order\\\", \\\"key\\\": [\\\"订单号\\\"], \\\"name\\\": \\\"订单\\\", \\\"properties\\\": [{\\\"column\\\": \\\"订单号\\\", \\\"enum\\\": false, \\\"name\\\": \\\"订单号\\\", \\\"type\\\": \\\"text\\\"}, {\\\"column\\\": \\\"金额\\\", \\\"enum\\\": false, \\\"name\\\": \\\"金额\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"状态码\\\", \\\"enum\\\": true, \\\"name\\\": \\\"状态码\\\", \\\"type\\\": \\\"integer\\\"}]}\", \"anchors_json\": \"31 bytes, sha256 481abea085d4\"}",
+    "before_json": "{\"state\": \"checked\", \"evidence_ref\": \"check_result:1,dataset:订单@v1\", \"confirmed_by\": \"Ann\", \"confirmed_at\": \"<time>\", \"version\": 1, \"content_json\": \"{\\\"dataset\\\": \\\"订单\\\", \\\"description\\\": \\\"客户下的一张订单\\\", \\\"english_name\\\": \\\"order\\\", \\\"key\\\": [\\\"订单号\\\"], \\\"name\\\": \\\"订单\\\", \\\"properties\\\": [{\\\"column\\\": \\\"订单号\\\", \\\"enum\\\": false, \\\"name\\\": \\\"订单号\\\", \\\"type\\\": \\\"text\\\"}, {\\\"column\\\": \\\"金额\\\", \\\"enum\\\": false, \\\"name\\\": \\\"金额\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"状态码\\\", \\\"enum\\\": true, \\\"name\\\": \\\"状态码\\\", \\\"type\\\": \\\"integer\\\"}]}\", \"anchors_json\": \"48 bytes, sha256 dc2eed7becf8\"}",
+    "change": "confirmed",
+    "element_id": "objtype:order",
+    "time": "<time>",
+    "user_id": 3,
+    "via_token": null,
+    "who": "Bob"
+   },
+   {
+    "after_json": "{\"name\": \"订单\", \"description\": \"一张订单\", \"state\": \"confirmed\"}",
+    "before_json": "{\"name\": \"订单\", \"description\": \"客户下的一张订单\"}",
+    "change": "edited",
+    "element_id": "objtype:order",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": "{\"state\": \"checked\", \"evidence_ref\": \"check_result:4,dataset:订单@v1\", \"confirmed_by\": \"Ann\", \"confirmed_at\": \"<time>\", \"version\": 4, \"content_json\": \"{\\\"dataset\\\": \\\"订单\\\", \\\"description\\\": \\\"一张订单\\\", \\\"english_name\\\": \\\"order\\\", \\\"key\\\": [\\\"订单号\\\"], \\\"name\\\": \\\"订单\\\", \\\"properties\\\": [{\\\"column\\\": \\\"订单号\\\", \\\"enum\\\": false, \\\"name\\\": \\\"订单号\\\", \\\"type\\\": \\\"text\\\"}, {\\\"column\\\": \\\"金额\\\", \\\"enum\\\": false, \\\"name\\\": \\\"金额\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"状态码\\\", \\\"enum\\\": true, \\\"name\\\": \\\"状态码\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"数量\\\", \\\"enum\\\": false, \\\"name\\\": \\\"数量\\\", \\\"type\\\": \\\"integer\\\"}]}\", \"anchors_json\": \"48 bytes, sha256 dc2eed7becf8\"}",
+    "before_json": "{\"state\": \"confirmed\", \"evidence_ref\": \"check_result:2,dataset:订单@v1\", \"confirmed_by\": \"Bob\", \"confirmed_at\": \"<time>\", \"version\": 3, \"content_json\": \"{\\\"dataset\\\": \\\"订单\\\", \\\"description\\\": \\\"一张订单\\\", \\\"english_name\\\": \\\"order\\\", \\\"key\\\": [\\\"订单号\\\"], \\\"name\\\": \\\"订单\\\", \\\"properties\\\": [{\\\"column\\\": \\\"订单号\\\", \\\"enum\\\": false, \\\"name\\\": \\\"订单号\\\", \\\"type\\\": \\\"text\\\"}, {\\\"column\\\": \\\"金额\\\", \\\"enum\\\": false, \\\"name\\\": \\\"金额\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"状态码\\\", \\\"enum\\\": true, \\\"name\\\": \\\"状态码\\\", \\\"type\\\": \\\"integer\\\"}]}\", \"anchors_json\": \"31 bytes, sha256 481abea085d4\"}",
+    "change": "checked",
+    "element_id": "objtype:order",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": "{\"state\": \"confirmed\", \"evidence_ref\": \"check_result:5,dataset:订单@v1\", \"confirmed_by\": \"Bob\", \"confirmed_at\": \"<time>\", \"version\": 5, \"content_json\": \"{\\\"dataset\\\": \\\"订单\\\", \\\"description\\\": \\\"一张订单\\\", \\\"english_name\\\": \\\"order\\\", \\\"key\\\": [\\\"订单号\\\"], \\\"name\\\": \\\"订单\\\", \\\"properties\\\": [{\\\"column\\\": \\\"订单号\\\", \\\"enum\\\": false, \\\"name\\\": \\\"订单号\\\", \\\"type\\\": \\\"text\\\"}, {\\\"column\\\": \\\"金额\\\", \\\"enum\\\": false, \\\"name\\\": \\\"金额\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"状态码\\\", \\\"enum\\\": true, \\\"name\\\": \\\"状态码\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"数量\\\", \\\"enum\\\": false, \\\"name\\\": \\\"数量\\\", \\\"type\\\": \\\"integer\\\"}]}\", \"anchors_json\": \"31 bytes, sha256 481abea085d4\"}",
+    "before_json": "{\"state\": \"checked\", \"evidence_ref\": \"check_result:4,dataset:订单@v1\", \"confirmed_by\": \"Ann\", \"confirmed_at\": \"<time>\", \"version\": 4, \"content_json\": \"{\\\"dataset\\\": \\\"订单\\\", \\\"description\\\": \\\"一张订单\\\", \\\"english_name\\\": \\\"order\\\", \\\"key\\\": [\\\"订单号\\\"], \\\"name\\\": \\\"订单\\\", \\\"properties\\\": [{\\\"column\\\": \\\"订单号\\\", \\\"enum\\\": false, \\\"name\\\": \\\"订单号\\\", \\\"type\\\": \\\"text\\\"}, {\\\"column\\\": \\\"金额\\\", \\\"enum\\\": false, \\\"name\\\": \\\"金额\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"状态码\\\", \\\"enum\\\": true, \\\"name\\\": \\\"状态码\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"数量\\\", \\\"enum\\\": false, \\\"name\\\": \\\"数量\\\", \\\"type\\\": \\\"integer\\\"}]}\", \"anchors_json\": \"48 bytes, sha256 dc2eed7becf8\"}",
+    "change": "confirmed",
+    "element_id": "objtype:order",
+    "time": "<time>",
+    "user_id": 3,
+    "via_token": null,
+    "who": "Bob"
+   },
+   {
+    "after_json": "{\"version\": 2, \"rows_in\": 160, \"rows_stored\": 160, \"dropped\": {}, \"file_sha256\": \"13513f48c374bafd481ae3ffb8a715ad79568a2938ca055a0bc7ce93d0483346\"}",
+    "before_json": null,
+    "change": "import v2: 160 rows in the file, 160 stored, 0 dropped",
+    "element_id": "dataset:订单",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": "{\"version\": 3, \"rows_in\": 160, \"rows_stored\": 160, \"dropped\": {}, \"file_sha256\": \"1205aff8e6b7293922872a063c2ba6d8276f171a2f5eb2105f0d3059f80ca879\"}",
+    "before_json": null,
+    "change": "import v3: 160 rows in the file, 160 stored, 0 dropped",
+    "element_id": "dataset:订单",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": "{\"state\": \"needs_look\", \"reason\": \"订单 第 3 版（Ann上传）里，“状态码”的取值变了：新出现 3（16 行，没有含义）；不再出现 0（原来是「已交付」）。确认时的取值是 0、1、2\", \"caused_by\": \"Ann\", \"cause\": \"data\", \"via\": \"self\"}",
+    "before_json": "{\"state\": \"confirmed\", \"confirmed_by\": \"Bob\", \"confirmed_at\": \"<time>\"}",
+    "change": "needs_look",
+    "element_id": "enum:order:状态码",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "system"
+   },
+   {
+    "after_json": "{\"state\": \"needs_look\", \"reason\": \"它用的“状态码”的含义需要再看（原因见那一组含义）\", \"caused_by\": \"Ann\", \"cause\": \"data\", \"via\": \"parent\"}",
+    "before_json": "{\"state\": \"confirmed\", \"confirmed_by\": \"Bob\", \"confirmed_at\": \"<time>\"}",
+    "change": "needs_look",
+    "element_id": "objtype:order",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "system"
+   }
+  ],
+  "notice": [
+   {
+    "action_name": "enum:order:状态码",
+    "at": "<time>",
+    "id": 1,
+    "read_at": null,
+    "record_id": null,
+    "text": "“订单”的“状态码”含义退回到“需要再看”（数据变了）：订单 第 3 版（Ann上传）里，“状态码”的取值变了：新出现 3（16 行，没有含义）；不再出现 0（原来是「已交付」）。确认时的取值是 0、1、2。同一次变动里还有 1 项你能看到的定义也退回了。\u001fThe meanings of \"状态码\" on \"订单\" went back to needs another look (Data changed): 订单 第 3 版（Ann上传）里，“状态码”的取值变了：新出现 3（16 行，没有含义）；不再出现 0（原来是「已交付」）。确认时的取值是 0、1、2. In the same change, 1 more definition you can see went back too.",
+    "user_id": 1
+   },
+   {
+    "action_name": "enum:order:状态码",
+    "at": "<time>",
+    "id": 2,
+    "read_at": null,
+    "record_id": null,
+    "text": "“订单”的“状态码”含义退回到“需要再看”（数据变了）：订单 第 3 版（Ann上传）里，“状态码”的取值变了：新出现 3（16 行，没有含义）；不再出现 0（原来是「已交付」）。确认时的取值是 0、1、2。同一次变动里还有 1 项你能看到的定义也退回了。\u001fThe meanings of \"状态码\" on \"订单\" went back to needs another look (Data changed): 订单 第 3 版（Ann上传）里，“状态码”的取值变了：新出现 3（16 行，没有含义）；不再出现 0（原来是「已交付」）。确认时的取值是 0、1、2. In the same change, 1 more definition you can see went back too.",
+    "user_id": 3
+   }
+  ]
+ },
+ "unconfirmed_ann": [
+  200,
+  {
+   "note": "这些定义现在不是“已确认”：不要拿它们回答问题，也不要把里面的数字或含义当成已经说定的。",
+   "unconfirmed": [
+    {
+     "cause_word": "数据变了",
+     "id": "enum:order:状态码",
+     "kind": "meaning",
+     "name": "订单.状态码",
+     "proposed_by": "Ann",
+     "reason": "订单 第 3 版（Ann上传）里，“状态码”的取值变了：新出现 3（16 行，没有含义）；不再出现 0（原来是「已交付」）。确认时的取值是 0、1、2",
+     "reason_hidden": null,
+     "stale_word": "数据变了",
+     "state": "needs_look",
+     "who_can_confirm": [
+      "Bob",
+      "管理员"
+     ]
+    },
+    {
+     "cause_word": "数据变了",
+     "id": "objtype:order",
+     "kind": "type",
+     "name": "订单",
+     "proposed_by": "Ann",
+     "reason": "它用的“状态码”的含义需要再看（原因见那一组含义）",
+     "reason_hidden": null,
+     "stale_word": "上一步过时",
+     "state": "needs_look",
+     "who_can_confirm": [
+      "Bob",
+      "管理员"
+     ]
+    }
+   ]
+  }
+ ],
+ "upload": 200
+}

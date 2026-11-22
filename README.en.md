@@ -55,7 +55,7 @@ The sum of the amount column is 162,960. It is arithmetically right and it is no
 ## How a definition gets confirmed
 
 1. **Put it forward.** A builder writes the definition, asks the model to suggest one from the datasets, or imports the tests of a dbt `manifest.json` (a suggestion or an import is only a proposal).
-2. **Code checks it on every row.** Keys are unique and filled, relations connect (and say how many rows do not), every code has a meaning. A key check over no rows does not count as passed (relation checks do not yet make that distinction).
+2. **Code checks it on every row.** Keys are unique and filled, relations connect (and say how many rows do not), every code has a meaning, and each value rule on a type's properties holds (not empty; greater than, at least, less than, at most or between numbers; one of the codes with a meaning; one date not before another), with the rows that break it counted and up to 20 named by key. A rule the data breaks can be proposed, but the type cannot be confirmed until no row breaks it. A key check over no rows does not count as passed (relation checks do not yet make that distinction).
 3. **A second builder confirms it.** Never the one who proposed it; with one builder the rule opens up and the log says so. The confirmation keeps who, when and which data version.
 4. **It is used.** Q&A, boards and agents see it, each number with the line it rests on.
 5. **It goes back when things move.** A new upload or pull re-checks it; if it no longer holds, it and what reads it go to "needs another look", with the cause (data changed, definition changed, upstream). The review queue brings it back to step 3.
@@ -139,9 +139,9 @@ The AI tool access page shows a JSON block for Claude Desktop, Cursor and other 
 
 | Part | What it does |
 |---|---|
-| Accounts and permissions | Local accounts with three roles (admin, builder, viewer) and server-side sessions. A viewer reads confirmed definitions only. An admin can limit an object type to named people, limit rows by rule (allow-lists only), hide a column, and keep a column's values from the model |
+| Accounts and permissions | Local accounts with three roles (admin, builder, viewer) and server-side sessions. A viewer reads confirmed definitions only. An admin can limit an object type to named people, limit rows by rule (allow-lists only), and hide a column; a builder can keep a column's values from the model |
 | Data | Upload CSV or Excel, update by key or overwrite, a new version each time, with the rows counted on the way in. Read-only PostgreSQL and MySQL: a pull **copies** the table into a new version, at most 500,000 rows and about 200 MB per pull; a larger table is refused, not cut short. Only PostgreSQL and MySQL; checking in place in your database is not built. Schedules pull or run pipelines hourly, daily, weekly |
-| Definitions | Object types (key, properties, what code columns mean), relations (how many rows connect, whether the declared cardinality holds), views, derived properties (a formula over a row, or a statistic through relations) |
+| Definitions | Object types (key, properties, what code columns mean, value rules on the properties: at most 20 per type, each on one property of that type), relations (how many rows connect, whether the declared cardinality holds), views, derived properties (a formula over a row, or a statistic through relations) |
 | Confirmation | Proposed → checked by code → confirmed by another builder, with the data version and anchors kept. When the data or a definition changes, what no longer holds goes back to "needs another look", and whoever can confirm it, and whoever confirmed it last, gets one notice in Notifications. One exception for relations: one confirmed with every row connected and no repeated key stays confirmed while that is still true, even when the row counts changed. What one upload moved can be confirmed together on one screen |
 | Answers | Q&A: a question that names an unconfirmed or stale definition is refused before the model is asked. The model sees structure, meanings and the values of columns with few distinct values, never rows, and writes a structured query; code runs it and checks the definitions it used. OntoPoc Query works out numbers with no model. Boards answer through the same gate |
 | Questions we need | A list of up to 30 questions the team needs answered, each with what it should give (a number, or that it must be refused), proposed by one builder and confirmed by another, signed in, while two-person confirmation is on (with it off a person may confirm their own, and the log says so). A builder or admin whom no type list, column rule or row rule limits runs it: each question is asked 1 to 5 times through the same gate as Q&A and comes back as passes, differs, refused by the gate (with the definitions that block it and who can confirm them), no answer (a reply that could not be read, or no query), no expectation yet (every answer is shown, to adopt one), needs another look (what the expected answer read has moved since) or not asked. Runs have their own budget, at most 300 model calls in any 24 hours, stated before each run and charged as each call goes out; they do not use a person's questions an hour. A run goes on in the service after it starts and the page follows it. Builders and admins only |
@@ -152,7 +152,7 @@ It does not do heavy orchestration, large data, live queries against your databa
 ## Privacy
 
 - Uploaded files, pulled tables and all results stay on the machine running the service.
-- The model sees the names and types of object types and properties, confirmed code meanings, relations, what derived properties say, and every value of columns with few distinct values (such as city or tier). Key columns and columns an admin marks "don't send values" send no values. No rows are sent.
+- The model sees the names and types of object types and properties, confirmed code meanings, relations, what derived properties say, and every value of columns with few distinct values (such as city or tier). Key columns and columns a builder marks "don't send values" send no values. No rows are sent.
 - Each model call leaves one line in `model_calls.jsonl` (which agent, how long, success or failure), never the content. A call made by a run of Questions we need is marked as that run's.
 - What the earlier screen sends to the model is in [docs/LEGACY_SCREEN.en.md](docs/LEGACY_SCREEN.en.md#what-the-model-sees).
 
@@ -177,6 +177,10 @@ Recent work has a language model do most of the building of an ontology or a gra
 ### How does this relate to a semantic layer?
 
 Your metrics may already be defined in a semantic layer on a warehouse. Who signed them? Who notices when the data changes underneath? OntoPoc is about that part: each definition carries the person who confirmed it and the data version, goes back for another look when the data moves, and the AI refuses to use it until someone confirms it again. It keeps its own copy of the data. If you use dbt, upload `manifest.json` on the object types page: OntoPoc reads its model tests (unique, not_null, relationships, accepted_values) and proposes object types and relations, at most 50 per import and shown as a preview before anything is written; another builder still confirms each against the data. It does not read composite keys, dbt constraints, metrics, the semantic layer or dbt Cloud, it does not follow later changes to the manifest, and the import confirms nothing. It does not export to a specific semantic layer yet.
+
+### Does OntoPoc use OWL or RDF?
+
+Not inside. The team app keeps its own object model and does not run an OWL reasoner: OWL reads data under an open world, so two objects with the same key become one object, where OntoPoc refuses the repeated key. Anyone signed in, viewers included, can download the confirmed definitions they may see as two Turtle files from `GET /api/workspace/agent/schema` (builders and admins also find a link on the AI tool access page): OWL for object types, keys, properties and relations, SKOS for code meanings, and SHACL shapes for the key, code and cardinality checks. Views and derived properties are in them as text, not as OWL axioms, and no row of data is. rdflib and pyshacl read them in OntoPoc's tests; ROBOT with the HermiT reasoner was run once, by hand, on a sample, and no OWL profile is claimed for a downloaded file. What maps where, and what does not fit, is in [docs/STANDARDS.en.md](docs/STANDARDS.en.md). The earlier screen has a separate Turtle export of its own.
 
 ### What is an ontology MCP, and how do I use it here?
 
@@ -203,8 +207,8 @@ Issues and pull requests are welcome. Read the [development guardrails](docs/DEV
 ## Development
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (2,431 on 2026-11-22; install ".[check,sources]" first, or TTL and some source checks are skipped)
-npm --prefix landing-page run test:unit                       # page tests (814 on 2026-11-22)
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (2,450 on 2026-11-22; install ".[check,sources]" first, or the Turtle, OWL and SHACL tests and some source checks are skipped)
+npm --prefix landing-page run test:unit                       # page tests (802 on 2026-11-22)
 PYTHONPATH=src:. python3 scripts/real_model_check.py --out /tmp/check   # real model against SQL (needs a model key; fails only on a wrong number)
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # a trial run in another data directory
 ```
@@ -218,6 +222,7 @@ Page code: the team app is in `landing-page/src/app/` and uses only `/api/worksp
 | [docs/MCP.md](docs/MCP.md) | The MCP tools |
 | [docs/AGENTS.md](docs/AGENTS.md) | Every model call: its definition card and the call log |
 | [docs/DEVELOPMENT_GUARDRAILS.md](docs/DEVELOPMENT_GUARDRAILS.md) | Red lines, and directions waiting for a trigger |
+| [docs/STANDARDS.en.md](docs/STANDARDS.en.md) | OWL, SHACL and SKOS: what the download of confirmed definitions holds, and what does not fit (in English and Chinese) |
 
 ## License
 
