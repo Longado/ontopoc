@@ -13,7 +13,7 @@ import base64
 import json
 import re
 import sqlite3
-from datetime import date
+import time
 from unittest import mock
 
 from ontology_poc_generator import mcp_server, workspace_questions, workspace_store
@@ -466,3 +466,84 @@ class Shapes(Sample):
                 self.assertEqual(status, 200, body)
                 self.assertNotIn('derived', next(v for v in ann.get('/api/workspace/types/order/views')[1]['views'] if v['name'] == '没有派生条件'))
             self.assertEqual(self.query(ann, 'SELECT LIST o FROM (o:订单)')[1]['answer']['total'], 40)
+
+
+class WithOtherNames(Sample):
+    """Lists and lookups beside other names, value rules and the list of questions we need."""
+
+    def test_a_view_named_by_its_other_name_lists_its_objects_and_is_refused_while_it_waits(self):
+        model = Scripted(item(LIST_VIEW, VIEW_USED))
+        with self.service(gateway=model) as (base, out):
+            team = self.setup(base, view=False)
+            ann, bob, vera = team['ann'], team['bob'], team['vera']
+            self.assertEqual(ann.post('/api/workspace/types/views', {**VIEW, 'other_names': ['危险急单']})[0], 200)
+            self.confirm_view(bob)
+            body = self.ask(ann, model, '危险急单有哪些？', item(LIST_VIEW, [{'id': '高风险加急订单', 'direction': 'include', 'basis': '危险急单'}]))
+            self.assertEqual((body['status'], keys(body)), ('answered', URGENT_HIGH), body)
+            self.assertIn('危险急单', json.dumps(model.requests[-1], ensure_ascii=False))   # the model is told the other name, as for a number
+            line = self.formula(ann)
+            self.assertEqual(ann.post('/api/workspace/types/derived/update', {**HIGH_RISK, 'expression': 'if(金额 > 60000, 1, 0)', 'version': line['version']})[0], 200)
+            for who in ('ann', 'vera'):
+                asked = len(model.requests)
+                refused = self.ask(team[who], model, '危险急单有哪些？', item(LIST_VIEW, VIEW_USED))
+                counted = self.ask(team[who], model, '危险急单有哪些？', item({'start': 'order', 'where': []}, VIEW_USED))
+                self.assertEqual((refused['status'], len(model.requests)), ('refused', asked), who)   # refused before the model is asked
+                self.assertEqual(without_moments({k: v for k, v in refused.items() if k != 'query'}), without_moments({k: v for k, v in counted.items() if k != 'query'}), who)
+
+    def test_a_view_on_a_derived_property_with_other_names_keeps_the_same_rows(self):
+        model = Scripted(item(LIST_VIEW, VIEW_USED))
+        with self.service(gateway=model) as (base, out):
+            team = self.setup(base, view=False, formula=False)
+            ann, bob = team['ann'], team['bob']
+            self.assertEqual(ann.post('/api/workspace/types/derived', {**HIGH_RISK, 'other_names': ['风险高', '大额']})[0], 200)
+            self.confirm_formula(bob)
+            status, body = ann.post('/api/workspace/types/views', VIEW)
+            self.assertEqual(status, 200, body)
+            self.confirm_view(bob)
+            self.assertEqual(keys(self.ask(ann, model, '哪些加急订单是高风险的？', item(LIST_VIEW, VIEW_USED))), URGENT_HIGH)
+            line = self.formula(ann)   # another other name only: the formula stays confirmed, and so does the view on it
+            self.assertEqual(ann.post('/api/workspace/types/derived/update', {**HIGH_RISK, 'other_names': ['风险高'], 'version': line['version']})[0], 200)
+            self.assertEqual((self.formula(ann)['state'], self.view(ann)['state']), ('confirmed', 'confirmed'))
+            self.assertEqual(keys(self.ask(ann, model, '哪些加急订单是高风险的？', item(LIST_VIEW, VIEW_USED))), URGENT_HIGH)
+
+    def test_a_list_or_lookup_of_a_type_whose_value_rules_are_not_known_to_hold_is_refused_as_a_number_is(self):
+        model = Scripted(item(LIST_VIEW))
+        with self.service(gateway=model) as (base, out):
+            team = self.setup(base, view=False, formula=False, order_type={**ORDER, 'rules': [{'column': '金额', 'check': 'not_empty'}], 'other_names': ['单据']})
+            bob = team['bob']
+            conn = sqlite3.connect(out / 'workspace.sqlite')   # what an older version leaves: a count kept on this version that shows a broken row
+            element, dataset, rows, kept = conn.execute("SELECT element_id, dataset_id, rows_checked, samples_json FROM check_result WHERE element_id = 'objtype:order' "
+                                                        "AND check_type = 'value_rules' ORDER BY id DESC LIMIT 1").fetchone()
+            conn.execute("INSERT INTO check_result(element_id, check_type, query, rows_checked, violations, samples_json, status, checked_at, dataset_id, null_key_rows) "
+                         "VALUES (?, 'value_rules', '', ?, 1, ?, 'failed', '2026-11-22T00:00:00+00:00', ?, NULL)", (element, rows, json.dumps({**json.loads(kept), 'broken': [1]}), dataset))
+            conn.commit()
+            conn.close()
+            counted = self.query(bob, 'SELECT count(o) FROM (o:订单)')[1]
+            self.assertEqual(counted['status'], 'refused', counted)
+            for text in ('SELECT LIST o FROM (o:订单)', "SELECT ONE o FROM (o:订单) WHERE o.订单号 = 'DD20260001'"):
+                listed = self.query(bob, text)[1]
+                self.assertEqual({k: v for k, v in listed.items() if k != 'text'}, {k: v for k, v in counted.items() if k != 'text'}, text)
+            asked = len(model.requests)
+            for reply in (item(LIST_VIEW), item({'start': 'order', 'lookup': {'订单号': 'DD20260001'}})):
+                refused = self.ask(bob, model, '单据有哪些？', reply)
+                self.assertEqual((refused['status'], refused['refusal']['kind']), ('refused', 'unsettled'))
+            self.assertEqual(len(model.requests), asked)
+
+    def test_a_list_given_to_a_question_we_need_that_expects_a_number_differs(self):
+        model = Scripted(item(LIST_VIEW, VIEW_USED))
+        with self.service(gateway=model) as (base, out):
+            team = self.setup(base)
+            ann, bob, admin = team['ann'], team['bob'], team['admin']
+            status, body = ann.post('/api/workspace/needed', {'question': '高风险加急订单有多少？', 'expect': {'kind': 'number', 'value': len(URGENT_HIGH)}})
+            self.assertEqual(status, 200, body)
+            found = next(q for q in bob.get('/api/workspace/needed')[1]['questions'] if q['question'] == '高风险加急订单有多少？')
+            self.assertEqual(bob.post('/api/workspace/needed/confirm', {'id': found['id'], 'version': found['version']})[0], 200)
+            status, body = admin.post('/api/workspace/needed/run', {'repeats': 1})
+            self.assertEqual(status, 200, body)
+            for _ in range(500):
+                if body.get('running') is None:
+                    break
+                time.sleep(0.02)
+                body = admin.get('/api/workspace/needed')[1]
+            result = next(q for q in body['questions'] if q['question'] == '高风险加急订单有多少？')['result']
+            self.assertEqual((result['outcome'], result['distinct']), ('differs', [{'number': None, 'status': 'answered', 'times': 1}]), result)   # an answer, but not the number expected (as for groups): its total is not taken for one   # a list is not the number expected, though its total is
