@@ -16,7 +16,7 @@ import json
 
 from ontology_poc_generator.object_types import (
     ACTION_PREFIX, DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, TypeRefused,
-    _by_value, _confirmers, _content, _label, _type_problems, dataset_columns, element_row, limited_on, unconfirmed_producers)
+    _by_value, _confirmers, _content, _label, _type_problems, counted_ahead, dataset_columns, element_row, keep_count, limited_on, unconfirmed_producers)
 from ontology_poc_generator.review_queue import IN_QUEUE, _item, confirm_item, queue
 from ontology_poc_generator.workspace_store import SelfConfirmation, current_dataset, log_line
 
@@ -155,7 +155,11 @@ def group_detail(conn, user: dict | None, dataset, version) -> dict:
     before it) and why not."""
     moved, rows, hidden = _members(conn, user, dataset, version)
     items = []
-    for place in _plan(conn, rows, user):
+    with counted_ahead(conn, [r['element_id'] for r in rows if not limited_on(conn, r, user)]) as counts:   # one count of each type's value rules, kept for the reads made on every page
+        for element_id, found in counts.items():
+            keep_count(conn, element_id, _content(element_row(conn, element_id)), found)
+        plan = _plan(conn, rows, user)
+    for place in plan:
         row = place['row']
         items.append({**_item(conn, row, user), 'mine': place['mine'], 'ready': place['ready'], 'why_not': place['why_not'],
                       **({'values': _meaning_values(conn, row, user)} if row['element_id'].startswith(ENUM_PREFIX) else {})})
@@ -182,6 +186,11 @@ def confirm_group(conn, payload: dict, who: str | None, user: dict | None) -> di
     title, why}], hidden}. A refusal of any item (409 when the data or a version moved, 403, 400 for what it asks for) keeps nothing and names the item."""
     moved, members, hidden = _members(conn, user, payload.get('dataset'), payload.get('version'))
     asked = _asked(payload, members)
+    with counted_ahead(conn, [r['element_id'] for r in members]):   # the value rules are counted here, before the write lock below; the checks under it use these counts
+        return _confirm_planned(conn, payload, who, user, members, asked, hidden)
+
+
+def _confirm_planned(conn, payload: dict, who: str | None, user: dict | None, members: list[dict], asked: dict, hidden: int) -> dict:
     plan = _plan(conn, members, user)
     ready = [p for p in plan if p['ready']]
     if not ready:

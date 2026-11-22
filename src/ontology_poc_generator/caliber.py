@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 
 from ontology_poc_generator.derived_properties import describe as describe_derived
-from ontology_poc_generator.object_types import DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, _content, _settled_since, element_row, stale_word
+from ontology_poc_generator.object_types import DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, _content, _settled_since, element_row, presented_row, stale_word
 from ontology_poc_generator.lang import tr
 from ontology_poc_generator.object_views import in_out_text
 
@@ -71,7 +71,7 @@ def _kind(element_id: str) -> str:
 def line_of(conn, element_id: str) -> dict:
     """One definition as a line: {'id', 'kind', 'name', 'state', 'confirmed', 'text' (the definition), 'by' and 'on' (who confirmed it, on which dataset versions), 'line'
     (the sentence a reader sees), 'reason' (why it needs a look, or what state it is in)}. A definition that is gone says so and is not confirmed."""
-    row = element_row(conn, element_id)
+    row = presented_row(conn, element_row(conn, element_id))   # a type whose value rules are not known to hold is not confirmed to a reader
     if row is None or not row['content_json']:
         return {'id': element_id, 'kind': _kind(element_id), 'name': element_id.split(':', 1)[1], 'state': None, 'confirmed': False, 'text': '', 'by': None, 'on': None,
                 'line': tr('这条定义已经不在了', 'This definition no longer exists'), 'reason': tr('这条定义已经不在了', 'This definition no longer exists'), 'stale_word': None}
@@ -80,7 +80,7 @@ def line_of(conn, element_id: str) -> dict:
     by, on = (last[0], ' '.join(f'{n} v{v}' for n, v in json.loads(last[1]).items())) if last else (None, None)
     text = _text(conn, element_id, content)
     confirmed = row['state'] == 'confirmed'
-    stored = _settled_since(conn, row) if row['state'] == 'needs_look' and row['reason'] else row['reason']   # as the pages read it: a parent confirmed again says so
+    stored = _settled_since(conn, row) if row['state'] == 'needs_look' and row['reason'] and not row.get('untrusted') else row['reason']   # as the pages read it: a parent confirmed again says so
     reason = None if confirmed else (stored if row['state'] in ('needs_look', 'rejected') and stored else _state_word(row['state']))
     sentence = (tr(f'{text}，{by} 确认于 {on}', f'{text}, confirmed by {by} on {on}') if confirmed and by and on else text if confirmed
                 else tr(f'{text}（{reason}）', f'{text} ({reason})'))
