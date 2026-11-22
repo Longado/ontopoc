@@ -259,9 +259,10 @@ def _places(folded: str, text: str) -> list[tuple[int, int]]:
 
 
 def _muted(conn, user: dict | None, question: str | None) -> frozenset:
-    """{(definition key, name)}: names the question says only inside a longer name of another definition this person may see, one of the two an other name. The
-    longest match wins its span: 客户 inside the property's 客户号 does not name the type 客户. Empty when nothing has an other name (or HEARD is off): then names
-    are heard as they always were, a short one inside a long one included."""
+    """{(definition key, other name)}: other names the question says only inside a longer name or other name of another definition this person may see, wholly
+    holding it at that place (names that only overlap mute nothing). A definition's own name is never muted, so everything heard through names is heard as it
+    always was: other names can only add hearing, and a longer name can only take away hearing an other name added (客户, Customer's other name on the demo, inside
+    the property's 客户号). Empty when nothing has an other name, or HEARD is off."""
     if not question:
         return frozenset()
     names = _seen_names(conn, user)
@@ -269,7 +270,7 @@ def _muted(conn, user: dict | None, question: str | None) -> frozenset:
         return frozenset()
     folded = other_names.fold(question)
     found = [(e['key'], e['text'], e['other'], s, t) for e in names for s, t in _places(folded, e['text'])]
-    inside = lambda a, b: a[0] != b[0] and b[3] <= a[3] and a[4] <= b[4] and b[4] - b[3] > a[4] - a[3] and (a[2] or b[2])
+    inside = lambda a, b: a[2] and a[0] != b[0] and b[3] <= a[3] and a[4] <= b[4] and b[4] - b[3] > a[4] - a[3]   # a: an other name; b: anything longer holding it
     heard = {(a[0], a[1]) for a in found if not any(inside(a, b) for b in found)}
     return frozenset((a[0], a[1]) for a in found if (a[0], a[1]) not in heard)
 

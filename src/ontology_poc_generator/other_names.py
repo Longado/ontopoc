@@ -13,8 +13,8 @@ properties: equal is refused, and so is a view's or derived property's name insi
 view; a type's name inside a view's is allowed (订单 inside 有效订单: a question about valid orders is about orders). Across kinds (check_across), an other name
 may not equal a name of a definition of another kind, nor of a meaning of another column. No invisible character is kept.
 
-In a question the longest name wins its place (workspace_questions._muted): a name found only inside a longer name of another definition, one of the two an
-other name, is not heard there; 客户 inside the property's 客户号 does not name the type 客户. With no other names, names are heard as they always were."""
+In a question a definition's own name is always heard as it always was; an other name found only inside a longer name or other name of another definition the
+asker may see is not heard there (workspace_questions._muted): the demo's 客户 inside the property's 客户号 does not name Customer."""
 from __future__ import annotations
 
 import json
