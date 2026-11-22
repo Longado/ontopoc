@@ -385,7 +385,7 @@ class ValueRuleTests(SigningTestCase):
             self.assertEqual(admin.post('/api/workspace/row-rules', {'type': 'order', 'rules': [{'column': '客户编号', 'value': 'KH022', 'user_ids': [carl_id]}]})[0], 200)
             conn = plain_sql(sqlite3.connect(out / 'workspace.sqlite'))
             table = current_table(out, '订单')
-            for who, where, args in ((carl, ' AND "客户编号" = ?', ('KH022',)), (ann, '', ())):
+            for who, where, args in ((carl, ' AND "客户编号" = ?', ('KH022',)), (admin, '', ())):   # once a row rule is set, a builder it does not name sees no row; an admin sees all
                 shown = self.page(who, 'order')['rules']
                 for rule, readout in zip(rules, shown):
                     count, keys = by_sql(conn, table, rule, where=where, args=args)
@@ -395,7 +395,7 @@ class ValueRuleTests(SigningTestCase):
             limited = self.page(carl, 'order')
             self.assertTrue(limited['rows_limited'])
             self.assertEqual(limited['rows'], mine)
-            self.assertLess(limited['rules'][0]['broken'], self.page(ann, 'order')['rules'][0]['broken'])
+            self.assertLess(limited['rules'][0]['broken'], self.page(admin, 'order')['rules'][0]['broken'])
             item = next(i for i in carl.get('/api/workspace/queue')[1]['items'] if i.get('kind') == 'type')
             self.assertIn(f'“金额”要小于 3000：你能看到的行里现在有 {limited["rules"][0]["broken"]} 行不满足', [line['text'] for line in item['lines']])
 
