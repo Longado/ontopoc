@@ -25,6 +25,7 @@ from ontology_poc_generator.explorer import _load, _object_key, whole_page
 from ontology_poc_generator.object_types import OBJECT_PAGE, TypeRefused, _content, element_row, type_id
 from ontology_poc_generator.object_views import describe as describe_view
 from ontology_poc_generator.type_access import hidden_values
+from ontology_poc_generator.value_rules import columns_of, says as rule_says
 from ontology_poc_generator.workspace_datasets import _csv_cell
 from ontology_poc_generator.workspace_questions import _definition_line, _kind_and_name, _may_see, _state_words, scope
 from ontology_poc_generator.workspace_store import _canonical
@@ -55,9 +56,11 @@ def definitions(conn, user: dict | None) -> dict:
         content = t['content']
         hidden = hidden_values(conn, type_id(name))
         meanings = {column: {'values': m['labels'], **_stamp(conn, m['row']['element_id'])} for column, m in sc['meanings'].get(name, {}).items() if column not in hidden}
+        names = {p['column']: p['name'] for p in content['properties']}   # the properties this person may see: a rule on any other column is not theirs to read
+        rules = [rule_says(r, names) for r in content.get('rules') or [] if columns_of(r) <= set(names)]
         types.append({'id': name, 'name': content['name'], 'description': content['description'], 'dataset': content['dataset'], 'key': content['key'],
                       'properties': [{'column': p['column'], 'name': p['name'], 'type': p['type'], 'code': p['enum'] and p['column'] in meanings} for p in content['properties']],
-                      'meanings': meanings, **_stamp(conn, t['row']['element_id'])})
+                      'meanings': meanings, **({'rules': rules} if rules else {}), **_stamp(conn, t['row']['element_id'])})
     relations = [{'id': name, 'name': r['content']['name'], 'from': r['content']['from'], 'to': r['content']['to'], 'cardinality': r['content']['cardinality'],
                   'from_column': r['content']['from_column'], 'to_column': r['content']['to_column'], **_stamp(conn, r['row']['element_id'])} for name, r in sc['relations'].items()]
     views = [{'id': name, 'name': name, 'type': v['content']['type'], 'says': describe_view(v['content'], sc['types'][v['content']['type']]['content']['name']),
@@ -217,7 +220,8 @@ def _meaning_lines(t: dict) -> list[str]:
 def _type_file(t: dict) -> str:
     props = [f'- {p["name"]}（{p["column"]}，{p["type"]}{"，代码列" if p["code"] else ""}）' for p in t['properties']]
     return '\n'.join([f'# {t["name"]}（{t["id"]}）', '', t['description'] or '', '', f'来自数据集 {t["dataset"]}；主键 {tr("、", ", ").join(t["key"])}；{t["confirmed_by"]} 确认于 {t["confirmed_on"]}。', '',
-                      '## 属性', *props, *(['', '## 代码的含义', *_meaning_lines(t)] if t['meanings'] else [])]).strip() + '\n'
+                      '## 属性', *props, *(['', '## 代码的含义', *_meaning_lines(t)] if t['meanings'] else []),
+                      *(['', tr('## 值规则（每一行都要满足）', '## Value rules (every row holds them)'), *(f'- {r}' for r in t['rules'])] if t.get('rules') else [])]).strip() + '\n'
 
 
 def skill_files(conn, user: dict | None, today: date | None = None) -> dict[str, str]:

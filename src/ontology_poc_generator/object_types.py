@@ -27,7 +27,8 @@ from ontology_poc_generator.draft_receipts import spend as spend_receipt
 from ontology_poc_generator.code_meanings import check_enum, merge_enum
 from ontology_poc_generator.row_rules import keeps, positions, restriction
 from ontology_poc_generator.type_access import can_access, column_allowed, dataset_hidden, hidden_columns, hidden_values, reads_hidden, visible_to
-from ontology_poc_generator.workspace_store import fan_note, StaleElement, _canonical, _key_of, check_key, current_dataset, dataset_records, element_state_writes, fan_marks, log_line
+from ontology_poc_generator.value_rules import EXAMPLES, REASON_EXAMPLES, RuleRefused, broken_text, columns_of, note as rules_note, read_rules, run as run_rules, says as rule_says
+from ontology_poc_generator.workspace_store import fan_note, StaleElement, _canonical, _key_of, _quote, check_key, current_dataset, dataset_records, element_state_writes, fan_marks, log_line, record_result
 
 TYPE_PREFIX = 'objtype:'
 ENUM_PREFIX = 'enum:'
@@ -272,6 +273,12 @@ def check_definition(conn, payload: dict, english_name: str | None = None, user:
     for column in posted:
         if not any(p['column'] == column and p['enum'] for p in properties):
             raise TypeRefused(tr(f'“{column}”不是这个类型里的代码列，没法写含义', f'"{column}" is not a code column of this type, so it cannot have meanings'))
+    try:   # value rules are part of the type: kept only when there are some, so a type without them is stored as it always was
+        rules = read_rules([] if payload.get('rules') is None else payload['rules'], properties, lambda column: bool(posted.get(column)) or bool(_kept_meanings(conn, english, column)))
+    except RuleRefused as exc:
+        raise TypeRefused(str(exc)) from None
+    if rules:
+        content['rules'] = rules
     return content, posted, warnings, key_check
 
 
@@ -308,6 +315,17 @@ def _type_change(content: dict, dataset: dict, key_check: dict, who: str | None)
     return (type_id(content['english_name']), 'checked', f'check_result:{key_check["id"]},dataset:{dataset["name"]}@v{dataset["version"]}', who, content, anchors, who)
 
 
+def _proposed_rules(conn, content: dict, dataset: dict, user: dict | None) -> tuple[dict, list[str]]:
+    """What putting a type forward answers with about its value rules, once it is written: {'rules': the rules as this person reads them, with the rows that break
+    each now} and a warning for each broken one (it can be proposed; it cannot be confirmed while one is broken). Nothing for a type without rules."""
+    shown = rules_readout(conn, type_id(content['english_name']), content, dataset, user) if content.get('rules') else None
+    if shown is None:
+        return {}, []
+    warnings = [tr(f'值规则{r["says"]}：现在有 {r["broken"]} 行不满足。可以先提出，但有规则不满足时不能确认', f'The value rule {r["says"]}: {r["broken"]} rows break it now. It can be proposed, but it cannot be confirmed while a rule is broken')
+                for r in shown if r['broken']]
+    return {'rules': shown}, warnings
+
+
 def _meaning_change(conn, content: dict, column: str, values: list[dict], dataset: dict, cols: dict, who: str | None, fresh: bool = False) -> tuple | None:
     """The change that puts these meanings (the whole list now) forward, or None when they are what is already on file (saving a confirmed meaning again
     unchanged does not reset it). `fresh`: what is on file belongs to another dataset and is not compared."""
@@ -337,7 +355,8 @@ def create_type(conn, payload: dict, who: str | None, user: dict | None = None) 
             changes.append(_meaning_change(conn, content, column, values, dataset, cols, who))
             reads[changes[-1][0]] = [f'column:{dataset["name"]}.{column}']
     write_elements(conn, changes, reads)
-    return {'id': content['english_name'], 'warnings': warnings}
+    shown, broken = _proposed_rules(conn, content, dataset, user)
+    return {'id': content['english_name'], 'warnings': [*warnings, *broken], **shown}
 
 
 def reset_reasons(old: dict, new: dict) -> list[str]:
@@ -351,6 +370,8 @@ def reset_reasons(old: dict, new: dict) -> list[str]:
     kinds = lambda c: {p['column']: (p['type'], p['enum']) for p in c['properties']}
     if kinds(old) != kinds(new):
         reasons.append(tr('属性的类型', 'a property type'))
+    if old.get('rules', []) != new.get('rules', []):
+        reasons.append(tr('值规则', 'the value rules'))
     return reasons
 
 
@@ -401,7 +422,8 @@ def update_type(conn, payload: dict, who: str | None, user: dict | None = None) 
     if payload.get('version') != row['version']:
         raise TypeRefused(tr('这个对象类型在你打开之后被改了，请刷新后再改', 'This object type was changed after you opened it. Refresh and edit again'), 409)
     old = _content(row)
-    content, posted, warnings, key_check = check_definition(conn, {**payload, 'english_name': old['english_name']}, old['english_name'], user)
+    kept = {} if payload.get('rules') is not None else {'rules': old.get('rules', [])}   # a request that says nothing of the rules keeps them; [] takes them away
+    content, posted, warnings, key_check = check_definition(conn, {**payload, **kept, 'english_name': old['english_name']}, old['english_name'], user)
     check_names_free(conn, content)
     dataset = current_dataset(conn, content['dataset'])
     cols = dataset_columns(conn, dataset['id'])
@@ -429,7 +451,8 @@ def update_type(conn, payload: dict, who: str | None, user: dict | None = None) 
     if not changes:   # (something to retire always comes with a change on the reset list)
         if (old['name'], old['description']) != (content['name'], content['description']):
             _edit_names(conn, row, content, who)
-        return {'id': english, 'state': row['state'], 'reset': reset, 'warnings': warnings}
+        shown, broken = _proposed_rules(conn, content, dataset, user)
+        return {'id': english, 'state': row['state'], 'reset': reset, 'warnings': [*warnings, *broken], **shown}
 
     def after(c):
         if reset and row['state'] == 'confirmed':   # the type is not confirmed any more: what reads it (the relations) cannot stand on it
@@ -441,7 +464,8 @@ def update_type(conn, payload: dict, who: str | None, user: dict | None = None) 
     spend_receipt(conn, payload, user)
     if not reset and (old['name'], old['description']) != (content['name'], content['description']):
         _edit_names(conn, element_row(conn, row['element_id']), content, who)
-    return {'id': english, 'state': element_row(conn, row['element_id'])['state'], 'reset': reset, 'warnings': warnings}
+    shown, broken = _proposed_rules(conn, content, dataset, user)
+    return {'id': english, 'state': element_row(conn, row['element_id'])['state'], 'reset': reset, 'warnings': [*warnings, *broken], **shown}
 
 
 def _edit_names(conn, row: dict, content: dict, who: str | None) -> None:
@@ -492,16 +516,17 @@ def _refresh_view_reasons(conn, english_name: str, column: str) -> None:
 
 # --- checks: now, and again when the data moves ---------------------------------------------------------------------------------------------------
 
-def _type_problems(conn, content: dict, record: bool = True) -> tuple[list[str], int | None]:
-    """(what is wrong now, the id of the key check that ran) for a type, read from the current version of its dataset. `record=False`: the key check is not kept
-    (a page asking whether it can be confirmed now)."""
+def _type_problems(conn, content: dict, record: bool = True) -> tuple[list[str], int | None, int | None]:
+    """(what is wrong now, the id of the key check that ran, the id of the value rules' check) for a type, read from the current version of its dataset. Each value
+    rule that some row breaks is a problem of its own, saying which rule and how many rows. `record=False`: the checks are not kept (a page asking whether it can
+    be confirmed now)."""
     dataset = current_dataset(conn, content['dataset'])
     if dataset is None:
-        return [tr(f'数据集“{content["dataset"]}”已经不在了', f'The dataset "{content["dataset"]}" is gone')], None
+        return [tr(f'数据集“{content["dataset"]}”已经不在了', f'The dataset "{content["dataset"]}" is gone')], None, None
     cols = dataset_columns(conn, dataset['id'])
     gone = [p['column'] for p in content['properties'] if p['column'] not in cols]
     if gone:
-        return [tr(f'{dataset["name"]} 第 {dataset["version"]} 版里没有这些列了：{tr("、", ", ").join(gone)}', f'{dataset["name"]} version {dataset["version"]} no longer has these columns: {", ".join(gone)}')], None
+        return [tr(f'{dataset["name"]} 第 {dataset["version"]} 版里没有这些列了：{tr("、", ", ").join(gone)}', f'{dataset["name"]} version {dataset["version"]} no longer has these columns: {", ".join(gone)}')], None, None
     problems = [tr(f'“{p["column"]}”现在的内容是{TYPE_NAME[cols[p["column"]]["type"]]}，装不进{TYPE_NAME[p["type"]]}', f'"{p["column"]}" now holds {TYPE_NAME[cols[p["column"]]["type"]]} values, which do not fit {TYPE_NAME[p["type"]]}')
                 for p in content['properties'] if p['type'] not in FITS[cols[p['column']]['type']]]
     key_check = check_key(conn, dataset['id'], content['key'], record)
@@ -509,7 +534,55 @@ def _type_problems(conn, content: dict, record: bool = True) -> tuple[list[str],
         problems.append(tr(f'主键“{" + ".join(content["key"])}”没法检查：{no_rows_text(dataset["name"])}', f'The key "{" + ".join(content["key"])}" cannot be checked: {no_rows_text(dataset["name"])}'))
     elif key_check['status'] != 'passed':
         problems.append(tr(f'主键“{" + ".join(content["key"])}”现在不唯一或有空值：{_key_failure(conn, key_check)[0]}', f'The key "{" + ".join(content["key"])}" is no longer unique or has empty values: {_key_failure(conn, key_check)[0]}'))
-    return problems, key_check['id']
+    if not content.get('rules'):
+        return problems, key_check['id'], None
+    found = _rule_pass(conn, content, dataset, content['rules'], REASON_EXAMPLES)
+    names = {p['column']: p['name'] for p in content['properties']}
+    problems += [broken_text(rule_says(rule, names), result['broken'], found['rows_checked'], result['examples']) for rule, result in zip(content['rules'], found['rules']) if result['broken']]
+    return problems, key_check['id'], _record_rules(conn, content, dataset, found) if record else None
+
+
+def _rule_pass(conn, content: dict, dataset: dict, rules: list[dict], examples: int, only: str | None = None) -> dict:
+    """The value rules counted on the current version of the type's dataset, in one pass (value_rules.run): a code rule reads the values its column's meanings name."""
+    kinds = {p['column']: p['type'] for p in content['properties']}
+    codes = {r['column']: [e['value'] for e in _kept_meanings(conn, content['english_name'], r['column'])] for r in rules if r['check'] == 'in_codes'}
+    return run_rules(conn, dataset['table_name'], rules, kinds, codes, content['key'], examples, only)
+
+
+def _record_rules(conn, content: dict, dataset: dict, found: dict) -> int:
+    """Keep the value rules' check beside the key check: the query, the rows it read, how many rows broke each rule."""
+    broken = [r['broken'] for r in found['rules']]
+    return record_result(conn, type_id(content['english_name']), dataset['id'], 'value_rules', found['query'], found['rows_checked'], sum(broken), None,
+                         {'rules': content['rules'], 'broken': broken}, 'failed' if any(broken) else 'passed')
+
+
+def rules_readout(conn, element_id: str, content: dict, dataset: dict | None, user: dict | None) -> list[dict] | None:
+    """The value rules as this person may read them, each with what it says and the rows that break it now with up to 20 of their keys: counted over the
+    rows a row rule lets them see, and without a rule on a column kept from them. None when there is no rule for them to read."""
+    hidden = hidden_columns(conn, element_id, user)
+    rules = [r for r in content.get('rules') or [] if not columns_of(r) & hidden]
+    if not rules:
+        return None
+    names = {p['column']: p['name'] for p in content['properties']}
+    cols = dataset_columns(conn, dataset['id']) if dataset else {}
+    if dataset is None or any(c not in cols for r in rules for c in [*columns_of(r), *content['key']]):   # what the type's own check says is gone: nothing to count
+        return [{**r, 'says': rule_says(r, names), 'broken': None, 'examples': []} for r in rules]
+    limit = restriction(conn, element_id, user)
+    only = None
+    if limit is not None:   # a row rule names this person: only their rows are counted, through a temporary list of them
+        cursor = conn.execute(f'SELECT rowid, * FROM {_quote(dataset["table_name"])} ORDER BY rowid')
+        names_now = [c[0] for c in cursor.description][1:]
+        kept = [(r[0],) for r in cursor if keeps(dict(zip(names_now, r[1:])), limit)]
+        only = 'value_rule_rows'
+        conn.execute(f'DROP TABLE IF EXISTS temp.{only}')
+        conn.execute(f'CREATE TEMP TABLE {only} (r INTEGER PRIMARY KEY)')
+        conn.executemany(f'INSERT INTO temp.{only} VALUES (?)', kept)
+    try:
+        found = _rule_pass(conn, content, dataset, rules, EXAMPLES, only)
+    finally:
+        if only:
+            conn.execute(f'DROP TABLE IF EXISTS temp.{only}')
+    return [{**r, 'says': rule_says(r, names), 'broken': f['broken'], 'examples': f['examples']} for r, f in zip(rules, found['rules'])]
 
 
 def _new_codes(conn, row: dict) -> dict[str, int]:
@@ -808,7 +881,7 @@ def confirm_element(conn, payload: dict, who: str | None, user: dict | None = No
     dataset = current_dataset(conn, content['dataset'])
     if is_type:
         refuse_ai_columns(conn, content['dataset'], content['key'], tr('主键', 'a key'))
-        problems, check_id = _type_problems(conn, content)
+        problems, check_id, rules_check = _type_problems(conn, content)
         waiting = _unconfirmed_meanings(conn, element_id)
         if waiting:
             raise TypeRefused(tr(f'它的{tr("、", ", ").join(f"“{c}”" for c in waiting)}的含义还没有确认，要先确认含义', f'The meanings of {", ".join(waiting)} are not confirmed yet. Confirm the meanings first'), 409)
@@ -816,7 +889,7 @@ def confirm_element(conn, payload: dict, who: str | None, user: dict | None = No
         if unsettled:
             raise TypeRefused(tr(f'“{content["dataset"]}”是管道{tr("、", ", ").join(f"“{n}”" for n in unsettled)}写出来的数据，管道还没有确认，要先确认管道', f'"{content["dataset"]}" is data written by the pipeline {", ".join(unsettled)}, which is not confirmed yet. Confirm the pipeline first'), 409)
         anchors = {'dataset': dataset['name'], 'version': dataset['version']} if dataset else None
-        evidence = f'check_result:{check_id},dataset:{dataset["name"]}@v{dataset["version"]}' if check_id else row['evidence_ref']
+        evidence = f'check_result:{check_id},{f"check_result:{rules_check}," if rules_check else ""}dataset:{dataset["name"]}@v{dataset["version"]}' if check_id else row['evidence_ref']
         now = seen_of_type(dataset)
     else:
         refuse_ai_columns(conn, content['dataset'], [content['column']], tr('已确认的代码含义', 'a confirmed code meaning'))
@@ -1053,13 +1126,14 @@ def type_detail(conn, english_name: str, user: dict | None) -> dict:
     fanned = fan_marks(conn, dataset['id']) if dataset else set()
     props = [{**p, 'key': p['column'] in content['key'], 'hide_values': p['column'] in unsent, 'fan': fan_note() if p['column'] in fanned else None, 'meanings': _meaning_view(conn, content, p, cols, dataset, user) if p['enum'] else None} for p in content['properties']]
     limited = restriction(conn, row['element_id'], user) is not None
+    rules = rules_readout(conn, row['element_id'], _content(row), dataset, user)   # none on a column kept from them, counted on their rows
     from ontology_poc_generator.derived_properties import limited_reads   # derived_properties reads this module: imported here, where it is used
     return {'id': content['english_name'], 'name': content['name'], 'description': content['description'], 'dataset': content['dataset'], 'limited_reads': limited_reads(conn, english_name, user),
             'dataset_version': dataset['version'] if dataset else None, 'rows': visible_rows(conn, row, dataset, user) if dataset else None, 'rows_limited': limited,
             **({'limited_note': limited_note()} if limited else {}), 'seen': None if limited else seen_of_type(dataset), 'key': content['key'],
             'properties': props, 'visible_to': None if user is not None and user['role'] == 'viewer' else visible_to(conn, row['element_id']), **_state_view(conn, row, user),
             'columns': [{'name': n, 'type': c['type'], 'enum_candidate': bool(c['counts']) and c['type'] in CODE_TYPES} for n, c in cols.items() if n not in hidden],
-            'columns_kept': len(hidden)}
+            'columns_kept': len(hidden), **({'rules': rules, 'rules_note': rules_note()} if rules else {})}
 
 
 def type_objects(conn, english_name: str, page: int, user: dict | None) -> dict:

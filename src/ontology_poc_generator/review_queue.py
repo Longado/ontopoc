@@ -14,13 +14,13 @@ import json
 from ontology_poc_generator.object_relations import (
     _relation_visible, check_relation, confirm_relation, counts_only, evidence_lines, relation_view)
 from ontology_poc_generator.object_types import (
-    ACTION_PREFIX, DERIVED_PREFIX, ENUM_PREFIX, limited_note, PIPELINE_PREFIX, RELATION_PREFIX, stale_note, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _confirmers, _content, _readers_of_dataset, _state_view, _visible, confirm_element, dataset_columns, element_row, seen_of_meaning, seen_of_type)
+    ACTION_PREFIX, DERIVED_PREFIX, ENUM_PREFIX, limited_note, PIPELINE_PREFIX, RELATION_PREFIX, stale_note, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _confirmers, _content, _readers_of_dataset, _state_view, _visible, confirm_element, dataset_columns, element_row, rules_readout, seen_of_meaning, seen_of_type)
 from ontology_poc_generator.derived_properties import confirm_derived, derived_state, derived_visible, describe as describe_derived, open_new_values as derived_new_values, trial as derived_trial
 from ontology_poc_generator.object_actions import action_state, action_visible, confirm_action, describe as describe_action, open_records
 from ontology_poc_generator.object_views import confirm_view, describe, open_new_values, seen_of_view, view_state, view_summary, view_visible
 from ontology_poc_generator.workspace_pipelines import (
     _inputs_now, confirm_pipeline, output_states, pipeline_state, pipeline_visible, waiting_on as pipeline_waiting)
-from ontology_poc_generator.row_rules import without_rules
+from ontology_poc_generator.row_rules import restriction, without_rules
 from ontology_poc_generator.type_access import hidden_columns, reads_hidden
 from ontology_poc_generator.workspace_store import fan_note, current_dataset, fan_marks, log_line
 
@@ -29,7 +29,7 @@ ORDER = {'needs_look': 0, 'pending': 1, 'checked': 1, 'proposed': 2}
 MAX_REASON = 300
 
 
-def _type_lines(conn, row: dict, content: dict, limited: bool = False, hidden: frozenset = frozenset()) -> list[dict]:
+def _type_lines(conn, row: dict, content: dict, limited: bool = False, hidden: frozenset = frozenset(), rules: list[dict] | None = None, own_rows: bool = False) -> list[dict]:
     anchors = json.loads(row['anchors_json']) if row['anchors_json'] else {}
     lines = []
     if limited:   # a row rule keeps part of the data from this person: no count of the whole data
@@ -45,7 +45,18 @@ def _type_lines(conn, row: dict, content: dict, limited: bool = False, hidden: f
                                       "WHERE d.element_id = ? AND d.depends_on LIKE 'enum:%'", (len(f'{ENUM_PREFIX}{content["english_name"]}:') + 1, row['element_id'])):
         if column not in hidden:   # a column kept from this person is not named to them
             lines.append({'ok': state == 'confirmed', 'text': tr(f'“{column}”的含义{"已确认" if state == "confirmed" else "还没有确认"}', f'The meanings of "{column}" are {"confirmed" if state == "confirmed" else "not confirmed yet"}')})
-    return lines
+    return lines + _rule_lines(rules or [], own_rows)
+
+
+def _rule_lines(rules: list[dict], own_rows: bool) -> list[dict]:
+    """One line for each value rule this person may read: what it says and how many rows break it now (of the rows a row rule lets them see, when one does)."""
+    def said(r):
+        if r['broken'] is None:
+            return tr(f'{r["says"]}：现在没法检查', f'{r["says"]}: it cannot be checked now')
+        if not r['broken']:
+            return tr(f'{r["says"]}：{"你能看到的行里" if own_rows else ""}现在没有行不满足', f'{r["says"]}: no row{" you can see" if own_rows else ""} breaks it now')
+        return tr(f'{r["says"]}：{"你能看到的行里" if own_rows else ""}现在有 {r["broken"]} 行不满足', f'{r["says"]}: {r["broken"]}{" of the rows you can see" if own_rows else " rows"} break it now')
+    return [{'ok': r['broken'] == 0, 'text': said(r)} for r in rules]
 
 
 def _meaning_lines(content: dict, row: dict, limited: bool = False) -> list[dict]:
@@ -136,7 +147,8 @@ def _item(conn, row: dict, user: dict | None, light: bool = False) -> dict | Non
         view = _state_view(conn, row, user)
         base = {'kind': 'type', 'title': content['name'], 'id': content['english_name'], 'lines': []}
         if not light:
-            base['lines'] = _type_lines(conn, row, content, view['limited_by_rule'], hidden)
+            base['lines'] = _type_lines(conn, row, content, view['limited_by_rule'], hidden, rules_readout(conn, element_id, _content(row), current_dataset(conn, content['dataset']), user),
+                                        restriction(conn, element_id, user) is not None)
             view['seen'] = None if view['limited_by_rule'] else seen_of_type(current_dataset(conn, content['dataset']))
     if light:
         return {'element': element_id, **base, **view}
