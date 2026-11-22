@@ -13,7 +13,7 @@ import { statusOf } from "./statusModel.js";
 import { State } from "./TypesPage.jsx";
 import { TypeDerived } from "./TypeDerived.jsx";
 import { TypeViews } from "./TypeViews.jsx";
-import { alsoCalled, confirmersText, joinList, limitedNote, logText, meaningsSummary, offerFirstAction, otherNamesFrom, otherNamesText, reconfirmText, stateLine, tabCounts, typeSub, typeTabs, usesSummary } from "./typeModel.js";
+import { alsoCalled, confirmersText, joinList, limitedNote, logText, meaningsSummary, offerFirstAction, otherNamesFrom, otherNamesText, reconfirmText, ruleExamples, ruleStanding, stateLine, tabCounts, typeSub, typeTabs, usesSummary } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
 import { PageHeader } from "./ui/PageHeader.jsx";
 
@@ -118,6 +118,26 @@ function Meanings({ type, prop, mayBuild, onChanged }) {
   );
 }
 
+/** The value rules this person may read: what each says, how many rows break it now (of their own rows, when a row rule limits them) and a few of their keys. */
+function Rules({ type }) {
+  const broken = type.rules.some((r) => r.broken);
+  return (
+    <section className="rules" aria-label={t("types.rules.title")}>
+      <h2 className="section">{t("types.rules.title")}</h2>
+      <ul className="readers">
+        {type.rules.map((r, i) => (
+          <li key={i}>
+            <span className={r.broken ? "warn" : undefined}>{t("types.rules.line", { says: r.says, standing: ruleStanding(r, type.rows_limited) })}</span>
+            {r.examples?.length > 0 && <span className="muted small block">{t("types.rules.examples", { keys: ruleExamples(r) })}</span>}
+          </li>
+        ))}
+      </ul>
+      {broken && type.state !== "confirmed" && <p className="warn">{t("types.rules.blocks")}</p>}
+      {type.rules_note && <p className="muted small">{type.rules_note}</p>}
+    </section>
+  );
+}
+
 function Properties({ type, mayBuild, reload }) {
   const QA_HELP = t("types.props.qaHelp");
   const [error, setError] = useState("");
@@ -163,6 +183,7 @@ function Properties({ type, mayBuild, reload }) {
         </table>
       </div>
       {error && <p className="error">{error}</p>}
+      {type.rules?.length > 0 && <Rules type={type} />}
       {type.properties.filter((p) => p.enum).map((p) => (
         <Meanings key={`${p.column}-${p.meanings.version ?? 0}-${p.meanings.state}`} type={type} prop={p} mayBuild={mayBuild} onChanged={reload} />
       ))}

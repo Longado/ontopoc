@@ -48,6 +48,8 @@ export default {
   "skill.download": "Download skill pack (zip)",
   "standing.text": "The skill pack is a snapshot of the day it was exported. Whether each definition is confirmed now, by whom and on which data version is read live at GET /api/workspace/agent/standing (MCP tool definition_standing); the confirmed definitions also download as a sheet.",
   "standing.download": "Download confirmed definitions (CSV)",
+  "schema.text": "The same confirmed definitions also download as two Turtle files for ontology tools: OWL for the types, properties, keys, relations and code meanings, and SHACL shapes for some of the checks OntoPoc runs (keys, codes, cardinality). No rows. Views and derived properties are in them as text, not as OWL rules. See docs/STANDARDS.en.md.",
+  "schema.download": "Download as OWL and SHACL (zip)",
   "group.read": "Read",
   "group.ask": "Ask",
   "group.model": "Build",

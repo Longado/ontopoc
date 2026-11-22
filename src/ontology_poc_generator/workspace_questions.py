@@ -23,7 +23,7 @@ from ontology_poc_generator.named_views import name_views
 from ontology_poc_generator.object_relations import CARDINALITY, _relation_visible, cardinality_false, check_relation, relation_id
 from ontology_poc_generator.object_types import (
     CAUSE_WORDS, DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, _confirmers, _content, _visible, _waiting_line, dataset_columns, element_row, enum_id, reason_for,
-    stale_word, type_id, waiting_for_viewer)
+    _latest_counts, presented_row, rules_untrusted, settle_rules, stale_word, type_id, waiting_for_viewer)
 from ontology_poc_generator.ontopoc_query import QueryError, canonical as canonical_query, compile_query, is_graph, parse as parse_query, to_text
 from ontology_poc_generator.object_views import describe, kept_positions, view_id, view_visible, view_waiting_for_viewer
 from ontology_poc_generator.agent_harness import ask_model
@@ -74,7 +74,12 @@ def scope(conn, user: dict | None) -> dict:
     properties whose types and relations are all among them and that read no column marked "don't send values".
     The ones that do read such a column are in 'derived_kept_back' (same shape): not for the model, but a person or an agent may still be told they exist."""
     types, meanings, relations, views, derived, kept_back = {}, {}, {}, {}, {}, {}
-    for name in visible_type_ids(conn, user, confirmed_only=True):
+    settle_rules(conn)   # a confirmed type whose value rules are not known to hold on its data is judged first (counted, and sent back if a rule is broken)
+    latest, untrusted = _latest_counts(conn), {}
+    for name in visible_type_ids(conn, user, confirmed_only=True, as_stored=True):   # as stored: the invariant is applied just below, and says why
+        if (verdict := rules_untrusted(conn, type_id(name), latest)) is not None:   # still not known to hold (inside the caller's transaction nothing is judged): not used
+            untrusted[name] = verdict
+            continue
         row = element_row(conn, type_id(name))
         content = _content(row)
         dataset = current_dataset(conn, content['dataset'])
@@ -107,7 +112,7 @@ def scope(conn, user: dict | None) -> dict:
         read += [(content['types'][-1], f['column']) for f in content['conditions']]   # what it says names the meaning of that column, as a view's conditions do
         if all(t in types for t in content['types']) and all(r in relations for r in content['path']) and derived_visible(conn, row, user):
             (kept_back if any(c in hidden_values(conn, type_id(t)) for t, c in read) else derived)[element_id] = {'row': row, 'content': content}
-    return {'types': types, 'meanings': meanings, 'relations': relations, 'views': views, 'derived': derived, 'derived_kept_back': kept_back, 'user': user}
+    return {'types': types, 'meanings': meanings, 'relations': relations, 'views': views, 'derived': derived, 'derived_kept_back': kept_back, 'user': user, 'untrusted': untrusted}
 
 
 def _unsettled(conn, user: dict | None) -> list[dict]:
@@ -115,7 +120,7 @@ def _unsettled(conn, user: dict | None) -> list[dict]:
     for a reason a builder can do something about. A viewer sees none (they see only confirmed ones)."""
     out = []
     for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objtype:%' OR element_id LIKE 'relation:%' OR element_id LIKE 'objview:%' OR element_id LIKE 'derived:%' ORDER BY element_id").fetchall():
-        row = element_row(conn, element_id)
+        row = presented_row(conn, element_row(conn, element_id))   # a type whose value rules are not known to hold is left out, and says why
         if row['state'] == 'confirmed':
             continue
         visible = (_visible(conn, row, user) if element_id.startswith(TYPE_PREFIX) else view_visible(conn, row, user) if element_id.startswith(VIEW_PREFIX)
@@ -1169,7 +1174,7 @@ def tally(conn, user: dict | None, now: str | None = None) -> dict:
                 questions[element_id] = questions.get(element_id, 0) + 1
     held = []
     for element_id in sorted(questions, key=lambda i: -questions[i]):   # sorted is stable: ties stay in the order the refusals named them
-        row = element_row(conn, element_id)
+        row = presented_row(conn, element_row(conn, element_id))   # a type whose value rules are not known to hold still waits
         if row is None or row['state'] == 'confirmed' or not _may_see(conn, user, element_id):   # gone, confirmed since, or not this reader's to see
             continue
         kind, name = _kind_and_name(conn, row)
@@ -1244,7 +1249,7 @@ def reopen(conn, user: dict | None, question_id: int) -> dict:
             stale.append({'dataset': name, 'read': read, 'now': now['version'] if now else None})
     changed = []
     for d in record['definitions']:
-        row = element_row(conn, d['id'])
+        row = presented_row(conn, element_row(conn, d['id']))   # a type whose value rules are not known to hold is not as it was
         if row is None or row['state'] != 'confirmed' or row['version'] != d['version']:
             changed.append({'id': d['id'], 'name': d['name'], 'state': row['state'] if row else None,
                             **({'reason': reason_for(conn, row, user)[0], 'reason_hidden': reason_for(conn, row, user)[1], 'cause': row['cause'], 'cause_word': CAUSE_WORDS.get(row['cause']), 'stale_word': stale_word(row['cause'], row['via'])} if row and row['state'] == 'needs_look' else {})})

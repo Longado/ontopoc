@@ -103,13 +103,15 @@ def view_input_hidden(conn, view_element_id: str, user: dict | None) -> bool:
     return _view_hidden(conn, view_element_id, user, set())
 
 
-def visible_type_ids(conn, user: dict | None, confirmed_only: bool = False) -> list[str]:
+def visible_type_ids(conn, user: dict | None, confirmed_only: bool = False, as_stored: bool = False) -> list[str]:
     """The English names of the types this person may see, by name; a viewer's are the confirmed ones, and with confirmed_only so are everyone's
-    (the scope of a question: confirmed types the asker may see and nothing else)."""
+    (the scope of a question: confirmed types the asker may see and nothing else). Confirmed is as a reader sees it (object_types.presented_row: a type whose value
+    rules are not known to hold is not), unless `as_stored`, for a caller that applies that test itself."""
+    from ontology_poc_generator.object_types import element_row, presented_row   # object_types reads this module: imported here, where it is used
     out = []
     for element_id, state in conn.execute("SELECT element_id, state FROM element_state WHERE element_id LIKE 'objtype:%' ORDER BY element_id").fetchall():
         viewer = user is not None and user['role'] == 'viewer'
-        if (viewer or confirmed_only) and state != 'confirmed':
+        if (viewer or confirmed_only) and (state != 'confirmed' or (not as_stored and presented_row(conn, element_row(conn, element_id))['state'] != 'confirmed')):   # value rules not known to hold: not confirmed to a reader
             continue
         if can_access(conn, element_id, user):
             out.append(element_id[len(TYPE_PREFIX):])

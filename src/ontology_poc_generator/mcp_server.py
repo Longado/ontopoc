@@ -703,7 +703,7 @@ TOOLS = [
           {**RUN, 'name': {'type': 'string', 'description': '视图的名字，来自 list_proposed_views'},
            'version': {'type': 'integer', 'minimum': 1, 'description': '你看过的那一版，来自 list_proposed_views 里这条的 version'}}, ('saved_as', 'name', 'version')),
     _tool(find_name_variants, '找出同一类对象里可能是同一个东西的不同写法，只给建议、不合并。会调用模型。', RUN, ('saved_as',)),
-    _tool(describe_definitions, '团队已经确认的业务定义：对象类型（属性、主键、代码的含义）、关系、视图（取哪些行）、派生属性（怎么算），每条带谁确认、确认于哪个数据版本；还有拒答规则 rules。'
+    _tool(describe_definitions, '团队已经确认的业务定义：对象类型（属性、主键、代码的含义、每一行都满足的值规则 value_rules）、关系、视图（取哪些行）、派生属性（怎么算），每条带谁确认、确认于哪个数据版本；还有拒答规则 rules。'
           '属性只有 column 和 type；name 只在和列名不同时给，other_names（另称，问题里用它和用名字一样）只在有时给，code 只在是代码列时给。定义多时给 types，只取这几个类型和连着它们的关系、视图、派生属性。只是读，可以重试。'
           '只有已确认的、令牌的主人看得到的；没有数据行，没有全部数据的行数。不在这里的东西没有定义：不要猜，照 rules 拒答。',
           {'types': {'type': 'array', 'items': {'type': 'string'}, 'description': '只要这几个类型（英文名、名字或另称），不写就是全部'}}),

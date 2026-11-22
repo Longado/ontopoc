@@ -23,9 +23,10 @@ from ontology_poc_generator import other_names
 from ontology_poc_generator.caliber import line_of
 from ontology_poc_generator.derived_properties import derived_id, derived_visible, describe as describe_derived, evaluate
 from ontology_poc_generator.explorer import _load, _object_key, whole_page
-from ontology_poc_generator.object_types import OBJECT_PAGE, TypeRefused, _content, element_row, type_id
+from ontology_poc_generator.object_types import OBJECT_PAGE, TypeRefused, _content, element_row, presented_row, type_id
 from ontology_poc_generator.object_views import describe as describe_view
 from ontology_poc_generator.type_access import hidden_values
+from ontology_poc_generator.value_rules import columns_of, says as rule_says
 from ontology_poc_generator.workspace_datasets import _csv_cell
 from ontology_poc_generator.workspace_questions import _definition_line, _kind_and_name, _may_see, _state_words, scope
 from ontology_poc_generator.workspace_store import _canonical
@@ -60,17 +61,19 @@ def _meanings_called(row: dict) -> dict:
 
 
 def definitions(conn, user: dict | None) -> dict:
-    """The confirmed definitions this person may see: {'types', 'relations', 'views', 'derived', 'rules'}, each with its other names when it has some. Nothing that
-    is not confirmed, no row, no count of the data."""
+    """The confirmed definitions this person may see: {'types', 'relations', 'views', 'derived', 'rules'} ('rules': when to refuse; a type's own 'value_rules', when it has
+    any, say in sentences what every row of it holds), each with its other names when it has some. Nothing that is not confirmed, no row, no count of the data."""
     sc = scope(conn, user)
     types = []
     for name, t in sc['types'].items():
         content = t['content']
         hidden = hidden_values(conn, type_id(name))
         meanings = {column: {'values': m['labels'], **_meanings_called(m['row']), **_stamp(conn, m['row']['element_id'])} for column, m in sc['meanings'].get(name, {}).items() if column not in hidden}
+        names = {p['column']: p['name'] for p in content['properties']}   # the properties this person may see: a rule on any other column is not theirs to read
+        rules = [rule_says(r, names) for r in content.get('rules') or [] if columns_of(r) <= set(names)]
         types.append({'id': name, 'name': content['name'], **_called(content), 'description': content['description'], 'dataset': content['dataset'], 'key': content['key'],
                       'properties': [{'column': p['column'], 'name': p['name'], **_called(p), 'type': p['type'], 'code': p['enum'] and p['column'] in meanings} for p in content['properties']],
-                      'meanings': meanings, **_stamp(conn, t['row']['element_id'])})
+                      'meanings': meanings, **({'value_rules': rules} if rules else {}), **_stamp(conn, t['row']['element_id'])})
     relations = [{'id': name, 'name': r['content']['name'], 'from': r['content']['from'], 'to': r['content']['to'], 'cardinality': r['content']['cardinality'],
                   'from_column': r['content']['from_column'], 'to_column': r['content']['to_column'], **_stamp(conn, r['row']['element_id'])} for name, r in sc['relations'].items()]
     views = [{'id': name, 'name': name, **_called(v['content']), 'type': v['content']['type'], 'says': describe_view(v['content'], sc['types'][v['content']['type']]['content']['name']),
@@ -87,10 +90,11 @@ def _not_confirmed(conn, user: dict | None) -> list[dict]:
     """The definitions this person may see that are not confirmed, as refusals name them (_definition_line). A viewer sees none (they see only confirmed things)."""
     out = []
     if user is None or user['role'] != 'viewer':
-        for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE state != 'confirmed' AND (element_id LIKE 'objtype:%' OR element_id LIKE 'enum:%' OR element_id LIKE 'relation:%' "
-                                          "OR element_id LIKE 'objview:%' OR element_id LIKE 'derived:%') ORDER BY element_id").fetchall():
-            if _may_see(conn, user, element_id):
-                out.append(_definition_line(conn, element_row(conn, element_id), user))
+        for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE (state != 'confirmed' OR element_id LIKE 'objtype:%') AND (element_id LIKE 'objtype:%' OR element_id LIKE 'enum:%' "
+                                          "OR element_id LIKE 'relation:%' OR element_id LIKE 'objview:%' OR element_id LIKE 'derived:%') ORDER BY element_id").fetchall():
+            row = presented_row(conn, element_row(conn, element_id))   # a confirmed type whose value rules are not known to hold is not confirmed to an agent
+            if row['state'] != 'confirmed' and _may_see(conn, user, element_id):
+                out.append(_definition_line(conn, row, user))
     return out
 
 
@@ -252,7 +256,8 @@ def _meaning_lines(t: dict) -> list[str]:
 def _type_file(t: dict) -> str:
     props = [f'- {p["name"]}（{p["column"]}，{p["type"]}{"，代码列" if p["code"] else ""}）{_also(p.get("other_names"))}' for p in t['properties']]
     return '\n'.join([f'# {t["name"]}（{t["id"]}）', '', *([f'又称：{"、".join(t["other_names"])}', ''] if t.get('other_names') else []), t['description'] or '', '', f'来自数据集 {t["dataset"]}；主键 {tr("、", ", ").join(t["key"])}；{t["confirmed_by"]} 确认于 {t["confirmed_on"]}。', '',
-                      '## 属性', *props, *(['', '## 代码的含义', *_meaning_lines(t)] if t['meanings'] else [])]).strip() + '\n'
+                      '## 属性', *props, *(['', '## 代码的含义', *_meaning_lines(t)] if t['meanings'] else []),
+                      *(['', tr('## 值规则（每一行都要满足）', '## Value rules (every row holds them)'), *(f'- {r}' for r in t['value_rules'])] if t.get('value_rules') else [])]).strip() + '\n'
 
 
 def skill_files(conn, user: dict | None, today: date | None = None) -> dict[str, str]:

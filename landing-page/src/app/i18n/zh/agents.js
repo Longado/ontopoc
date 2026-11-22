@@ -48,6 +48,8 @@ export default {
   "skill.download": "下载技能包（zip）",
   "standing.text": "技能包是导出那天的快照。每条定义现在是不是已确认、谁确认的、在哪个数据版本上，实时读 GET /api/workspace/agent/standing（MCP 工具 definition_standing）；已确认的定义也可以下载成表格。",
   "standing.download": "下载已确认的定义（CSV）",
+  "schema.text": "同样的已确认定义也可以下载成两个 Turtle 文件，给本体工具用：OWL 写类型、属性、主键、关系和代码含义，SHACL 写 OntoPoc 会做的一部分检查（主键、代码、基数）。不含数据行。视图和派生属性在里面是文字，不是 OWL 规则。见 docs/STANDARDS.md。",
+  "schema.download": "下载成 OWL 和 SHACL（zip）",
   "group.read": "读",
   "group.ask": "问",
   "group.model": "建模",
