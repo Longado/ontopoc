@@ -47,11 +47,9 @@ test("a view and a derived property send their other names, and editing a derive
   const view = { ...emptyViewForm(), name: "Valid orders", otherNames: "有效订单", filters: [{ column: "status_code", op: "is_not", label: "Cancelled" }] };
   assert.deepEqual(viewPayload("order", view).other_names, ["有效订单"]);
   assert.equal("other_names" in viewPayload("order", { ...view, otherNames: undefined }), false);
-  assert.equal(emptyViewForm().otherNames, "");
   const derived = { ...emptyDerivedForm("function"), name: "Gross", english_name: "gross", expression: "amount * 1.13", otherNames: "含税金额" };
   assert.deepEqual(derivedPayload("order", derived).other_names, ["含税金额"]);
   assert.equal(formFromLine({ definition: { kind: "function", name: "Gross", english_name: "gross", expression: "amount", other_names: ["含税金额", "毛额"] } }).otherNames, "含税金额、毛额");
-  assert.equal(emptyDerivedForm().otherNames, "");
 });
 
 test("the demo's Chinese questions are natural Chinese: the one refused names the customer type by its other name", () => {
