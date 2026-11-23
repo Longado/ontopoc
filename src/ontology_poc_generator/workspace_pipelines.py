@@ -710,7 +710,8 @@ def _write_outputs(conn, content: dict, row: dict, run_id: int, versions: dict, 
             for step in content['spec']['steps']:
                 if step['type'] != 'output' or step['id'] not in outputs:
                     continue
-                columns = next(n for n in nodes if n['id'] == step['id'])['output']['columns']
+                written_out = next(n for n in nodes if n['id'] == step['id'])['output']
+                columns, repeated = written_out['columns'], set(written_out.get('repeated', ()))   # repeated: a figure the run measured as copied onto several rows by a join
                 records = [dict(zip([c['name'] for c in columns], r)) for r in outputs[step['id']]]
                 existing = current_dataset(conn, step['name'])
                 plan = plan_upload(conn, step['name'], records, mode='overwrite' if existing else None, rows_in=len(records))
@@ -718,7 +719,7 @@ def _write_outputs(conn, content: dict, row: dict, run_id: int, versions: dict, 
                 done = apply_upload(conn, plan, signer, origin=f'pipeline:{content["name"]}@run{run_id}')
                 conn.executemany('INSERT OR IGNORE INTO column_mark(dataset_id, column_name, mark) VALUES (?, ?, ?)',
                                  [(done['dataset']['id'], c['name'], mark) for c in columns for mark in ('unsent', 'ai') if c.get(mark)])
-                conn.executemany('INSERT OR IGNORE INTO column_fan(dataset_id, column_name) VALUES (?, ?)', [(done['dataset']['id'], c['name']) for c in columns if set(c.get('fan_agg', ())) & doubled])
+                conn.executemany('INSERT OR IGNORE INTO column_fan(dataset_id, column_name) VALUES (?, ?)', [(done['dataset']['id'], c['name']) for c in columns if set(c.get('fan_agg', ())) & doubled or c['name'] in repeated])
                 if done['created'] and row['state'] != 'confirmed':
                     _flag_takeover(conn, content['name'], [step['name']])
                 written.append({'dataset': step['name'], 'version': done['dataset']['version'], 'rows': len(records), 'created_version': done['created'], 'mode': plan['mode'],

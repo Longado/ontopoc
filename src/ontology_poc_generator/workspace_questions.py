@@ -33,7 +33,7 @@ from ontology_poc_generator.recognition import model_failure_text
 from ontology_poc_generator.relation_checks import unmatched_answer, with_relation_gaps
 from ontology_poc_generator.row_rules import describe as describe_limit, limit_as_list, positions as row_positions, restriction
 from ontology_poc_generator.type_access import hidden_columns, hidden_values, reads_hidden, visible_type_ids
-from ontology_poc_generator.workspace_store import current_dataset, dataset_records
+from ontology_poc_generator.workspace_store import current_dataset, dataset_records, fan_pipelines
 from ontology_poc_generator.lang import english, tr
 
 MAX_QUESTION = 300
@@ -425,8 +425,26 @@ def _inputs(conn, sc: dict, asked: str = '') -> dict:
                           'source': alias[sc['types'][c[many]]['dataset']['name']], f'{one}_identity': {one_key[0]: c[f'{many}_column']}})
     sources = {source: {'records': [r for _, r in kept], 'requests': []} for source, kept in rows.items()}
     meanings = {f'{alias[sc["types"][k]["dataset"]["name"]]}.{column}': {'labels': m['labels']} for k, cols in sc['meanings'].items() for column, m in cols.items()}
+    fan = _fanned(conn, sc, alias)
     return {'ontology': {'object_types': object_types, 'relations': relations, 'ignored_fields': [], 'open_questions': []}, 'alias': alias, 'unusable': unusable, 'derived': derived_attrs,
-            'bundle': {'decision': '', 'sources': sources, 'meanings': meanings}, 'views': _engine_views(conn, sc, alias, sources), 'also': _also(sc, alias, _muted(conn, sc['user'], asked))}
+            'bundle': {'decision': '', 'sources': sources, 'meanings': meanings, **({'fan': fan} if fan else {})}, 'views': _engine_views(conn, sc, alias, sources),
+            'also': _also(sc, alias, _muted(conn, sc['user'], asked))}
+
+
+def _fanned(conn, sc: dict, alias: dict) -> dict:
+    """{"table.path": the pipeline}: the columns of the dataset version each type reads that a pipeline wrote as a figure a join repeated (workspace_store.fan_marks),
+    and the confirmed derived functions worked out from one of them (a copy of a repeated figure repeats too). The engine refuses to add them up or average them."""
+    out = {}
+    for t in sc['types'].values():
+        marked = fan_pipelines(conn, t['dataset']['id'])
+        out |= {f'{alias[t["dataset"]["name"]]}.{column}': pipeline for column, pipeline in marked.items()}
+    for d in sc['derived'].values():
+        content, owner = d['content'], sc['types'][d['content']['type']]
+        marked = fan_pipelines(conn, owner['dataset']['id'])
+        hit = next((marked[i['column']] for i in content.get('inputs') or [] if i.get('column') in marked), None) if content['kind'] == 'function' else None
+        if hit:
+            out[f'{alias[owner["dataset"]["name"]]}.{content["name"]}'] = hit
+    return out
 
 
 def _also(sc: dict, alias: dict, muted: frozenset = frozenset()) -> dict:

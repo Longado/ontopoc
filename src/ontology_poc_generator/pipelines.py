@@ -34,7 +34,7 @@ import time
 
 from ontology_poc_generator.pipeline_funcs import register
 from ontology_poc_generator.pipeline_llm import check_llm_step, llm_sql
-from ontology_poc_generator.pipeline_ops import MAX_OPERATORS, OpError, UPSTREAM, _where, carry, compile_op, new_context, visible
+from ontology_poc_generator.pipeline_ops import MAX_OPERATORS, OpError, UPSTREAM, _double_counted, _where, carry, compile_op, new_context, visible
 from ontology_poc_generator.lang import tr
 from ontology_poc_generator.pipeline_expr import WordMap
 
@@ -627,6 +627,21 @@ def _output_report(conn, table: str, output: dict) -> dict:
 FAILURE_KEYS = (('failures', 'cast_failures'), ('errors', 'calc_errors'), ('unmapped_rows', 'unmapped_rows'), ('dropped_null', 'dropped_by_empty_condition'))
 
 
+def _repeated(conn, source: dict, output: dict, skip) -> list[str]:
+    """The number columns an output keeps as a join repeated them: their sum over the output's rows differs from the sum that counts each source row once (the
+    hidden columns of the join name it, `fan`). A figure a later aggregation worked out is not one of them (fan_agg says that); a code column is not a sum."""
+    by_name = {c['name']: c for c in source['columns'] if not c.get('hidden')}
+    there = {c['name'] for c in source['columns'] if c.get('hidden')}
+    found = []
+    for c in output['columns']:
+        s = by_name.get(c['name'])
+        if s is None or not s.get('fan') or not set(s['fan']) <= there or s['type'] not in NUMERIC or s.get('origin') in skip:
+            continue
+        if _double_counted(conn, source['table'], [], {'fn': 'sum', 'col': s, 'name': c['name']}):
+            found.append(c['name'])
+    return found
+
+
 def _union_report(conn, step: dict, sources: list[tuple[str, str, list[dict]]], columns: list[dict]) -> dict:
     """What a union did beyond stacking: {'filled_empty': {column: rows left empty because their input had no such column}, 'same_rows': {'count': distinct rows found
     in more than one input, 'examples': the first EXAMPLES as {column: value}}}. Rows found twice are counted twice by a later sum: the run says so instead."""
@@ -754,6 +769,9 @@ def run_pipeline(conn, spec: dict, datasets: dict, views: dict | None = None, sk
                 node['failures'] = report['failures']
             if step['type'] == 'output':
                 node['output'] = _output_report(conn, compiled['table'], compiled['output'])
+                repeated = _repeated(conn, by_id[step['from']], compiled['output'], skip)
+                if repeated:   # said only when there is one: an output without stays as it was
+                    node['output']['repeated'] = repeated
             if step['type'] == 'union':
                 node['union'] = _union_report(conn, step, [(r, by_id[r]['table'], by_id[r]['columns']) for r in step['inputs']], compiled['columns'])
             if compiled['split']:

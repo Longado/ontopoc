@@ -473,6 +473,25 @@ def fan_marks(conn, dataset_id: int) -> set[str]:
     return {c for (c,) in conn.execute('SELECT column_name FROM column_fan WHERE dataset_id = ?', (dataset_id,))}
 
 
+def fan_pipelines(conn, dataset_id: int) -> dict[str, str]:
+    """{column: the pipeline that wrote this version of the dataset} for the columns of fan_marks; empty when it has none."""
+    marked = fan_marks(conn, dataset_id)
+    if not marked:
+        return {}
+    origin, changes = conn.execute('SELECT origin, changes_json FROM dataset WHERE id = ?', (dataset_id,)).fetchone()
+    pipeline = ((json.loads(changes) if changes else {}).get('pipeline') or {}).get('id') or (origin or '').removeprefix('pipeline:').rpartition('@')[0] or origin
+    return {c: pipeline for c in sorted(marked)}
+
+
+def fan_refusal(column: str, pipeline: str, fn: str) -> str:
+    """Why a sum or an average (fn 'sum', 'avg' or 'average') of a column in fan_marks is not worked out, and where to work it out instead. Refused, never corrected:
+    which copies of the figure are the same one is the pipeline's to say, not the question's."""
+    zh, en = ('加起来', 'adding it up') if fn == 'sum' else ('求平均', 'averaging it')
+    return tr(f'“{column}”是管道“{pipeline}”关联后写出的数：关联把一行变成了几行，这个数重复了，{zh}会把同一笔算好几次，所以不算。请到每件事只有一行的类型上去算（例如每个订单一行的那个类型）',
+              f'"{column}" was written by the pipeline "{pipeline}" after a join turned one row into several: the figure repeats, and {en} would count the same amount several times, '
+              f'so it is not worked out. Work it out on the type that has one row per thing (for example the one with one row per order)')
+
+
 def current_dataset(conn, name: str) -> dict | None:
     """The version the person last uploaded under this name: not necessarily the highest number, because uploading
     older content again makes that older version current."""
