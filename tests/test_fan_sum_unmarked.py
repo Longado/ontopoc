@@ -188,11 +188,29 @@ class UnmarkedTests(FanSumTests):
             seen['one_to_one_stored'] = stored(out)
         return blank(json.loads(json.dumps(seen, ensure_ascii=False)))
 
+    def as_main(self, walked: dict) -> dict:
+        """The walk with exactly what this change adds to the file taken out, after checking it is that and nothing more. Main's file has neither:
+        - column_fan_measured, one row per version a pipeline wrote whose copies were measured (here the one version each walk's pipeline wrote);
+        - in the first walk, the mark on `customer`: a text column of the orders' side, which the join copies (O1 is on two lines). The mark is kept for
+          every type, so that no cast or numeric reading escapes it; it shows no note (pages are main's, compared above), and nothing here aggregates it.
+        Nothing else may differ: every answer, refusal, page and every other row is main's."""
+        out = json.loads(json.dumps(walked))
+        line_rows = next(d['id'] for d in out['stored']['dataset'] if d['name'] == 'line_rows')
+        self.assertEqual(out['stored'].pop('column_fan_measured'), [{'dataset_id': line_rows}])
+        self.assertEqual(out['stored']['column_fan'], [{'dataset_id': line_rows, 'column_name': 'customer', 'origin': '订单行客户'}])
+        out['stored']['column_fan'] = []
+        paid = next(d['id'] for d in out['one_to_one_stored']['dataset'] if d['name'] == 'paid_orders')
+        self.assertEqual(out['one_to_one_stored'].pop('column_fan_measured'), [{'dataset_id': paid}])
+        self.assertEqual(out['one_to_one_stored']['column_fan'], [])
+        return out
+
     def test_without_the_mark_every_answer_refusal_and_stored_row_is_main_s(self):
         walked = self.walk()
         if os.environ.get('ONTOPOC_RECORD_GOLDEN'):
             GOLDEN.write_text(json.dumps(walked, ensure_ascii=False, indent=1, sort_keys=True) + '\n', encoding='utf-8')
         golden = json.loads(GOLDEN.read_text(encoding='utf-8'))
+        if not os.environ.get('ONTOPOC_RECORD_GOLDEN'):
+            walked = self.as_main(walked)
         for part in golden:
             self.assertEqual(walked[part], golden[part], part)
         self.assertEqual(set(walked), set(golden))
@@ -201,7 +219,7 @@ class UnmarkedTests(FanSumTests):
         self.assertEqual(walked['ask']['unknown'][1]['status'], 'ontology_gap')
         self.assertEqual(walked['charts'][0][1]['value'], 180)
         self.assertEqual(next(iter(walked['needed']['questions']))['result']['outcome'], 'passes')
-        self.assertEqual(walked['stored']['column_fan'], [])
+        self.assertEqual(walked['stored']['column_fan'], [])   # after as_main: the text mark was checked there and taken out
         self.assertEqual(walked['one_to_one']['sum_paid'][1]['answer']['measure']['value'], 170)
         self.assertEqual(walked['one_to_one_stored']['column_fan'], [])
 
