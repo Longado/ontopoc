@@ -112,6 +112,8 @@ PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --origin http:/
 cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 ```
 
+开发服务器默认只监听本机。要让其他机器访问（例如用 `terminal.local`），启动时加 `ONTOPOC_DEV_HOST=0.0.0.0`；同一网络的任何人都能访问它。
+
 管理员登录后在“用户”里建其他人。修改后端代码后需重启服务，页面检测到服务运行旧代码时会提示。
 
 模型：`DEEPSEEK_API_KEY` 走 DeepSeek 自己的接口；只有 `OPENROUTER_API_KEY` 时走 OpenRouter，默认 `deepseek/deepseek-v4.1-flash`；`EIP_MODEL_API_BASE` 和 `EIP_MODEL_NAME` 可以换成别的 OpenAI 兼容接口和模型名。

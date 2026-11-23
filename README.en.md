@@ -110,6 +110,8 @@ PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --origin http:/
 cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 ```
 
+The dev server listens on this machine only. To open it to other machines (for example as `terminal.local`), start it with `ONTOPOC_DEV_HOST=0.0.0.0`; anyone on the network can then reach it.
+
 The admin adds other people on the Users page. After changing backend code, restart the service; the page says so when it finds the service running old code.
 
 Model: `DEEPSEEK_API_KEY` goes to DeepSeek's own API. With only `OPENROUTER_API_KEY` it goes to OpenRouter, `deepseek/deepseek-v4.1-flash` by default. `EIP_MODEL_API_BASE` and `EIP_MODEL_NAME` name another OpenAI-compatible endpoint and model.
