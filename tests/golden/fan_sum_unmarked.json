@@ -2540,6 +2540,7 @@
      "kind": "number",
      "value": 180
     },
+    "held": null,
     "id": 1,
     "look": [],
     "mine": false,
@@ -2580,6 +2581,7 @@
     "kind": "number",
     "value": 180
    },
+   "held": null,
    "id": 1,
    "look": [],
    "mine": false,
@@ -2602,6 +2604,7 @@
     "kind": "number",
     "value": 180
    },
+   "held": null,
    "id": 1,
    "look": [],
    "mine": true,
@@ -4173,6 +4176,7 @@
      }
     },
     "cause": null,
+    "changed_json": null,
     "confirmed_at": "<time>",
     "confirmed_by": "Bob",
     "confirmed_by_user_id": 3,
@@ -4234,6 +4238,10 @@
      "version": 1
     },
     "cause": null,
+    "changed_json": {
+     "by": [],
+     "of": "eb769c633ebb82f2"
+    },
     "confirmed_at": "<time>",
     "confirmed_by": "Bob",
     "confirmed_by_user_id": 3,
@@ -7095,6 +7103,7 @@
      }
     },
     "cause": null,
+    "changed_json": null,
     "confirmed_at": "<time>",
     "confirmed_by": "Bob",
     "confirmed_by_user_id": 3,
@@ -7159,6 +7168,10 @@
      "version": 1
     },
     "cause": null,
+    "changed_json": {
+     "by": [],
+     "of": "ef3dcce3936b7f52"
+    },
     "confirmed_at": "<time>",
     "confirmed_by": "Bob",
     "confirmed_by_user_id": 3,
@@ -7206,6 +7219,10 @@
      "version": 1
     },
     "cause": null,
+    "changed_json": {
+     "by": [],
+     "of": "c3de4238bada90e7"
+    },
     "confirmed_at": "<time>",
     "confirmed_by": "Bob",
     "confirmed_by_user_id": 3,
@@ -7275,6 +7292,10 @@
      }
     },
     "cause": null,
+    "changed_json": {
+     "by": [],
+     "of": "e07d42ac3345e4b6"
+    },
     "confirmed_at": "<time>",
     "confirmed_by": "Bob",
     "confirmed_by_user_id": 3,
@@ -7307,6 +7328,10 @@
      "objects": 3
     },
     "cause": null,
+    "changed_json": {
+     "by": [],
+     "of": "069f06865e3d02ad"
+    },
     "confirmed_at": "<time>",
     "confirmed_by": "Bob",
     "confirmed_by_user_id": 3,
@@ -7351,6 +7376,10 @@
      "objects": 4
     },
     "cause": null,
+    "changed_json": {
+     "by": [],
+     "of": "f01fed28a1c94a26"
+    },
     "confirmed_at": "<time>",
     "confirmed_by": "Bob",
     "confirmed_by_user_id": 3,
@@ -7878,6 +7907,11 @@
        "version": 2
       }
      }
+    },
+    "changed_json": {
+     "by": [],
+     "confirmed": "[\"订单金额合计是多少？\", \"number\", 180.0, null]",
+     "of": "db24bac64b2c81c9"
     },
     "confirmed_at": "<time>",
     "confirmed_by": "Bob",

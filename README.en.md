@@ -62,7 +62,7 @@ The sum of the amount column is 162,960. It is arithmetically right and it is no
 
 1. **Put it forward.** A builder writes the definition, asks the model to suggest one from the datasets, or imports the tests of a dbt `manifest.json` (a suggestion or an import is only a proposal).
 2. **Code checks it on every row.** Keys are unique and filled, relations connect (and say how many rows do not), every code has a meaning, and each value rule on a type's properties holds (not empty; greater than, at least, less than, at most or between numbers; one of the codes with a meaning; one date not before another), with the rows that break it counted and up to 20 named by key. A rule the data breaks can be proposed, but the type cannot be confirmed until no row breaks it. A key check over no rows does not count as passed (relation checks do not yet make that distinction).
-3. **A second builder confirms it.** Never the one who proposed it; with one builder the rule opens up and the log says so. The confirmation keeps who, when and which data version.
+3. **A second builder confirms it.** Never the one who proposed it, and never anyone who changed it since it was last confirmed, whether they changed its name, its description or its other names. Any change to a confirmed definition, by anyone (its last confirmer included), sends it back to wait for a second person; putting it back exactly as it was last confirmed confirms it again. The cost: when two builders have both changed a definition, a third person has to confirm it, or one of them puts it back; whoever is held is told who changed it and the ways out. A pipeline's new description counts as a change of the pipeline, as a new step does: it waits for a second person, its scheduled runs stop, and the definitions on what it writes go back for another look until they are confirmed again. With one builder the rule opens up and the log says so. The confirmation keeps who, when and which data version.
 4. **It is used.** Q&A, boards and agents see it, each number with the line it rests on.
 5. **It goes back when things move.** A new upload or pull re-checks it; if it no longer holds, it and what reads it go to "needs another look", with the cause (data changed, definition changed, upstream). The review queue brings it back to step 3.
 
@@ -213,8 +213,8 @@ Issues and pull requests are welcome. Read the [development guardrails](docs/DEV
 ## Development
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (2,535 on 2026-11-22; install ".[check,sources]" first, or the Turtle, OWL and SHACL tests and some source checks are skipped)
-npm --prefix landing-page run test:unit                       # page tests (823 on 2026-11-22)
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (2,590 on 2026-11-23; install ".[check,sources]" first, or the Turtle, OWL and SHACL tests and some source checks are skipped)
+npm --prefix landing-page run test:unit                       # page tests (824 on 2026-11-23)
 PYTHONPATH=src:. python3 scripts/real_model_check.py --out /tmp/check   # real model against SQL (needs a model key; fails only on a wrong number)
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # a trial run in another data directory
 ```

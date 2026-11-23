@@ -52,8 +52,9 @@ export function stateText(item) {
 /** Whether this person may confirm the expectation now: one is written and not confirmed, and while two-person confirmation is on it is not their own. */
 export const canConfirm = (item, twoPerson) => (item.state === "proposed" || item.state === "needs_look") && !(twoPerson && item.mine);
 
-/** Why the Confirm button is not offered to the person who wrote it, or "". */
-export const confirmHint = (item, twoPerson) => ((item.state === "proposed" || item.state === "needs_look") && twoPerson && item.mine ? t("needed.confirmHint") : "");
+/** Why the Confirm button is not offered to a person who wrote it or changed it since it was last confirmed, or "": the service's sentence (`held`: who, and the
+ * ways out) when there is one. */
+export const confirmHint = (item, twoPerson) => ((item.state === "proposed" || item.state === "needs_look") && twoPerson && item.mine ? item.held || t("needed.confirmHint") : "");
 
 /** An outcome in a word. */
 export const outcomeWord = (outcome) => t(`needed.outcome.${outcome}`);
