@@ -48,6 +48,8 @@ test("the person who wrote an expectation does not confirm it while two-person c
   assert.equal(canConfirm({ state: "none", mine: false }, true), false);
   assert.equal(confirmHint({ state: "proposed", mine: true }, true), "You wrote this, so someone else confirms it.");
   assert.equal(confirmHint({ state: "proposed", mine: false }, true), "");
+  const held = "Ann, Cat wrote or changed it and nobody else has confirmed it, so they cannot confirm it. The way out: ask a third person who did not change it to confirm it (who can: Bob).";
+  assert.equal(confirmHint({ state: "proposed", mine: true, held }, true), held);   // the service's sentence: who changed it and the way out
 });
 
 test("each outcome in a word, in both languages", () => {
