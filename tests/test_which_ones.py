@@ -270,6 +270,41 @@ class WhichOnes(Sample):
             for word in ('yesterday', "'tomorrow'", 'now()'):
                 self.assertEqual(self.query(ann, f'SELECT LIST o FROM (o:订单) WHERE o.承诺日期 < {word}')[0], 400, word)
 
+    def test_today_is_read_only_as_the_bare_word_on_a_date_and_anything_else_is_what_it_was(self):
+        plain = {'start': 'order', 'where': [], 'via': [], 'group_by': None, 'share': None, 'measure': None}
+        model = Scripted('not json')
+        with self.service(gateway=model) as (base, out), mock.patch.object(workspace_questions, '_today', lambda: ('2026-06-15', 'UTC+08:00')):
+            ann = self.setup(base, view=False)['ann']
+            read = self.ask(ann, model, '承诺日期早于今天的订单有多少？', item({**plain, 'where': [{'field': '承诺日期', 'less_than': 'today'}]}))
+            self.assertEqual((read['status'], read['today']['date']), ('answered', '2026-06-15'), read)
+            for bound, field in (('Today ', '承诺日期'), ('TODAY', '承诺日期'), (' today', '承诺日期'), ('today', '金额'), ('today', '订单号')):
+                with self.subTest(bound=bound, field=field):
+                    got = self.ask(ann, model, '今天之前的订单有多少？', item({**plain, 'where': [{'field': field, 'less_than': bound}]}))
+                    with mock.patch.object(workspace_questions, 'ROW_ANSWERS', False):
+                        was = self.ask(ann, model, '今天之前的订单有多少？', item({**plain, 'where': [{'field': field, 'less_than': bound}]}))
+                    self.assertEqual(without_moments(got), without_moments(was))
+                    self.assertNotIn('today', got)
+            for text, params in (("SELECT count(o) FROM (o:订单) WHERE o.承诺日期 < 'today'", None), ("SELECT LIST o FROM (o:订单) WHERE o.承诺日期 < 'today'", None),
+                                 ('SELECT count(o) FROM (o:订单) WHERE o.承诺日期 < $d', {'d': 'today'}), ("SELECT count(o) FROM (o:订单) WHERE o.承诺日期 BETWEEN 'today' AND today", None),
+                                 ('SELECT count(o) FROM (o:订单) WHERE o.金额 < today', None)):
+                with self.subTest(text=text):
+                    status, body = self.query(ann, text, **({'params': params} if params else {}))
+                    self.assertEqual(status, 400, body)
+                    if 'LIST' not in text and 'BETWEEN' not in text and '金额' not in text:
+                        with mock.patch.object(workspace_questions, 'ROW_ANSWERS', False):
+                            self.assertEqual(self.query(ann, text, **({'params': params} if params else {})), (status, body))
+            written = self.ask(ann, model, '今天之前的订单有多少？', {'text': "SELECT count(o) FROM (o:订单) WHERE o.承诺日期 < 'today'"}, writes='query')
+            self.assertEqual(written['status'], 'query_limit', written)
+            self.assertNotIn('today', written)
+            bare = self.ask(ann, model, '今天之前的订单有多少？', {'text': 'SELECT count(o) FROM (o:订单) WHERE o.承诺日期 < today'}, writes='query')
+            self.assertEqual((bare['status'], bare['today']['date']), ('answered', '2026-06-15'), bare)
+            conn = workspace_store.open_workspace(out / 'workspace.sqlite')
+            try:   # a board's query reads no today: a quoted 'today' is refused as it always was
+                with self.assertRaises(workspace_questions.QaRefused):
+                    workspace_questions.run_text(conn, None, "SELECT count(o) FROM (o:订单) WHERE o.承诺日期 < 'today'")
+            finally:
+                conn.close()
+
     def test_a_saved_list_keeps_no_rows_and_is_worked_out_again_for_the_person_reopening_it(self):
         model = Scripted(item(LIST_VIEW, VIEW_USED))
         with self.service(gateway=model) as (base, out):

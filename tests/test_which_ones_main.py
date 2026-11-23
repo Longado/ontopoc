@@ -182,6 +182,11 @@ class AgainstMain(unittest.TestCase):
     def test_switched_off_every_answer_kept_record_and_reopened_answer_is_mains_also_for_replies_with_list_lookup_or_today(self):
         self.compare(walk(False), [True] * len(self.main))
 
+    def test_switched_on_every_answer_that_asks_for_no_objects_and_writes_no_bare_today_is_mains(self):
+        which = same_on()
+        self.compare(walk(True), which)
+        self.assertGreaterEqual(sum(which), 2 * (len(one.DEMO_PAIRS) + 12))
+
 
 if __name__ == '__main__':
     unittest.main()
