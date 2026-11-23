@@ -677,16 +677,21 @@ def _engine(sc: dict, parts: dict, relations: list[dict], conn=None):
     ontology, bundle = parts['ontology'], parts['bundle']
     graph = build_graph(ontology, bundle)
     applied = []   # the views the last answer was worked out from, kept for the definitions it stood on
+    ran = [None]   # the query the last answer ran, as a query text says it (answer.ran())
     held = column_values(bundle, bundle['meanings'], ontology, graph)   # what a filter that leaves codes out lets through
 
     def answer(query, asked, used=None, check=True, told=None, instead=None, page=1):
         listing, today = None, None
+        if instead is None:
+            ran[0] = query
         if ROW_ANSWERS and isinstance(query, dict):
+            if _counts_more(query):   # a sum, a share, a grouping, a ranking or a walk: answered as it always was, a list or a lookup beside it let be
+                query = _without_objects(query)
+            if instead is None:
+                ran[0] = _as_run(query)
             query, today, problem = _with_today(sc, query)
             if problem is not None:
                 return problem
-            if _counts_more(query):   # a sum, a share, a grouping, a ranking or a walk: answered as it always was, a list or a lookup beside it let be
-                query = _without_objects(query)
             kind = _rows_kind(query)
             if kind == 'lookup':
                 applied[:] = []
@@ -724,6 +729,7 @@ def _engine(sc: dict, parts: dict, relations: list[dict], conn=None):
                    'answer': {**now['answer'], 'objects': _objects_page(sc, parts, reading, reading_graph, query['start'], objects, listing, page)}}
         return {**now, 'understood': checked['understood']} if checked['understood'] else now
     answer.applied = applied
+    answer.ran = lambda: ran[0]
     return answer
 
 
@@ -741,6 +747,17 @@ def _counts_more(query) -> bool:
 def _without_objects(query: dict) -> dict:
     """The query without its list and lookup: the number it works out."""
     return {k: v for k, v in query.items() if k not in ('list', 'lookup')}
+
+
+def _as_run(query: dict) -> dict:
+    """The query as it is run, for the text that says it: a lookup is its type and its key and nothing else; a list is written as one (`true` is a list with no
+    properties named); anything else as it is. A range bound today stays the word."""
+    kind = _rows_kind(query)
+    if kind == 'lookup':
+        return {'start': query.get('start'), 'lookup': query['lookup']}
+    if kind == 'list' and query['list'] is True:
+        return {**query, 'list': {}}
+    return query
 
 
 def _rows_kind(query) -> str | None:
@@ -1016,7 +1033,8 @@ def _answered(conn, gateway, user: dict | None, question: str, sc: dict) -> dict
     if asked['error'] or not asked['items']:   # it replied, but with no query for this question: kept as unanswered, said in the reader's words
         item = {'question': question, 'reasoning': '', 'query': None, 'status': 'no_query', 'reason': _no_query_reason(sc)}
         return {**_finish(conn, user, sc, parts, item, []), 'model': asked['model']}
-    return {**_finish(conn, user, sc, parts, asked['items'][0], answer.applied, spoken.get('spec'), beside=(answer, question)), 'model': asked['model']}
+    return {**_finish(conn, user, sc, parts, asked['items'][0], answer.applied, spoken.get('spec'), beside=(answer, question)), 'model': asked['model'],
+            **({'ran': answer.ran()} if ROW_ANSWERS else {})}
 
 
 ROWS_PROMPT_VERSION = 'workspace_rows.v1'
@@ -1410,7 +1428,8 @@ def ask(conn, gateway, user: dict | None, question, writes='json', keep: bool = 
             result = _answered_in_text(conn, gateway, user, question, sc)
         else:
             result = _answered(conn, gateway, user, question, sc)
-            text = _query_text_of(sc, result.get('query')) if result['status'] in ('answered', 'no_data') else None
+            ran = result.pop('ran', None)   # with ROW_ANSWERS: the query that was run (a list or lookup let be beside a number is not in it), not what the model wrote
+            text = _query_text_of(sc, ran if ran is not None else result.get('query')) if result['status'] in ('answered', 'no_data') else None
             if text:   # the question as a query a person can read, check and edit (docs/QUERY.md)
                 result['query_text'] = text
     if user is not None and user['role'] == 'viewer':
