@@ -78,11 +78,11 @@ class FanSumTests(AgentCase):
         return shown
 
     def refused_naming(self, body, pipeline, wrong):
-        """Not the wrong number, and a refusal that names the pipeline."""
+        """Not the wrong number, and a refusal that names the pipeline (`reason` of a kept answer, `error` of a refused query)."""
         said = json.dumps(body, ensure_ascii=False)
         self.assertNotEqual(((body.get('answer') or {}).get('measure') or {}).get('value'), wrong, said)
         self.assertNotEqual(body.get('status'), 'answered', said)
-        self.assertIn(pipeline, body.get('reason') or '', said)
+        self.assertIn(pipeline, body.get('reason') or body.get('error') or '', said)   # Q&A keeps a refused answer; OntoPoc Query says it as an error (400)
 
     def test_the_sum_of_an_order_amount_on_order_lines_is_not_answered_as_one_amount_per_line(self):
         self.assertEqual((TRUE_TOTAL, PER_LINE), (180, 280))
