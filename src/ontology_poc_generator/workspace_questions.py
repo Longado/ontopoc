@@ -959,7 +959,7 @@ def _beside(sc: dict, parts: dict, answer, item: dict, asked: str, applied: list
     query = item.get('query')
     if item.get('status') not in ('answered', 'no_data') or not isinstance(query, dict) or query.get('start') not in sc['types']:
         return None
-    if _rows_kind(query) is not None:   # objects, not a number: nothing beside them
+    if ROW_ANSWERS and _rows_kind(query) is not None:   # objects, not a number: nothing beside them
         return None
     if query.get('where') or query.get('group_by') or query.get('top') or query.get('via') or query.get('graph') is not None or any(f in parts['derived'] for f in fields):
         return None
