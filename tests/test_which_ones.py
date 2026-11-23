@@ -335,10 +335,10 @@ class ListBesideANumber(Sample):
         with self.service(gateway=model) as (base, out):
             team = self.setup(base)
             for who in ('ann', 'vera'):
-                for used, total in ((VIEW_USED, len(URGENT_HIGH)), ([], len(ORDER_ROWS))):
-                    counted = self.ask(team[who], model, '高风险加急订单有多少？', item({'start': 'order', 'where': []}, used))
-                    listed = self.ask(team[who], model, '高风险加急订单有多少？', item({'start': 'order', 'where': [], 'list': {'properties': ['金额']}}, used))
-                    self.assertEqual((listed['status'], listed['answer']['total']), ('answered', total), listed)
+                for asked, used, total in (('高风险加急订单有多少？', VIEW_USED, len(URGENT_HIGH)), ('订单有多少？', [], len(ORDER_ROWS))):
+                    counted = self.ask(team[who], model, asked, item({'start': 'order', 'where': []}, used))
+                    listed = self.ask(team[who], model, asked, item({'start': 'order', 'where': [], 'list': {'properties': ['金额']}}, used))
+                    self.assertEqual((listed['status'], (listed.get('answer') or {}).get('total')), ('answered', total), listed)
                     self.assertEqual({k: v for k, v in listed['answer'].items() if k != 'objects'}, counted['answer'])
                     self.assertEqual(listed['beside'], counted['beside'])
                     self.assertEqual(len(keys(listed)), min(total, 50))
