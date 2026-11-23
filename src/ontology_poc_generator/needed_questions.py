@@ -53,7 +53,7 @@ from ontology_poc_generator.lang import tr
 from ontology_poc_generator.object_types import element_row
 from ontology_poc_generator.ontology_questions import QUESTION_PROMPT_VERSION
 from ontology_poc_generator.workspace_questions import HELD_BACK as GATE, QaRefused, _clean_question, ask
-from ontology_poc_generator.workspace_store import current_dataset, log_line, now_text
+from ontology_poc_generator.workspace_store import current_dataset, fingerprint, log_line, now_text, writers_in_log
 
 MAX_QUESTIONS = 30
 MAX_REPEATS = 5
@@ -63,7 +63,7 @@ SUITE_HOURS = 24
 OUTCOMES = ('passes', 'differs', 'needs_look', 'refused', 'no_answer', 'no_expectation', 'not_run')   # and, shown only: not_run_since_change
 DEFINITION_PREFIXES = ('objtype:', 'relation:', 'enum:', 'objview:', 'derived:')
 COLUMNS = ('id, question, expect_kind, expect_value, expect_blocker, expect_version, note, state, version, written_by, written_by_user_id, written_at, confirmed_by, confirmed_by_user_id, '
-           'confirmed_at, self_confirmed, basis_json, look_json')
+           'confirmed_at, self_confirmed, basis_json, look_json, changed_json')
 _LIVE: set[str] = set()   # the runs this service is running now, by the token written on their row: a running row with another token was cut off
 _LIVE_LOCK = threading.Lock()
 
@@ -111,6 +111,55 @@ def _person(user: dict | None) -> None:
     """What a token may not do here, whoever called: write, confirm or run (the gate refuses it first, access.token_allows)."""
     if user is not None and user.get('token_id') is not None:
         raise QaRefused(tr('“要回答的问题”要由本人登录页面来写、确认和运行，令牌不能做。', 'Questions we need are written, confirmed and run by a person signed in to the page, not with a token.'), 403)
+
+
+# --- who changed it since it was last confirmed ----------------------------------------------------------------------------------------------------------
+# The rule of the team's definitions (workspace_store.may_confirm), kept for an expectation in needed_question.changed_json: {"by": the accounts that changed what
+# it should give (its words, the number or the refusal it expects) since it was last confirmed or written, "of": a fingerprint of what the record describes,
+# "confirmed": what was last confirmed, "was": the confirmed state an edit sent back}. Its source (the note) is not what is confirmed: changing it alone keeps the
+# state, as before.
+
+def _content(row: dict) -> str:
+    """What a person confirms of an expectation: its words and what it should give."""
+    return json.dumps([row['question'], row['expect_kind'], row['expect_value'] if row['expect_kind'] == 'number' else None, row['expect_blocker']], ensure_ascii=False)
+
+
+def _kept(row: dict) -> dict | None:
+    kept = json.loads(row['changed_json']) if row.get('changed_json') else None
+    return kept if kept is not None and kept.get('of') == fingerprint(_content(row)) else None
+
+
+def _changers(conn, row: dict) -> set[int]:
+    """Who changed it since it was last confirmed; without a record that describes it as it stands, everyone the log names since then (and whoever the record names)."""
+    kept = _kept(row)
+    if kept is not None:
+        return set(kept.get('by') or [])
+    stale = json.loads(row['changed_json']) if row.get('changed_json') else {}
+    return set(stale.get('by') or []) | writers_in_log(conn, f'needed:{row["id"]}', ('written', 'changed'))
+
+
+def _barred(conn, row: dict) -> set[int]:
+    return _changers(conn, row) | ({row['written_by_user_id']} if row['written_by_user_id'] is not None else set())
+
+
+def _held(conn, row: dict) -> str | None:
+    """Who may not confirm it and the ways out, while two-person confirmation is active (object_types.held_note, for an expectation)."""
+    held = _barred(conn, row)
+    if not held - {row['written_by_user_id']} or not two_person(conn)['active']:   # only its writer: they read, as before, that someone else confirms what they wrote
+        return None
+    names = dict(conn.execute('SELECT id, display_name FROM user'))
+    who = sorted((names.get(p, str(p)) for p in held))
+    free = [n for i, n in conn.execute("SELECT id, display_name FROM user WHERE disabled = 0 AND role IN ('builder', 'admin') ORDER BY display_name") if i not in held]
+    confirmed = (_kept(row) or {}).get('confirmed') is not None or row['state'] == 'needs_look'
+    listed, one = tr('、', ', ').join(who), len(who) == 1
+    said = (tr(f'{listed} 在上次确认之后改过它（或写了它），{"不能" if one else "都不能"}确认它', f'{listed} changed it since it was last confirmed (or wrote it), so they cannot confirm it') if confirmed
+            else tr(f'{listed} 写过或改过它，还没有别人确认过，{"不能" if one else "都不能"}确认它', f'{listed} wrote or changed it and nobody else has confirmed it, so they cannot confirm it'))
+    other = tr('另一位' if one else '第三位', 'someone else' if one else 'a third person')
+    out = (tr(f'请没有改过它的{other}来确认（可以确认的人：{tr("、", ", ").join(free)}）', f'ask {other} who did not change it to confirm it (who can: {", ".join(free)})') if free
+           else tr(f'请没有改过它的{other}来确认（现在没有这样的建设者，管理员可以加一位）', f'ask {other} who did not change it to confirm it (there is no such builder now; an admin can add one)'))
+    if confirmed:
+        out += tr('，或把它改回上次确认的样子', ', or put back what was last confirmed')
+    return tr(f'{said}。出路：{out}。', f'{said}. The way out: {out}.')
 
 
 # --- reading ----------------------------------------------------------------------------------------------------------------------------------------------
@@ -188,10 +237,11 @@ def _shown(row: dict, result: dict) -> dict:
     return {'outcome': 'not_run_since_change', 'earlier': {'at': result['run_at'], 'question': result['question'], 'asked': result['asked'], 'distinct': result['distinct']}}
 
 
-def _view(row: dict, user: dict | None, result: dict | None) -> dict:
+def _view(conn, row: dict, user: dict | None, result: dict | None) -> dict:
     out = {'id': row['id'], 'question': row['question'], 'version': row['version'], 'state': row['state'], 'expect': _expect_of(row), 'note': row['note'],
            'written_by': row['written_by'], 'written_at': row['written_at'], 'confirmed_by': row['confirmed_by'], 'confirmed_at': row['confirmed_at'],
-           'self_confirmed': bool(row['self_confirmed']), 'look': row['look'], 'mine': user is not None and row['written_by_user_id'] == user['id'], 'result': None}
+           'self_confirmed': bool(row['self_confirmed']), 'look': row['look'], 'mine': user is not None and user['id'] in _barred(conn, row), 'result': None,
+           'held': _held(conn, row) if row['state'] in ('proposed', 'needs_look') else None}   # who wrote or changed it since it was last confirmed, and the ways out
     if result is not None:
         out['result'] = _shown(row, result)
     return out
@@ -199,7 +249,7 @@ def _view(row: dict, user: dict | None, result: dict | None) -> dict:
 
 def _one(conn, user: dict | None, qid: int) -> dict:
     row = _row(conn.execute(f'SELECT {COLUMNS} FROM needed_question WHERE id = ?', (qid,)).fetchone())
-    return _view(row, user, _results(conn, _last_run(conn)).get(qid))
+    return _view(conn, row, user, _results(conn, _last_run(conn)).get(qid))
 
 
 def _since(hours: float) -> str:
@@ -257,7 +307,7 @@ def listing(conn, user: dict | None, model_ready: bool) -> dict:
     run = _last_run(conn)
     results = _results(conn, run)
     why = _why_not(conn, user, model_ready, len(rows))
-    return {'questions': [_view(r, user, results.get(r['id'])) for r in rows], 'limits': {'questions': MAX_QUESTIONS, 'repeats': MAX_REPEATS},
+    return {'questions': [_view(conn, r, user, results.get(r['id'])) for r in rows], 'limits': {'questions': MAX_QUESTIONS, 'repeats': MAX_REPEATS},
             'budget': _budget(conn), 'running': _running_now(conn), 'last_run': run, 'can_run': {'ok': why is None, 'why': why}, 'two_person': two_person(conn)['active']}
 
 
@@ -357,8 +407,9 @@ def write(conn, user: dict | None, payload: dict) -> dict:
         _not_twice(conn, question)
         if blocker is not None:
             _one_definition(conn, blocker)
-        cursor = conn.execute('INSERT INTO needed_question(question, expect_kind, expect_value, expect_blocker, note, state, version, written_by, written_by_user_id, written_at) '
-                              'VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)', (question, kind, value, blocker, note, 'proposed' if kind else 'none', _name(user), _uid(user), now_text()))
+        record = json.dumps({'by': [_uid(user)] if _uid(user) is not None else [], 'of': fingerprint(_content({'question': question, 'expect_kind': kind, 'expect_value': value, 'expect_blocker': blocker}))})
+        cursor = conn.execute('INSERT INTO needed_question(question, expect_kind, expect_value, expect_blocker, note, state, version, written_by, written_by_user_id, written_at, changed_json) '
+                              'VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)', (question, kind, value, blocker, note, 'proposed' if kind else 'none', _name(user), _uid(user), now_text(), record))
         qid = cursor.lastrowid
         _log(conn, user, qid, 'written', after={'question': question, 'expect': _expect_of({'expect_kind': kind, 'expect_value': value, 'expect_blocker': blocker}), 'note': note})
     return _one(conn, user, qid)
@@ -381,16 +432,49 @@ def update(conn, user: dict | None, payload: dict) -> dict:
             _not_twice(conn, question, row['id'])
         if blocker is not None and blocker != row['expect_blocker']:
             _one_definition(conn, blocker)
+        back = False
         if reworded:
-            conn.execute('UPDATE needed_question SET question = ?, expect_kind = ?, expect_value = ?, expect_blocker = ?, note = ?, state = ?, version = version + 1, '
-                         'expect_version = expect_version + 1, written_by = ?, '
-                         'written_by_user_id = ?, written_at = ?, confirmed_by = NULL, confirmed_by_user_id = NULL, confirmed_at = NULL, self_confirmed = 0, basis_json = NULL, look_json = NULL WHERE id = ?',
-                         (question, kind, value, blocker, note, 'proposed' if kind else 'none', _name(user), _uid(user), now_text(), row['id']))
+            record, was = _next_record(conn, row, {'question': question, 'expect_kind': kind, 'expect_value': value, 'expect_blocker': blocker}, _uid(user))
+            if was is not None:   # what it should give is again what was last confirmed, and an edit is what sent it back: confirmed again as it was
+                back = True
+                conn.execute('UPDATE needed_question SET question = ?, expect_kind = ?, expect_value = ?, expect_blocker = ?, note = ?, state = ?, version = version + 1, expect_version = ?, '
+                             'written_by = ?, written_by_user_id = ?, written_at = ?, confirmed_by = ?, confirmed_by_user_id = ?, confirmed_at = ?, self_confirmed = ?, basis_json = ?, look_json = ?, '
+                             'changed_json = ? WHERE id = ?',
+                             (question, kind, value, blocker, note, was['state'], was['expect_version'], was['written_by'], was['written_by_user_id'], was['written_at'], was['confirmed_by'],
+                              was['confirmed_by_user_id'], was['confirmed_at'], was['self_confirmed'], was['basis_json'], was['look_json'], record, row['id']))
+            else:
+                conn.execute('UPDATE needed_question SET question = ?, expect_kind = ?, expect_value = ?, expect_blocker = ?, note = ?, state = ?, version = version + 1, '
+                             'expect_version = expect_version + 1, written_by = ?, '
+                             'written_by_user_id = ?, written_at = ?, confirmed_by = NULL, confirmed_by_user_id = NULL, confirmed_at = NULL, self_confirmed = 0, basis_json = NULL, look_json = NULL, '
+                             'changed_json = ? WHERE id = ?',
+                             (question, kind, value, blocker, note, 'proposed' if kind else 'none', _name(user), _uid(user), now_text(), record, row['id']))
         else:
             conn.execute('UPDATE needed_question SET note = ?, version = version + 1 WHERE id = ?', (note, row['id']))
         after = _row(conn.execute(f'SELECT {COLUMNS} FROM needed_question WHERE id = ?', (row['id'],)).fetchone())
-        _log(conn, user, row['id'], 'changed', before=_logged(row), after=_logged(after))
+        _log(conn, user, row['id'], 'restored' if back else 'changed', before=_logged(row), after=_logged(after))
     return _one(conn, user, row['id'])
+
+
+_WAS = ('state', 'expect_version', 'written_by', 'written_by_user_id', 'written_at', 'confirmed_by', 'confirmed_by_user_id', 'confirmed_at', 'self_confirmed', 'basis_json', 'look_json')
+
+
+def _next_record(conn, row: dict, new: dict, uid) -> tuple[str, dict | None]:
+    """(the record once `uid` has changed what it should give to `new`, the confirmed state to put back when `new` is again what was last confirmed and an edit sent
+    it back). Changing it adds its writer to who changed it since it was last confirmed; putting it back to what was last confirmed empties that."""
+    kept = _kept(row) or {}
+    confirmed, was = kept.get('confirmed'), kept.get('was')
+    by = _changers(conn, row)
+    if row['state'] == 'confirmed':   # this edit sends it back: keep what it was, to put back
+        confirmed = _content(row)
+        raw = dict(zip(('basis_json', 'look_json'), conn.execute('SELECT basis_json, look_json FROM needed_question WHERE id = ?', (row['id'],)).fetchone()))
+        was = {k: raw[k] if k in raw else row[k] for k in _WAS}
+    content = _content(new)
+    if confirmed is not None and content == confirmed:
+        by = set()
+    elif uid is not None:
+        by = by | {uid}
+    record = {'by': sorted(by), 'of': fingerprint(content), **({'confirmed': confirmed} if confirmed is not None else {}), **({'was': was} if was else {})}
+    return json.dumps(record, ensure_ascii=False, sort_keys=True), (was if was and content == confirmed else None)
 
 
 def delete(conn, user: dict | None, payload: dict) -> dict:
@@ -436,12 +520,13 @@ def confirm(conn, user: dict | None, payload: dict) -> dict:
             raise QaRefused(tr('先写它应该给出什么（一个数，或者必须拒答），再确认', 'First write what it should give (a number, or that it must be refused), then confirm it'))
         if row['state'] == 'confirmed':
             raise QaRefused(tr('这个期望已经确认了', 'This expectation is already confirmed'))
-        own = user is not None and row['written_by_user_id'] is not None and row['written_by_user_id'] == user['id']
+        own = user is not None and user['id'] in _barred(conn, row)   # wrote it, or changed it since it was last confirmed
         if own and two_person(conn)['active']:
-            raise QaRefused(tr('这一条是你自己提的，要另一位来确认', 'You put this forward yourself, so someone else must confirm it'), 403)
+            raise QaRefused(_held(conn, row) or tr('这一条是你自己提的，要另一位来确认', 'You put this forward yourself, so someone else must confirm it'), 403)
         basis = _answered_basis(conn, row)
+        record = json.dumps({'by': [], 'of': fingerprint(_content(row)), 'confirmed': _content(row)}, ensure_ascii=False, sort_keys=True)
         conn.execute("UPDATE needed_question SET state = 'confirmed', version = version + 1, expect_version = expect_version + 1, confirmed_by = ?, confirmed_by_user_id = ?, confirmed_at = ?, self_confirmed = ?, "
-                     'basis_json = ?, look_json = NULL WHERE id = ?', (_name(user), _uid(user), now_text(), int(own), json.dumps(basis, ensure_ascii=False) if basis else None, row['id']))
+                     'basis_json = ?, look_json = NULL, changed_json = ? WHERE id = ?', (_name(user), _uid(user), now_text(), int(own), json.dumps(basis, ensure_ascii=False) if basis else None, record, row['id']))
         _log(conn, user, row['id'], 'confirmed', before=_logged(row), after={**_logged({**row, 'state': 'confirmed'}), **({'self_confirmed': True} if own else {})})
     return _one(conn, user, row['id'])
 

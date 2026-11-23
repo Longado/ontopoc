@@ -17,7 +17,7 @@ import re
 import sqlite3
 
 from ontology_poc_generator.accounts import SCHEMA as ACCOUNTS_SCHEMA, two_person
-from ontology_poc_generator.actor import actor_id_for, token_mark
+from ontology_poc_generator.actor import actor_id_for, current_actor, token_mark
 from ontology_poc_generator.public_ontology import normalize_proposal
 
 VALUE_COUNT_LIMIT = 20   # a column with more distinct values than this keeps no value counts
@@ -182,7 +182,7 @@ def open_workspace(path) -> sqlite3.Connection:
                           ('element_state', 'cause'), ('element_state', 'via'), ('confirmation', 'snapshot_json'), ('llm_review', 'distinct_rows'), ('llm_review', 'detail_json'),
                           ('api_token', 'scope'), ('api_token', 'expires_at'), ('action_record', 'undo_of'), ('action_record', 'op'),
                           ('data_source', 'tls'), ('data_source', 'ca_pem'), ('refresh_run', 'error_public'), ('schedule', 'created_by_user_id'), ('user', 'attrs_json'), ('row_rule', 'user_attr'),
-                          ('needed_question', 'expect_blocker'), ('needed_run', 'owner')):
+                          ('needed_question', 'expect_blocker'), ('needed_run', 'owner'), ('element_state', 'changed_json'), ('needed_question', 'changed_json')):
         if column not in {r[1] for r in conn.execute(f'PRAGMA table_info({table})')}:   # a file made before the column existed
             conn.execute(f'ALTER TABLE {table} ADD COLUMN {column} {"INTEGER" if column in ("dataset_id", "null_key_rows", "distinct_rows", "undo_of") or column.endswith("user_id") else "TEXT"}')
     if 'expect_version' not in {r[1] for r in conn.execute('PRAGMA table_info(needed_question)')}:   # counts each new expectation and each confirmation of one: a result belongs to one
@@ -367,6 +367,7 @@ def element_state_writes(conn, changes: list[tuple], versions: dict[str, int] | 
         conn.execute('BEGIN IMMEDIATE')   # the write lock now: a transaction that reads first and writes later is refused at once, not waited for, when another holds it
     try:
         two = two_person(conn)
+        back: dict[str, dict] = {}   # what a change put back to the version last confirmed, to be confirmed again as it was once the write is in
         for element_id, state, evidence_ref, confirmed_by, *rest in changes:
             content = json.dumps(rest[0], ensure_ascii=False, sort_keys=True) if rest and rest[0] is not None else None
             anchors = json.dumps(rest[1], ensure_ascii=False, sort_keys=True) if len(rest) > 1 and rest[1] is not None else None
@@ -391,13 +392,20 @@ def element_state_writes(conn, changes: list[tuple], versions: dict[str, int] | 
             self_confirmed = state == 'confirmed' and proposer_id is not None and proposer_id == actor_id
             if self_confirmed and two['active']:
                 raise SelfConfirmation(tr('这一条是你自己提的，要另一位来确认', 'You put this forward yourself, so someone else must confirm it'))
+            if state == 'confirmed' and before is not None and actor_id is not None and actor_id in changers(conn, before) and two['active']:   # the callers say who and how to get out first (object_types.write_confirmation)
+                raise SelfConfirmation(tr('这一条在上次确认之后你改过，要另一位来确认', 'You changed this since it was last confirmed, so someone else must confirm it'))
+            record, was = next_record(conn, element_id, before, content, state, actor_id)
+            if was is not None:
+                back[element_id] = was
             after = {'state': state, 'evidence_ref': evidence_ref, 'confirmed_by': confirmed_by, 'confirmed_at': _now(),
                      'version': before['version'] + 1 if before else 1, 'content_json': content, 'anchors_json': anchors}
             conn.execute('INSERT OR REPLACE INTO element_state(element_id, state, evidence_ref, confirmed_by, confirmed_at, version, content_json, anchors_json,'
-                         ' proposed_by, confirmed_by_user_id, proposed_by_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                         (element_id, *after.values(), proposed_by, confirmer_id, proposer_id))
+                         ' proposed_by, confirmed_by_user_id, proposed_by_user_id, changed_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                         (element_id, *after.values(), proposed_by, confirmer_id, proposer_id, record))
             _log(conn, confirmed_by or tr('未署名', 'unsigned'), element_id, state, before=before and _logged({k: before[k] for k in after}),
                  after={**_logged(after), **({'self_confirmed': True} if self_confirmed else {})}, user_id=confirmer_id)
+        for element_id, was in back.items():   # after every change of this write is in: what a definition put back stands on may be among them
+            restore_if_back(conn, element_id, was)
         rows = {}
         for element_id, *_ in changes:
             cursor = conn.execute('SELECT * FROM element_state WHERE element_id = ?', (element_id,))
@@ -409,6 +417,140 @@ def element_state_writes(conn, changes: list[tuple], versions: dict[str, int] | 
         if not outer:
             conn.execute('ROLLBACK')
         raise
+
+
+# --- who changed a definition since it was last confirmed ---------------------------------------------------------------------------------------------
+# One rule for every definition kind of the team workspace that a second person confirms (pipelines keep their own: whoever saved its steps since the last
+# confirmation, workspace_pipelines._editors). Each keeps, in element_state.changed_json, the set of accounts that changed what it says since it was last
+# confirmed (or since it was put forward): {"by": [account ids], "of": a fingerprint of the content the record describes, "was": the confirmed row an edit sent
+# back, while it waits}. Nobody in the set and not its proposer may confirm it while two-person confirmation is active (may_confirm); confirming empties it;
+# nothing another person does takes a name out of it. The only ways out: what it says is again exactly what was last confirmed (the set empties and, when
+# nothing else sent it back, it is confirmed again as it was: restore_if_back), or a person outside the set confirms.
+TRACKED = ('objtype:', 'enum:', 'relation:', 'objview:', 'objaction:', 'derived:')
+
+
+def tracked(element_id: str) -> bool:
+    """Whether this rule covers the element: a definition of the team workspace that a second person confirms. The early screen's relations
+    (relation:<run>:<name>) share a prefix with the workspace's (relation:<English name>) and are not covered."""
+    if element_id.startswith('relation:'):
+        return ':' not in element_id[len('relation:'):]
+    return element_id.startswith(TRACKED)
+CONTENT_WRITES = ('proposed', 'checked', 'edited')   # the log lines of a write that put a definition's content forward or changed it
+SINCE = ('confirmed', 'restored')   # the log lines after which a definition is again what a second person confirmed
+
+
+def fingerprint(content_json: str | None) -> str | None:
+    return hashlib.sha256(content_json.encode()).hexdigest()[:16] if content_json else None
+
+
+def _kept_record(row: dict) -> dict | None:
+    """The record of who changed it, when it describes the content as it stands; None when there is none (a file from before it was kept) or when the content was
+    changed without it (older code writing to this file): then it is not trusted."""
+    kept = json.loads(row['changed_json']) if row.get('changed_json') else None
+    return kept if kept is not None and kept.get('of') == fingerprint(row.get('content_json')) else None
+
+
+def writers_in_log(conn, element_id: str, changes=CONTENT_WRITES, since=SINCE) -> set[int]:
+    """The accounts the log says wrote this element's content since its last confirmation (ever, when it never was)."""
+    last = conn.execute(f'SELECT MAX(rowid) FROM log WHERE element_id = ? AND change IN ({",".join("?" * len(since))})', (element_id, *since)).fetchone()[0] or 0
+    return {u for (u,) in conn.execute(f'SELECT user_id FROM log WHERE element_id = ? AND rowid > ? AND user_id IS NOT NULL AND change IN ({",".join("?" * len(changes))})',
+                                       (element_id, last, *changes))}
+
+
+def changers(conn, row: dict) -> set[int]:
+    """The accounts that changed what this definition says since it was last confirmed (or since it was put forward). Without a record that describes the content
+    as it stands, everyone the log names as having written it since, and whoever the record names: when in doubt, more people are kept from confirming, not
+    fewer. Empty for what this rule does not cover (a pipeline, the early screen's definitions)."""
+    if not tracked(row['element_id']):
+        return set()
+    kept = _kept_record(row)
+    if kept is not None:
+        return set(kept.get('by') or [])
+    stale = json.loads(row['changed_json']) if row.get('changed_json') else {}
+    return set(stale.get('by') or []) | writers_in_log(conn, row['element_id'])
+
+
+def barred(conn, row: dict) -> set[int]:
+    """Who may not confirm it while two-person confirmation is active: everyone who changed it since it was last confirmed, and the one who put it forward."""
+    return changers(conn, row) | ({row['proposed_by_user_id']} if row.get('proposed_by_user_id') is not None else set())
+
+
+def may_confirm(conn, row: dict, person_id: int | None) -> bool:
+    """The one test of whether this person may confirm this definition (as far as who they are goes): not while two-person confirmation is active and they are in
+    barred(). A person with no account (the built-in local admin of a service without sign-in) is not kept out, as before."""
+    return person_id is None or not two_person(conn)['active'] or person_id not in barred(conn, row)
+
+
+def last_confirmed_content(conn, element_id: str) -> str | None:
+    found = conn.execute('SELECT content_json FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1', (element_id,)).fetchone()
+    return found[0] if found else None
+
+
+_WAS = ('content_json', 'evidence_ref', 'confirmed_by', 'confirmed_at', 'anchors_json', 'proposed_by', 'confirmed_by_user_id', 'proposed_by_user_id')
+
+
+def next_record(conn, element_id: str, before: dict | None, content: str | None, state: str, actor_id: int | None) -> tuple[str | None, dict | None]:
+    """(the record to keep with this write, the confirmed row to put back when the content is again what was last confirmed). A confirmation empties the set; a
+    change of the content adds its writer, unless the content is again exactly what was last confirmed, which empties it; a write that changes nothing of the content
+    keeps it. An edit that sends a confirmed definition back keeps the confirmed row it replaced ("was") for as long as it waits, so that putting the content back
+    confirms it again as it was."""
+    if not tracked(element_id):
+        return None, None
+    if state == 'confirmed':
+        return json.dumps({'by': [], 'of': fingerprint(content)}), None
+    kept = _kept_record(before) if before else None
+    was = (kept or {}).get('was')
+    by = changers(conn, before) if before else set()
+    if before is None or content != before['content_json']:
+        if before is not None and before['state'] == 'confirmed':
+            was = {**{k: before[k] for k in _WAS}, 'deps': [d for (d,) in conn.execute('SELECT depends_on FROM element_dep WHERE element_id = ? ORDER BY depends_on', (element_id,))]}
+        if content is not None and content == last_confirmed_content(conn, element_id):
+            by = set()
+        elif actor_id is not None:
+            by = by | {actor_id}
+    record = {'by': sorted(by), 'of': fingerprint(content), **({'was': was} if was else {})}
+    return json.dumps(record, ensure_ascii=False, sort_keys=True), (was if was and content == was['content_json'] and state in ('proposed', 'checked') else None)
+
+
+def _stands_as_confirmed(conn, element_id: str, was: dict) -> bool:
+    """Whether nothing but the edit sent it back: the datasets it was last confirmed on are still at those versions, and everything it read then is confirmed now."""
+    found = conn.execute('SELECT dataset_versions_json FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1', (element_id,)).fetchone()
+    for name, version in (json.loads(found[0]) if found and found[0] else {}).items():
+        now = current_dataset(conn, name)
+        if now is None or now['version'] != version:
+            return False
+    for dep in was.get('deps') or []:
+        if dep.startswith('column:'):
+            continue
+        if dep.startswith('dataset:'):   # the pipelines that write it
+            if conn.execute("SELECT 1 FROM element_dep d LEFT JOIN element_state s ON s.element_id = d.depends_on WHERE d.element_id = ? AND (s.state IS NULL OR s.state != 'confirmed')", (dep,)).fetchone():
+                return False
+            continue
+        held = conn.execute('SELECT state FROM element_state WHERE element_id = ?', (dep,)).fetchone()
+        if held is None or held[0] != 'confirmed':
+            return False
+    return True
+
+
+def restore_if_back(conn, element_id: str, was: dict) -> bool:
+    """Inside the caller's transaction: a definition an edit sent back whose content is again exactly what was last confirmed is confirmed again as it was (the same
+    person, time, evidence and anchors; no new confirmation is recorded) when nothing else sent it back (_stands_as_confirmed). The log says it was put back."""
+    row = conn.execute('SELECT state, content_json, version FROM element_state WHERE element_id = ?', (element_id,)).fetchone()
+    if row is None or row[0] not in ('proposed', 'checked') or row[1] != was['content_json'] or not _stands_as_confirmed(conn, element_id, was):
+        return False
+    conn.execute("UPDATE element_state SET state = 'confirmed', evidence_ref = ?, confirmed_by = ?, confirmed_at = ?, anchors_json = ?, proposed_by = ?, confirmed_by_user_id = ?, "
+                 "proposed_by_user_id = ?, reason = NULL, cause = NULL, via = NULL, changed_json = ? WHERE element_id = ?",
+                 (was['evidence_ref'], was['confirmed_by'], was['confirmed_at'], was['anchors_json'], was['proposed_by'], was['confirmed_by_user_id'], was['proposed_by_user_id'],
+                  json.dumps({'by': [], 'of': fingerprint(was['content_json'])}), element_id))
+    actor = current_actor()
+    _log(conn, actor['display_name'] if actor else tr('未署名', 'unsigned'), element_id, 'restored', before={'state': row[0], 'version': row[2]},
+         after={'state': 'confirmed', 'confirmed_by': was['confirmed_by'], 'confirmed_at': was['confirmed_at'], 'version': row[2]})
+    return True
+
+
+def drop_was(conn, element_id: str) -> None:
+    """Something other than an edit sent it back (a person sent it back): putting its content back no longer confirms it again by itself."""
+    conn.execute("UPDATE element_state SET changed_json = json_remove(changed_json, '$.was') WHERE element_id = ? AND changed_json IS NOT NULL", (element_id,))
 
 
 def set_element_states(conn, changes: list[tuple]) -> dict[str, dict]:

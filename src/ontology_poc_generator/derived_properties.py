@@ -39,7 +39,7 @@ from ontology_poc_generator.name_checks import STAT_WORDS, claim_of
 from ontology_poc_generator.named_views import ORDERED_TEXT, orderable
 from ontology_poc_generator.object_relations import _relation_visible, relation_id
 from ontology_poc_generator.object_types import (
-    token_edit,
+    edit_sends_back,
     DERIVED_PREFIX, ENGLISH_NAME, limited_note, MAX_DESCRIPTION, MAX_NAME, TypeRefused, _content, _edit_names, _state_view, _text, _type_row, _visible,
     dataset_columns, element_row, enum_id, log_entries, refuse_if_limited, type_id, whole_type_row, write_confirmation, write_elements)
 from ontology_poc_generator.object_views import _by_code, _choices, meaning_labels, new_value_words
@@ -748,7 +748,7 @@ def create_derived(conn, payload: dict, who: str | None, user: dict | None) -> d
 
 def update_derived(conn, payload: dict, who: str | None, user: dict | None) -> dict:
     """{type, english_name, version, ...the fields of create}: a change to what it computes puts it forward again as this person's, and a confirmed one stops being
-    confirmed (what it had been confirmed on stays in the history); so does saving one that was sent back. The display name and the description keep the state (made by a person signed in; made with a token, a confirmed one is put forward again: object_types.token_edit)."""
+    confirmed (what it had been confirmed on stays in the history); so does saving one that was sent back. The display name and the description keep the state (on one that waits; a confirmed one is put forward again by any change of what it says, whoever makes it: object_types.edit_sends_back)."""
     row = _derived_row(conn, payload.get('type'), payload.get('english_name'), user)
     if payload.get('version') != row['version']:
         raise TypeRefused(tr('这个派生属性在你打开之后被改了，请刷新后再改', 'This derived property was changed after you opened it. Refresh and edit again'), 409)
@@ -756,7 +756,7 @@ def update_derived(conn, payload: dict, who: str | None, user: dict | None) -> d
     content = check_definition(conn, {**payload, 'type': old['type'], 'other_names': payload['other_names'] if 'other_names' in payload else other_names.of(old)}, user, old['english_name'])
     check_names_free(conn, content)
     others = other_names.of(old) != other_names.of(content)
-    reset = reset_reasons(old, content) or token_edit(row, user, (old['name'], old['description']) != (content['name'], content['description']), others)
+    reset = reset_reasons(old, content) or edit_sends_back(row, user, (old['name'], old['description']) != (content['name'], content['description']), others)
     if reset or row['state'] in ('proposed', 'rejected'):
         chain, result = _chain(conn, content, None), evaluate(conn, content, None)
         write_elements(conn, [_change(content, result, who)], {row['element_id']: _reads(content, chain)}, {row['element_id']: row['version']})

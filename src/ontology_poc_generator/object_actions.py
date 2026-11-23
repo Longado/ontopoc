@@ -33,7 +33,7 @@ import json
 
 from ontology_poc_generator.accounts import list_users, two_person
 from ontology_poc_generator.object_types import (
-    token_edit,
+    edit_sends_back,
     ACTION_PREFIX, MAX_DESCRIPTION, MAX_NAME, TYPE_NAME, TypeRefused, _content, _edit_names, _state_view, _text, _type_row, _visible,
     element_row, enum_id, log_entries, recheck_after_write, type_id, whole_type_row, write_confirmation, write_elements)
 from ontology_poc_generator.object_views import meaning_labels
@@ -357,13 +357,13 @@ def create_action(conn, payload: dict, who: str | None, user: dict | None) -> di
 
 def update_action(conn, payload: dict, who: str | None, user: dict | None) -> dict:
     """{id, version, ...}: a change to the type, the properties or the condition puts it forward again (a confirmed one stops being confirmed); the description
-    keeps the state (made by a person signed in; made with a token, a confirmed one is put forward again: object_types.token_edit)."""
+    keeps the state (on one that waits; a confirmed one is put forward again by any change of what it says, whoever makes it: object_types.edit_sends_back)."""
     row = _action_row(conn, payload.get('id'), user)
     if payload.get('version') != row['version']:
         raise TypeRefused(tr('这个行为在你打开之后被改了，请刷新后再改', 'This action was changed after you opened it. Refresh and edit again'), 409)
     old = _content(row)
     content = check_definition(conn, payload, user, old['name'])
-    reset = _reset_reasons(old, content) or token_edit(row, user, old['description'] != content['description'])
+    reset = _reset_reasons(old, content) or edit_sends_back(row, user, old['description'] != content['description'])
     if reset or row['state'] in ('proposed', 'rejected'):
         anchors = _anchors(conn, content)
         write_elements(conn, [(row['element_id'], 'checked', f'dataset:{anchors.get("dataset")}@v{anchors.get("version")}', who, content, anchors, who)],
