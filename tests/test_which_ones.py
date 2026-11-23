@@ -349,6 +349,29 @@ class WhichOnes(Sample):
             mine = self.ask(ann, model, '哪些加急订单是高风险的？', item(LIST_VIEW, VIEW_USED))
             self.assertEqual(keys(mine), sorted(k for k in URGENT_HIGH if next(r for r in ORDER_ROWS if r['订单号'] == k)['客户编号'] == 'KH001'))
 
+    def test_a_saved_list_whose_view_went_back_to_waiting_reopens_with_the_refusal_a_fresh_ask_gives(self):
+        model = Scripted(item(LIST_VIEW, VIEW_USED))
+        with self.service(gateway=model) as (base, out):
+            team = self.setup(base)
+            ann = team['ann']
+            saved = {who: self.ask(team[who], model, '哪些是高风险加急订单？', item(LIST_VIEW, VIEW_USED)) for who in ('ann', 'vera')}
+            self.assertEqual([keys(b) for b in saved.values()], [URGENT_HIGH, URGENT_HIGH])
+            line = self.formula(ann)   # the formula is changed: it waits, and the view on it waits with it
+            self.assertEqual(ann.post('/api/workspace/types/derived/update', {**HIGH_RISK, 'expression': 'if(金额 > 60000, 1, 0)', 'version': line['version']})[0], 200)
+            for who, body in saved.items():
+                with self.subTest(who=who):
+                    fresh = self.ask(team[who], model, '哪些是高风险加急订单？', item(LIST_VIEW, VIEW_USED))
+                    self.assertEqual((fresh['status'], fresh['refusal']['kind']), ('refused', 'unsettled'), fresh)
+                    reopened = team[who].get(f'/api/workspace/ask/{body["id"]}')[1]
+                    self.assertNotIn('answer', reopened)
+                    if who == 'vera':   # a viewer no longer sees the waiting view: the saved answer is withheld before anything is worked out, as for a number
+                        self.assertIn('withheld', reopened)
+                        continue
+                    self.assertEqual({k: reopened.get(k) for k in ('status', 'reason', 'refusal')}, {k: fresh[k] for k in ('status', 'reason', 'refusal')}, reopened)
+                    other = self.ask(team[who], model, '高风险的加急订单有哪些？', item(LIST_VIEW, VIEW_USED))   # a question that does not name the view the model read
+                    reopened = team[who].get(f'/api/workspace/ask/{other["id"]}')[1]
+                    self.assertNotIn('对不上', json.dumps(reopened, ensure_ascii=False))
+
     def test_a_reopened_list_pages(self):
         reply = item({'start': 'order', 'where': [], 'list': {'limit': 10}})
         model = Scripted(reply)
