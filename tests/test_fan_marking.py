@@ -288,6 +288,8 @@ class MarkingTests(FanSumTests):
             self.assertIn('run again once', self.refused(ann, 'SELECT avg(l.qty) FROM (l:订单行)', headers={'Accept-Language': 'en'}))
             viewer = self.refused(vera, 'SELECT sum(l.qty) FROM (l:订单行)', pipeline=None)
             self.assertNotIn(P1, viewer)
+            self.assertNotIn('line_amounts', viewer)   # a person who may not open pipelines is not told what is behind the type, and is not told to run it themselves
+            self.assertIn('请建设者', viewer)
             self.assertEqual(self.query(ann, 'SELECT count(l) FROM (l:订单行)')[1]['answer']['total'], len(LINES))   # a count still answers
             status, body = self.chart(ann, 'order_line', {'kind': 'number', 'measure': 'qty', 'fn': 'max'})
             self.assertEqual((status, body.get('value')), (200, 5))
