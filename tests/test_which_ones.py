@@ -370,7 +370,7 @@ class ListBesideANumber(Sample):
         """The response without what echoes the model's query (kept as it wrote it) and without query_text (see QueryText)."""
         return without_moments({k: [{n: v for n, v in s.items() if n != 'query'} for s in v] if k == 'steps' else v for k, v in body.items() if k not in ('query', 'query_text')})
 
-    def test_a_list_or_lookup_beside_a_sum_a_share_a_grouping_or_a_ranking_is_let_be(self):
+    def test_a_list_beside_a_sum_a_share_a_grouping_or_a_ranking_is_let_be_and_a_lookup_beside_one_is_refused(self):
         urgent = [{'field': '紧急程度', 'equals': '加急'}]
         plain = {'start': 'order', 'where': [], 'via': [], 'group_by': None, 'share': None, 'measure': None}
         replies = [({**plain, 'measure': {'field': '金额', 'op': 'sum'}}, VIEW_USED), ({**plain, 'measure': {'field': '金额', 'op': 'average'}, 'where': urgent}, [{'id': 'orders.紧急程度=加急', 'direction': 'include', 'basis': '加急'}]),
@@ -385,11 +385,17 @@ class ListBesideANumber(Sample):
                     asked = '高风险加急订单的金额？' if used == VIEW_USED else '订单的金额？'
                     plain_answer = self.ask(team[who], model, asked, item(query, used))
                     self.assertEqual(plain_answer['status'], 'answered', plain_answer)
-                    for extra in ({'list': {}}, {'list': {'properties': ['金额']}}, {'list': True}, {'lookup': {'订单号': 'DD20260003'}}, {'list': {'limit': 99}}):
+                    for extra in ({'list': {}}, {'list': {'properties': ['金额']}}, {'list': True}, {'list': {'limit': 99}}):
                         with self.subTest(who=who, query=query, extra=extra):
                             got = self.ask(team[who], model, asked, item({**query, **extra}, used))
                             self.assertEqual(self.without(got), self.without(plain_answer))
                             self.assertEqual(got['query'], {**query, **extra})   # what the model wrote is kept as it wrote it
+                    for extra in ({'lookup': {'订单号': 'DD20260003'}}, {'lookup': {'订单号': 'DD20260003'}, 'list': {}}):   # a lookup is a condition: never dropped to give a number
+                        with self.subTest(who=who, query=query, extra=extra):
+                            got = self.ask(team[who], model, asked, item({**query, **extra}, used))
+                            self.assertEqual(got['status'], 'query_limit', got)
+                            self.assertIn('lookup', got['reason'])
+                            self.assertNotIn('answer', got)
 
     def test_a_count_with_a_list_keeps_its_count_and_what_is_beside_it_and_the_rows_come_with_it(self):
         model = Scripted(item(LIST_VIEW))
@@ -410,6 +416,34 @@ class ListBesideANumber(Sample):
             self.assertIsNone(answer_number(lookup))   # one object is no number
 
 
+class LookupIsACondition(Sample):
+    """A lookup is a condition: a reply that carries one never gives a number, whatever else it says (main refuses every non-empty lookup as a shape the
+    query format cannot express; with the switch on, only a lookup alone is answered, and its answer is one object, never a number)."""
+
+    def test_no_reply_carrying_a_lookup_ever_gives_a_number(self):
+        from ontology_poc_generator.checked_numbers import answer_number
+        plain = {'start': 'order', 'where': [], 'via': [], 'group_by': None, 'share': None, 'measure': None}
+        urgent_used = [{'id': 'orders.紧急程度=加急', 'direction': 'include', 'basis': '加急'}]
+        shapes = [{}, {'measure': {'field': '金额', 'op': 'sum'}}, {'measure': {'field': '金额', 'op': 'average'}}, {'share': {'field': '紧急程度', 'equals': '加急'}},
+                  {'group_by': ['紧急程度']}, {'group_by': [{'via': [], 'field': '客户编号'}], 'measure': {'field': '金额', 'op': 'sum'}, 'top': 1, 'order': 'largest'},
+                  {'where': [{'field': '紧急程度', 'equals': '加急'}]}, {'list': {}}, {'list': True}, {'where': [{'field': '承诺日期', 'less_than': 'today'}]}]
+        lookups = [{'订单号': 'DD20260003'}, {'订单号': 'DD20269999'}, {'客户编号': 'KH001'}, {'订单号': 'DD20260003', '金额': '1'}, 'DD20260003', ['DD20260003']]
+        model = Scripted('not json')
+        with self.service(gateway=model) as (base, out):
+            team = self.setup(base)
+            for who in ('ann', 'vera'):
+                for shape in shapes:
+                    for key in lookups:
+                        for used in ([], VIEW_USED, urgent_used):
+                            with self.subTest(who=who, shape=shape, key=key, used=used):
+                                body = self.ask(team[who], model, '订单 DD20260003 的金额？', item({**plain, **shape, 'lookup': key}, used))
+                                self.assertIsNone(answer_number(body), body)
+                                answer = body.get('answer')
+                                self.assertTrue(answer is None or ('lookup' in answer and set(answer) == {'total', 'lookup', 'objects'}), body)
+                                if shape and not (set(shape) <= {'where', 'list'}):
+                                    self.assertEqual(body['status'], 'query_limit', body)   # beside a number: refused, as main refuses it
+
+
 class QueryText(Sample):
     """query_text is written by code from the query that was run, never taken from what the model wrote: run again as a written query, it gives the same answer."""
 
@@ -423,7 +457,6 @@ class QueryText(Sample):
             ('订单有哪些？', {'start': 'order', 'where': [], 'list': {'limit': 5}}, []), ('订单的金额合计？', {**plain, 'measure': {'field': '金额', 'op': 'sum'}, 'list': {}}, []),
             ('订单的金额合计？', {**plain, 'measure': {'field': '金额', 'op': 'sum'}, 'list': True}, []),
             ('各紧急程度的订单？', {**plain, 'group_by': [{'via': [], 'field': '紧急程度'}], 'list': {'properties': ['金额']}}, by_urgency),
-            ('订单的金额合计？', {**plain, 'measure': {'field': '金额', 'op': 'sum'}, 'lookup': {'订单号': 'DD20260003'}}, []),
             ('订单 DD20260003？', {'start': 'order', 'lookup': {'订单号': 'DD20260003'}}, []), ('订单 DD20260003？', {**plain, 'lookup': {'订单号': 'DD20260003'}}, []),
             ('承诺日期早于今天的订单有哪些？', {**plain, 'where': [{'field': '承诺日期', 'less_than': 'today'}], 'list': True}, []),
             ('承诺日期早于今天的订单有多少？', {**plain, 'where': [{'field': '承诺日期', 'less_than': 'today'}]}, []),
@@ -439,7 +472,7 @@ class QueryText(Sample):
                     self.assertEqual((status, again['answer']), (200, body['answer']), body['query_text'])
                     self.assertEqual(body['query'], query)   # the model's query is kept as it wrote it
             summed = self.ask(ann, model, '订单的金额合计？', item({**plain, 'measure': {'field': '金额', 'op': 'sum'}}))
-            for extra in ({'list': {}}, {'list': True}, {'lookup': {'订单号': 'DD20260003'}}):
+            for extra in ({'list': {}}, {'list': True}):
                 self.assertEqual(self.ask(ann, model, '订单的金额合计？', item({**plain, 'measure': {'field': '金额', 'op': 'sum'}, **extra}))['query_text'], summed['query_text'])
             self.assertTrue(self.ask(ann, model, '订单有哪些？', item({**plain, 'list': True}))['query_text'].startswith('SELECT LIST o\n'))
 

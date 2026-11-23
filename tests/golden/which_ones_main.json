@@ -2124,6 +2124,201 @@
   "who": "guest"
  },
  {
+  "ask": "What is the total amount of order O0001?",
+  "beside": [],
+  "digest": "05ef2ebab024faa1824215883507880c03dd3a08d0e7c0824f6632f68b5ef5ca",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "lookup": {
+     "order_id": "O0001"
+    },
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "query_limit",
+  "today": false,
+  "total": null,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "ask": "What is the total amount of valid order O0001?",
+  "beside": [],
+  "digest": "bf506f016433930e55559d072c2c64538d50b4ee31ff6095f805d9f4dcdd5c92",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "Valid orders",
+     "direction": "include",
+     "id": "Valid orders"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "lookup": {
+     "order_id": "O0001"
+    },
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "query_limit",
+  "today": false,
+  "total": null,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "ask": "What is the average amount of order O0001?",
+  "beside": [],
+  "digest": "ee1dab1e9fc1aa250f8818f2f89c9ede121f7e946f4157325ffe44d331ae97d8",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "lookup": {
+     "order_id": "O0001"
+    },
+    "measure": {
+     "field": "amount",
+     "op": "average"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "query_limit",
+  "today": false,
+  "total": null,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "ask": "各状态的订单金额 O0001",
+  "beside": [],
+  "digest": "7e7c23e41469da97c46a9acc1cdde4359b8d1f6d3a15c3cdd908b495fe620857",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "状态",
+     "direction": "mention",
+     "id": "orders.status_code=New"
+    },
+    {
+     "basis": "状态",
+     "direction": "mention",
+     "id": "orders.status_code=Paid"
+    },
+    {
+     "basis": "状态",
+     "direction": "mention",
+     "id": "orders.status_code=Shipped"
+    },
+    {
+     "basis": "状态",
+     "direction": "mention",
+     "id": "orders.status_code=Delivered"
+    },
+    {
+     "basis": "状态",
+     "direction": "mention",
+     "id": "orders.status_code=Cancelled"
+    },
+    {
+     "basis": "状态",
+     "direction": "mention",
+     "id": "orders.status_code=Refunded"
+    }
+   ],
+   "query": {
+    "group_by": [
+     "status_code"
+    ],
+    "list": {},
+    "lookup": {
+     "order_id": "O0001"
+    },
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "query_limit",
+  "today": false,
+  "total": null,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "ask": "What share of order O0001 is cancelled?",
+  "beside": [],
+  "digest": "8fb420f713e7e963ac748c3b8b2e1f586355e2a5181586c0b6c2c3553928ab35",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "lookup": {
+     "order_id": "O0001"
+    },
+    "measure": null,
+    "share": {
+     "equals": "Cancelled",
+     "field": "status_code"
+    },
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "query_limit",
+  "today": false,
+  "total": null,
+  "value": null,
+  "who": "guest"
+ },
+ {
   "beside": [
    "Valid orders"
   ],
@@ -4584,6 +4779,201 @@
       "less_than": "today"
      }
     ]
+   },
+   "reasoning": "test"
+  },
+  "status": "query_limit",
+  "today": false,
+  "total": null,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "What is the total amount of order O0001?",
+  "beside": [],
+  "digest": "ae13156a0e24918442743598227b1ea1c4778bd6769b722e8b1dc76558aa2288",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "lookup": {
+     "order_id": "O0001"
+    },
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "query_limit",
+  "today": false,
+  "total": null,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "What is the total amount of valid order O0001?",
+  "beside": [],
+  "digest": "314b0fa3e93b5826658ef0ffa61755295e46e49de3149a5d66a0405f9570e8d4",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "Valid orders",
+     "direction": "include",
+     "id": "Valid orders"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "lookup": {
+     "order_id": "O0001"
+    },
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "query_limit",
+  "today": false,
+  "total": null,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "What is the average amount of order O0001?",
+  "beside": [],
+  "digest": "6f9100c1266e31e80b05af13a6624795fcc91c44dc9ce88e16ac7dd63a23e48a",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "lookup": {
+     "order_id": "O0001"
+    },
+    "measure": {
+     "field": "amount",
+     "op": "average"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "query_limit",
+  "today": false,
+  "total": null,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "各状态的订单金额 O0001",
+  "beside": [],
+  "digest": "8b29cfe8eae0c35a9bd1ae6d310eef141cf556d398d2d832ecb30e16cb6879e7",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "状态",
+     "direction": "mention",
+     "id": "orders.status_code=New"
+    },
+    {
+     "basis": "状态",
+     "direction": "mention",
+     "id": "orders.status_code=Paid"
+    },
+    {
+     "basis": "状态",
+     "direction": "mention",
+     "id": "orders.status_code=Shipped"
+    },
+    {
+     "basis": "状态",
+     "direction": "mention",
+     "id": "orders.status_code=Delivered"
+    },
+    {
+     "basis": "状态",
+     "direction": "mention",
+     "id": "orders.status_code=Cancelled"
+    },
+    {
+     "basis": "状态",
+     "direction": "mention",
+     "id": "orders.status_code=Refunded"
+    }
+   ],
+   "query": {
+    "group_by": [
+     "status_code"
+    ],
+    "list": {},
+    "lookup": {
+     "order_id": "O0001"
+    },
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "query_limit",
+  "today": false,
+  "total": null,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "What share of order O0001 is cancelled?",
+  "beside": [],
+  "digest": "2509cb5823902d8ce3712fd9e5c6f732424c0444b108892b8f3ffb224f991483",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "lookup": {
+     "order_id": "O0001"
+    },
+    "measure": null,
+    "share": {
+     "equals": "Cancelled",
+     "field": "status_code"
+    },
+    "start": "order",
+    "via": [],
+    "where": []
    },
    "reasoning": "test"
   },

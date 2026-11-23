@@ -64,6 +64,11 @@ ASKS = [   # (question, the model's reply, the same as main with the switch on)
     ('How many orders before Today?', one.item({**P, 'where': BEFORE('Today ')}), True),
     ('How many orders before TODAY?', one.item({**P, 'where': BEFORE('TODAY')}), True),
     ('How many orders with an amount below today?', one.item({**P, 'where': BEFORE('today', 'amount')}), True),
+    ('What is the total amount of order O0001?', one.item({**S, 'lookup': {'order_id': 'O0001'}}), True),   # a lookup beside a number: refused as main refuses it
+    ('What is the total amount of valid order O0001?', one.item({**S, 'lookup': {'order_id': 'O0001'}}, V), True),
+    ('What is the average amount of order O0001?', one.item({**S, 'measure': {'field': 'amount', 'op': 'average'}, 'lookup': {'order_id': 'O0001'}}), True),
+    ('各状态的订单金额 O0001', one.item({**S, 'group_by': ['status_code'], 'lookup': {'order_id': 'O0001'}, 'list': {}}, BY_STATUS), True),
+    ('What share of order O0001 is cancelled?', one.item({**P, 'share': {'field': 'status_code', 'equals': 'Cancelled'}, 'lookup': {'order_id': 'O0001'}}), True),
 ]
 QUERIES = [   # (text, params, the same as main with the switch on)
     *((t, None, True) for t in ('SELECT count(o) FROM (o:Order)', "SELECT count(o) FROM (o:Order) WHERE o.status_code = 'Cancelled'", 'SELECT sum(o.amount) FROM (o:Order)',
