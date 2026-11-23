@@ -141,8 +141,8 @@ class Moved(Team):
         self.assertNotEqual(state, 'confirmed')
 
     def test_a_type_put_back_after_the_pipeline_behind_its_dataset_changed_waits(self):
-        """Through what it reads: the type reads the dataset 客户合计, which the pipeline 客户合计 writes. A change of the pipeline (here its description, which keeps the
-        pipeline confirmed at a new version under its own rule) moves nothing the type reads directly, and still the type waits for a person."""
+        """Through what it reads: the type reads the dataset 客户合计, which the pipeline 客户合计 writes. The pipeline is changed (a new description: a new definition
+        version) and confirmed again by Bob before anyone runs it: nothing the type reads directly moved, and still the type waits for a person."""
         from tests.test_pipeline_server import PIPELINES, TOTAL_TYPE
 
         def before(team):
@@ -161,7 +161,9 @@ class Moved(Team):
         def move(team):
             now = team['ann'].get(f'{PIPELINES}/{quote("客户合计")}')[1]
             self.assertEqual(team['ann'].post(f'{PIPELINES}/update', {'id': '客户合计', 'version': now['version'], 'description': 'ZZ管道'})[0], 200)
-            self.assertEqual(self.state('pipeline:客户合计'), 'confirmed')
+            now = team['bob'].get(f'{PIPELINES}/{quote("客户合计")}')[1]
+            status, body = team['bob'].post(f'{PIPELINES}/confirm', {'id': '客户合计', 'version': now['version'], 'seen': {'inputs': now['inputs_now']}})
+            self.assertEqual(status, 200, body)
         state = self.walk(edit, lambda team: self.assertEqual(put(team['cat'], '')[0], 200), move, before)
         self.assertNotEqual(state, 'confirmed')
 
