@@ -21,7 +21,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
-from ontology_poc_generator import lang
+from ontology_poc_generator import __version__, lang
 from ontology_poc_generator.ontology_card import SAYS
 from ontology_poc_generator.ontology_confirm import without_wrong
 
@@ -801,7 +801,7 @@ def handle(message: dict, service, only: tuple | None = None) -> dict | None:
         asked = (message.get('params') or {}).get('protocolVersion')
         return reply({'protocolVersion': asked if asked in PROTOCOL_VERSIONS else PROTOCOL_VERSIONS[0],
                       'capabilities': {'tools': {'listChanged': False}},
-                      'serverInfo': {'name': 'ontopoc', 'version': '0.2.0'},
+                      'serverInfo': {'name': 'ontopoc', 'version': __version__},
                       'instructions': INSTRUCTIONS if only is None else READ_INSTRUCTIONS})
     if method == 'ping':
         return reply({})
@@ -852,9 +852,9 @@ class Toolset:
         return None if self.scope == 'all' and self.asked != 'read' else READ_TOOLS
 
 
-def main():
+def main(argv=None):
     base = os.environ.get('ONTOPOC_URL', 'http://127.0.0.1:8767')
-    if sys.argv[1:] == ['--check']:
+    if (sys.argv[1:] if argv is None else argv) == ['--check']:
         check(base)
         return
     try:
