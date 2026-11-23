@@ -331,6 +331,29 @@ class WhichOnes(Sample):
             finally:
                 conn.close()
 
+    def test_a_stored_today_that_was_text_is_written_back_as_text_and_only_a_today_that_ran_as_the_word(self):
+        plain = {'start': 'order', 'where': [], 'via': [], 'group_by': None, 'share': None, 'measure': None}
+        model = Scripted('not json')
+        with self.service(gateway=model) as (base, out), mock.patch.object(workspace_questions, '_today', lambda: ('2026-06-15', 'UTC+08:00')):
+            ann = self.setup(base, view=False)['ann']
+            refused = self.ask(ann, model, '今天之前的订单有多少？', {'text': "SELECT count(o) FROM (o:订单) WHERE o.承诺日期 < 'today'"}, writes='query')
+            self.assertEqual(refused['status'], 'query_limit', refused)
+            stored = refused['query'] if isinstance(refused.get('query'), dict) else {**plain, 'where': [{'field': '承诺日期', 'less_than': 'today'}]}
+            for query in (stored, {**plain, 'where': [{'field': '承诺日期', 'less_than': 'today'}], 'list': {}}):
+                status, body = ann.post('/api/workspace/query/text', {'query': query})
+                self.assertEqual(status, 200, body)
+                self.assertIn("< 'today'", body['text'])   # text it was, text it stays: run, it is refused as it was
+                self.assertEqual(self.query(ann, body['text'])[0], 400)
+            ran = self.ask(ann, model, '今天之前的订单有多少？', item({**plain, 'where': [{'field': '承诺日期', 'less_than': 'today'}]}))
+            self.assertIn('< today', ran['query_text'])   # it ran with today read as the date: the word
+            written = self.ask(ann, model, '今天之前的订单有多少？', {'text': 'SELECT count(o) FROM (o:订单) WHERE o.承诺日期 < today'}, writes='query')
+            self.assertIn('< today', written['query_text'])
+            status, body = self.query(ann, 'SELECT count(o) FROM (o:订单) WHERE o.承诺日期 < today')
+            self.assertIn('< today', body['text'])
+            other = self.ask(ann, model, '金额小于今天的订单？', item({**plain, 'where': [{'field': '金额', 'less_than': 'today'}]}))
+            self.assertEqual(other['status'], 'query_limit', other)   # not a date: not read as today, and not written as the word anywhere
+            self.assertNotIn('< today', json.dumps(other, ensure_ascii=False))
+
     def test_a_saved_list_keeps_no_rows_and_is_worked_out_again_for_the_person_reopening_it(self):
         model = Scripted(item(LIST_VIEW, VIEW_USED))
         with self.service(gateway=model) as (base, out):
