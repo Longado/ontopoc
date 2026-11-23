@@ -5,7 +5,8 @@ code with the check switched off.
 The walk: orders and their lines; a pipeline joins the lines to the orders' customer (a text the join repeats, no number), types on the uploaded orders and on
 the pipeline's lines, a relation, a derived statistic and a derived function; then sums, averages, group totals, counts and refusals through Q&A, OntoPoc Query
 (in both languages), the explorer, a board, checked numbers and a needed-question run, and every row the file keeps. A second walk is the repeated-amount world
-of tests/test_fan_sum.py: what it says about the columns there that carry no mark (a line's quantity, the count of lines) is main's answer too. Times are
+of tests/test_fan_sum.py: what it says about the columns there that carry no mark (a line's quantity, the count of lines, a median of the quantity) is main's
+answer too. A third is a join that is one-to-one on today's data (one payment per order): nothing is copied, so its answers, charts and stored rows are main's. Times are
 blanked: they are the only thing that may differ between two walks.
 
 To record it again from main (only when an intended change to these routes lands), from the repository root with main's source at <main>/src:
@@ -38,6 +39,12 @@ QTY_SUM = {'type': 'order', 'english_name': 'qty_sum', 'name': '件数合计', '
 DOUBLE = {'type': 'line', 'english_name': 'double_qty', 'name': '双倍件数', 'kind': 'function', 'expression': 'qty * 2'}
 SKIPPED = ('user', 'session', 'api_token', 'sign_in_limit', 'setting', 'llm_cache', 'demo_guest', 'sqlite_sequence')   # who signed in and their secrets: random each walk
 ENGLISH = {'headers': {'Accept-Language': 'en'}}
+PAYMENTS = [{'payment_id': 'Y1', 'order_id': 'O1', 'paid': '100'}, {'payment_id': 'Y2', 'order_id': 'O2', 'paid': '40'}, {'payment_id': 'Y3', 'order_id': 'O3', 'paid': '30'}]
+PAID_SPEC = {'steps': [{'id': 'o', 'type': 'input', 'dataset': 'orders'}, {'id': 'y', 'type': 'input', 'dataset': 'payments'},
+                       {'id': 'j', 'type': 'join', 'left': 'o', 'right': 'y', 'how': 'left', 'on': [{'left': 'order_id', 'right': 'order_id'}]},
+                       {'id': 'out', 'type': 'output', 'from': 'j', 'name': 'paid_orders', 'key': {'columns': ['order_id']}}]}
+PAID = {'english_name': 'paid_order', 'name': '付款订单', 'dataset': 'paid_orders', 'key': ['order_id'],
+        'properties': [{'column': 'order_id'}, {'column': 'customer'}, {'column': 'amount'}, {'column': 'paid'}]}
 
 
 def grouped(start, field, by, op='sum'):
@@ -160,7 +167,25 @@ class UnmarkedTests(FanSumTests):
                 'qty_by_customer': self.ask(model, ann, grouped('order_line', 'qty', 'customer', 'average'), '每个客户平均件数？'),
                 'query': ann.post('/api/workspace/query', {'text': 'SELECT l.customer, sum(l.qty) AS 合计 FROM (l:订单行) GROUP BY l.customer'}),
                 'chart': self.chart(ann, 'order_line', {'kind': 'number', 'measure': 'qty', 'fn': 'sum'}),
-                'count_chart': self.chart(ann, 'order_line', {'kind': 'bar', 'group': 'customer', 'fn': 'count'})}
+                'count_chart': self.chart(ann, 'order_line', {'kind': 'bar', 'group': 'customer', 'fn': 'count'}),
+                'median_qty': self.chart(ann, 'order_line', {'kind': 'number', 'measure': 'qty', 'fn': 'median'}),
+                'qty_table': self.chart(ann, 'order_line', {'kind': 'table', 'measure': 'qty'})}
+        # a join that is one-to-one on today's data (one payment per order): nothing is copied, so every figure of it is main's, and so is every row it leaves
+        model = AskModel(asks('paid_order', 'paid'))
+        with self.service(gateway=model) as (base, out):
+            team = self.people(base, 'ann', 'bob')
+            ann = team['ann']
+            seen['one_to_one_upload'] = ann.post('/api/workspace/datasets/upload', {'files': [table_csv('orders.csv', ORDERS), table_csv('payments.csv', PAYMENTS)]})
+            seen['one_to_one_run'] = self.pipeline(team, '订单付款', PAID_SPEC)
+            self.typed(team, PAID)
+            seen['one_to_one'] = {
+                'sum_paid': self.ask(model, ann, asks('paid_order', 'paid'), '付款合计是多少？'),
+                'avg_amount': self.ask(model, ann, asks('paid_order', 'amount', 'average'), '订单金额平均是多少？'),
+                'query': ann.post('/api/workspace/query', {'text': 'SELECT p.customer, sum(p.paid) AS 合计 FROM (p:付款订单) GROUP BY p.customer'}),
+                'median': self.chart(ann, 'paid_order', {'kind': 'number', 'measure': 'amount', 'fn': 'median'}),
+                'histogram': self.chart(ann, 'paid_order', {'kind': 'histogram', 'measure': 'paid'}),
+                'page': ann.get('/api/workspace/datasets/paid_orders')}
+            seen['one_to_one_stored'] = stored(out)
         return blank(json.loads(json.dumps(seen, ensure_ascii=False)))
 
     def test_without_the_mark_every_answer_refusal_and_stored_row_is_main_s(self):
@@ -177,6 +202,8 @@ class UnmarkedTests(FanSumTests):
         self.assertEqual(walked['charts'][0][1]['value'], 180)
         self.assertEqual(next(iter(walked['needed']['questions']))['result']['outcome'], 'passes')
         self.assertEqual(walked['stored']['column_fan'], [])
+        self.assertEqual(walked['one_to_one']['sum_paid'][1]['answer']['measure']['value'], 170)
+        self.assertEqual(walked['one_to_one_stored']['column_fan'], [])
 
 
 if __name__ == '__main__':

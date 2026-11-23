@@ -2052,6 +2052,39 @@
     }
    }
   ],
+  "median_qty": [
+   200,
+   {
+    "chart": {
+     "bins": 10,
+     "fn": "median",
+     "group": null,
+     "kind": "number",
+     "measure": "qty",
+     "order": null,
+     "top": null
+    },
+    "fn": "median",
+    "group": null,
+    "measure": "qty",
+    "query": {
+     "filters": [],
+     "pivot": null,
+     "rows": null,
+     "type": "order_line",
+     "view": null
+    },
+    "rows": 4,
+    "rows_limited": false,
+    "standing": {
+     "confirmed": true,
+     "lines": [],
+     "reasons": [],
+     "why": null
+    },
+    "value": 2.5
+   }
+  ],
   "qty_by_customer": [
    200,
    {
@@ -2166,6 +2199,92 @@
      {
       "id": "order_line",
       "name": "订单行"
+     }
+    ]
+   }
+  ],
+  "qty_table": [
+   200,
+   {
+    "chart": {
+     "bins": 10,
+     "fn": "count",
+     "group": null,
+     "kind": "table",
+     "measure": "qty",
+     "order": null,
+     "top": null
+    },
+    "columns": [
+     {
+      "fn": "count",
+      "name": "有值"
+     },
+     {
+      "fn": "sum",
+      "name": "求和"
+     },
+     {
+      "fn": "avg",
+      "name": "平均"
+     },
+     {
+      "fn": "min",
+      "name": "最小"
+     },
+     {
+      "fn": "p25",
+      "name": "P25"
+     },
+     {
+      "fn": "median",
+      "name": "中位数"
+     },
+     {
+      "fn": "p75",
+      "name": "P75"
+     },
+     {
+      "fn": "max",
+      "name": "最大"
+     }
+    ],
+    "fn": "count",
+    "group": null,
+    "groups_hidden": 0,
+    "hidden_groups": [],
+    "measure": "qty",
+    "query": {
+     "filters": [],
+     "pivot": null,
+     "rows": null,
+     "type": "order_line",
+     "view": null
+    },
+    "rows": 4,
+    "rows_hidden": 0,
+    "rows_limited": false,
+    "standing": {
+     "confirmed": true,
+     "lines": [],
+     "reasons": [],
+     "why": null
+    },
+    "table": [
+     {
+      "key": null,
+      "label": "全部",
+      "rows": 4,
+      "values": [
+       4,
+       11,
+       2.75,
+       1.0,
+       1.75,
+       2.5,
+       3.5,
+       5.0
+      ]
      }
     ]
    }
@@ -2494,6 +2613,2419 @@
    "version": 1,
    "written_at": "<time>",
    "written_by": "Ann"
+  }
+ ],
+ "one_to_one": {
+  "avg_amount": [
+   200,
+   {
+    "answer": {
+     "measure": {
+      "counted": 3,
+      "field": "amount",
+      "op": "average",
+      "skipped": 0,
+      "value": 60
+     },
+     "total": 3
+    },
+    "asked_at": "<time>",
+    "data_as_of": [
+     {
+      "dataset": "paid_orders",
+      "imported_at": "<time>",
+      "version": 1
+     }
+    ],
+    "datasets": {
+     "paid_orders": 1
+    },
+    "definitions": [
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "objtype:paid_order",
+      "kind": "type",
+      "name": "付款订单",
+      "state": "confirmed",
+      "version": 2
+     }
+    ],
+    "id": 2,
+    "model": "test-model",
+    "path": "付款订单，算“amount”的平均",
+    "query": {
+     "group_by": null,
+     "measure": {
+      "field": "amount",
+      "op": "average"
+     },
+     "share": null,
+     "start": "paid_order",
+     "via": [],
+     "where": []
+    },
+    "query_text": "SELECT avg(p.amount) AS 平均\nFROM (p:付款订单)",
+    "question": "订单金额平均是多少？",
+    "reasoning": "把金额加起来",
+    "status": "answered",
+    "steps": [
+     {
+      "name": "理解问题",
+      "text": "把金额加起来"
+     },
+     {
+      "name": "找对象类型",
+      "text": "付款订单"
+     },
+     {
+      "name": "找关系",
+      "text": "这道题用不到关系"
+     },
+     {
+      "name": "改写成查询",
+      "query": {
+       "group_by": null,
+       "measure": {
+        "field": "amount",
+        "op": "average"
+       },
+       "share": null,
+       "start": "paid_order",
+       "via": [],
+       "where": []
+      },
+      "text": "付款订单，算“amount”的平均"
+     },
+     {
+      "failed": false,
+      "name": "结果",
+      "text": "算出了结果"
+     }
+    ],
+    "types": [
+     {
+      "id": "paid_order",
+      "name": "付款订单"
+     }
+    ]
+   }
+  ],
+  "histogram": [
+   200,
+   {
+    "bins": [
+     {
+      "count": 1,
+      "from": 30.0,
+      "to": 37.0
+     },
+     {
+      "count": 1,
+      "from": 37.0,
+      "to": 44.0
+     },
+     {
+      "count": 0,
+      "from": 44.0,
+      "to": 51.0
+     },
+     {
+      "count": 0,
+      "from": 51.0,
+      "to": 58.0
+     },
+     {
+      "count": 0,
+      "from": 58.0,
+      "to": 65.0
+     },
+     {
+      "count": 0,
+      "from": 65.0,
+      "to": 72.0
+     },
+     {
+      "count": 0,
+      "from": 72.0,
+      "to": 79.0
+     },
+     {
+      "count": 0,
+      "from": 79.0,
+      "to": 86.0
+     },
+     {
+      "count": 0,
+      "from": 86.0,
+      "to": 93.0
+     },
+     {
+      "count": 1,
+      "from": 93.0,
+      "to": 100.0
+     }
+    ],
+    "chart": {
+     "bins": 10,
+     "fn": "count",
+     "group": null,
+     "kind": "histogram",
+     "measure": "paid",
+     "order": null,
+     "top": null
+    },
+    "fn": "count",
+    "group": null,
+    "measure": "paid",
+    "missing": 0,
+    "query": {
+     "filters": [],
+     "pivot": null,
+     "rows": null,
+     "type": "paid_order",
+     "view": null
+    },
+    "rows": 3,
+    "rows_limited": false,
+    "standing": {
+     "confirmed": true,
+     "lines": [],
+     "reasons": [],
+     "why": null
+    },
+    "values": 3
+   }
+  ],
+  "median": [
+   200,
+   {
+    "chart": {
+     "bins": 10,
+     "fn": "median",
+     "group": null,
+     "kind": "number",
+     "measure": "amount",
+     "order": null,
+     "top": null
+    },
+    "fn": "median",
+    "group": null,
+    "measure": "amount",
+    "query": {
+     "filters": [],
+     "pivot": null,
+     "rows": null,
+     "type": "paid_order",
+     "view": null
+    },
+    "rows": 3,
+    "rows_limited": false,
+    "standing": {
+     "confirmed": true,
+     "lines": [],
+     "reasons": [],
+     "why": null
+    },
+    "value": 50.0
+   }
+  ],
+  "page": [
+   200,
+   {
+    "columns": [
+     {
+      "distinct": 3,
+      "fan": null,
+      "fill_rate": 1.0,
+      "key_check": {
+       "at": "<time>",
+       "columns": [
+        "order_id"
+       ],
+       "id": 2,
+       "null_key_rows": 0,
+       "rows_checked": 3,
+       "samples": [],
+       "status": "passed",
+       "type": "key_unique",
+       "violations": 0
+      },
+      "missing": 0,
+      "name": "order_id",
+      "near_key": null,
+      "possible_key": true,
+      "type": "text",
+      "values": {
+       "O1": 1,
+       "O2": 1,
+       "O3": 1
+      }
+     },
+     {
+      "distinct": 2,
+      "fan": null,
+      "fill_rate": 1.0,
+      "key_check": null,
+      "missing": 0,
+      "name": "customer",
+      "near_key": null,
+      "possible_key": false,
+      "type": "text",
+      "values": {
+       "C1": 2,
+       "C2": 1
+      }
+     },
+     {
+      "distinct": 3,
+      "fan": null,
+      "fill_rate": 1.0,
+      "key_check": null,
+      "missing": 0,
+      "name": "amount",
+      "near_key": null,
+      "possible_key": true,
+      "type": "integer",
+      "values": {
+       "100": 1,
+       "30": 1,
+       "50": 1
+      }
+     },
+     {
+      "distinct": 3,
+      "fan": null,
+      "fill_rate": 1.0,
+      "key_check": null,
+      "missing": 0,
+      "name": "payment_id",
+      "near_key": null,
+      "possible_key": true,
+      "type": "text",
+      "values": {
+       "Y1": 1,
+       "Y2": 1,
+       "Y3": 1
+      }
+     },
+     {
+      "distinct": 3,
+      "fan": null,
+      "fill_rate": 1.0,
+      "key_check": null,
+      "missing": 0,
+      "name": "paid",
+      "near_key": null,
+      "possible_key": true,
+      "type": "integer",
+      "values": {
+       "100": 1,
+       "30": 1,
+       "40": 1
+      }
+     }
+    ],
+    "current_version": 1,
+    "dropped": {},
+    "key_checks": [
+     {
+      "at": "<time>",
+      "columns": [
+       "order_id"
+      ],
+      "id": 2,
+      "null_key_rows": 0,
+      "rows_checked": 3,
+      "samples": [],
+      "status": "passed",
+      "type": "key_unique",
+      "violations": 0
+     }
+    ],
+    "name": "paid_orders",
+    "no_change_updates": [],
+    "origin": "pipeline:订单付款@run1",
+    "preview": {
+     "columns": [
+      "order_id",
+      "customer",
+      "amount",
+      "payment_id",
+      "paid"
+     ],
+     "limit": 50,
+     "page": 1,
+     "pages": 1,
+     "rows": [
+      [
+       "O1",
+       "C1",
+       "100",
+       "Y1",
+       "100"
+      ],
+      [
+       "O2",
+       "C1",
+       "50",
+       "Y2",
+       "40"
+      ],
+      [
+       "O3",
+       "C2",
+       "30",
+       "Y3",
+       "30"
+      ]
+     ],
+     "total": 3
+    },
+    "readers": [
+     {
+      "kind": "对象类型",
+      "name": "付款订单"
+     }
+    ],
+    "rows": 3,
+    "updated_at": "<time>",
+    "version": 1,
+    "version_at": "<time>",
+    "versions": [
+     {
+      "action": null,
+      "added": 3,
+      "added_keys": [],
+      "at": "<time>",
+      "blank_kept": null,
+      "changed": 0,
+      "changed_keys": [],
+      "current": true,
+      "file_rows": null,
+      "key_columns": null,
+      "mode": "new",
+      "origin": "pipeline:订单付款@run1",
+      "pipeline": {
+       "definition_version": 1,
+       "id": "订单付款",
+       "inputs": {
+        "orders": 1,
+        "payments": 1
+       },
+       "run": 1
+      },
+      "replaced_rows": null,
+      "rows": 3,
+      "same_as": null,
+      "source": null,
+      "unchanged": 0,
+      "version": 1,
+      "who": "Ann"
+     }
+    ],
+    "who": "Ann"
+   }
+  ],
+  "query": [
+   200,
+   {
+    "answer": {
+     "groups": [
+      [
+       "C1",
+       140,
+       2
+      ],
+      [
+       "C2",
+       30,
+       1
+      ]
+     ],
+     "measure": {
+      "counted": 3,
+      "field": "paid",
+      "op": "sum",
+      "skipped": 0,
+      "value": 170
+     },
+     "total_groups": 2,
+     "without_value": 0
+    },
+    "data_as_of": [
+     {
+      "dataset": "paid_orders",
+      "imported_at": "<time>",
+      "version": 1
+     }
+    ],
+    "datasets": {
+     "paid_orders": 1
+    },
+    "definitions": [
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "objtype:paid_order",
+      "kind": "type",
+      "name": "付款订单",
+      "state": "confirmed",
+      "version": 2
+     }
+    ],
+    "definitions_used": [],
+    "path": "付款订单，按“customer”分组，算每组“paid”的合计",
+    "query": {
+     "group_by": [
+      {
+       "field": "customer",
+       "via": []
+      }
+     ],
+     "measure": {
+      "field": "paid",
+      "op": "sum"
+     },
+     "order": null,
+     "share": null,
+     "start": "paid_order",
+     "top": null,
+     "via": [],
+     "where": []
+    },
+    "status": "answered",
+    "steps": [
+     {
+      "name": "理解问题",
+      "text": "模型没有写理解"
+     },
+     {
+      "name": "找对象类型",
+      "text": "付款订单"
+     },
+     {
+      "name": "找关系",
+      "text": "这道题用不到关系"
+     },
+     {
+      "name": "改写成查询",
+      "query": {
+       "group_by": [
+        {
+         "field": "customer",
+         "via": []
+        }
+       ],
+       "measure": {
+        "field": "paid",
+        "op": "sum"
+       },
+       "order": null,
+       "share": null,
+       "start": "paid_order",
+       "top": null,
+       "via": [],
+       "where": []
+      },
+      "text": "付款订单，按“customer”分组，算每组“paid”的合计"
+     },
+     {
+      "failed": false,
+      "name": "结果",
+      "text": "算出了结果"
+     }
+    ],
+    "text": "SELECT p.customer, sum(p.paid) AS 合计\nFROM (p:付款订单)\nGROUP BY p.customer",
+    "types": [
+     {
+      "id": "paid_order",
+      "name": "付款订单"
+     }
+    ]
+   }
+  ],
+  "sum_paid": [
+   200,
+   {
+    "answer": {
+     "measure": {
+      "counted": 3,
+      "field": "paid",
+      "op": "sum",
+      "skipped": 0,
+      "value": 170
+     },
+     "total": 3
+    },
+    "asked_at": "<time>",
+    "data_as_of": [
+     {
+      "dataset": "paid_orders",
+      "imported_at": "<time>",
+      "version": 1
+     }
+    ],
+    "datasets": {
+     "paid_orders": 1
+    },
+    "definitions": [
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "objtype:paid_order",
+      "kind": "type",
+      "name": "付款订单",
+      "state": "confirmed",
+      "version": 2
+     }
+    ],
+    "id": 1,
+    "model": "test-model",
+    "path": "付款订单，把“paid”加起来",
+    "query": {
+     "group_by": null,
+     "measure": {
+      "field": "paid",
+      "op": "sum"
+     },
+     "share": null,
+     "start": "paid_order",
+     "via": [],
+     "where": []
+    },
+    "query_text": "SELECT sum(p.paid) AS 合计\nFROM (p:付款订单)",
+    "question": "付款合计是多少？",
+    "reasoning": "把金额加起来",
+    "status": "answered",
+    "steps": [
+     {
+      "name": "理解问题",
+      "text": "把金额加起来"
+     },
+     {
+      "name": "找对象类型",
+      "text": "付款订单"
+     },
+     {
+      "name": "找关系",
+      "text": "这道题用不到关系"
+     },
+     {
+      "name": "改写成查询",
+      "query": {
+       "group_by": null,
+       "measure": {
+        "field": "paid",
+        "op": "sum"
+       },
+       "share": null,
+       "start": "paid_order",
+       "via": [],
+       "where": []
+      },
+      "text": "付款订单，把“paid”加起来"
+     },
+     {
+      "failed": false,
+      "name": "结果",
+      "text": "算出了结果"
+     }
+    ],
+    "types": [
+     {
+      "id": "paid_order",
+      "name": "付款订单"
+     }
+    ]
+   }
+  ]
+ },
+ "one_to_one_run": {
+  "definition_version": 1,
+  "duration_ms": "<ms>",
+  "error": null,
+  "failures": {},
+  "finished_at": "<time>",
+  "id": 1,
+  "input_versions": {
+   "orders": 1,
+   "payments": 1
+  },
+  "nodes": [
+   {
+    "columns": [
+     "order_id",
+     "customer",
+     "amount"
+    ],
+    "id": "o",
+    "reads": "表 orders",
+    "rows_in": [
+     3
+    ],
+    "rows_out": 3,
+    "type": "input"
+   },
+   {
+    "columns": [
+     "payment_id",
+     "order_id",
+     "paid"
+    ],
+    "id": "y",
+    "reads": "表 payments",
+    "rows_in": [
+     3
+    ],
+    "rows_out": 3,
+    "type": "input"
+   },
+   {
+    "columns": [
+     "order_id",
+     "customer",
+     "amount",
+     "payment_id",
+     "paid"
+    ],
+    "id": "j",
+    "join": {
+     "extra_rows": 0,
+     "fan_out": null,
+     "how": "left",
+     "left_blank": 0,
+     "left_rows": 3,
+     "left_unmatched": 0,
+     "matched_left": 3,
+     "near_matches": [],
+     "null_keys": "no_match",
+     "on": [
+      {
+       "left": "order_id",
+       "right": "order_id"
+      }
+     ],
+     "right_blank": 0,
+     "right_fan_out": null
+    },
+    "rows_in": [
+     3,
+     3
+    ],
+    "rows_out": 3,
+    "type": "join"
+   },
+   {
+    "columns": [
+     "order_id",
+     "customer",
+     "amount",
+     "payment_id",
+     "paid"
+    ],
+    "id": "out",
+    "output": {
+     "columns": [
+      {
+       "name": "order_id",
+       "origin": "orders.order_id",
+       "type": "text"
+      },
+      {
+       "name": "customer",
+       "origin": "orders.customer",
+       "type": "text"
+      },
+      {
+       "name": "amount",
+       "origin": "orders.amount",
+       "type": "integer"
+      },
+      {
+       "name": "payment_id",
+       "origin": "payments.payment_id",
+       "type": "text"
+      },
+      {
+       "name": "paid",
+       "origin": "payments.paid",
+       "type": "integer"
+      }
+     ],
+     "dropped": [],
+     "duplicate_keys": null,
+     "empty_keys": 0,
+     "key": [
+      "order_id"
+     ]
+    },
+    "rows_in": [
+     3
+    ],
+    "rows_out": 3,
+    "type": "output"
+   }
+  ],
+  "outputs": [
+   {
+    "created_version": true,
+    "dataset": "paid_orders",
+    "mode": "new",
+    "recheck_error": null,
+    "rows": 3,
+    "version": 1
+   }
+  ],
+  "started_at": "<time>",
+  "status": "success",
+  "who": "Ann"
+ },
+ "one_to_one_stored": {
+  "action_notify": [],
+  "action_record": [],
+  "ask_budget": [
+   {
+    "at": "<clock>",
+    "who": "user:2"
+   },
+   {
+    "at": "<clock>",
+    "who": "user:2"
+   }
+  ],
+  "assistant_turn": [],
+  "check_result": [
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 3,
+    "element_id": "key:paid_orders(order_id)",
+    "id": 1,
+    "null_key_rows": 0,
+    "query": "SELECT \"order_id\", COUNT(*) AS n FROM \"ds_3\" WHERE (\"order_id\" IS NOT NULL AND \"order_id\" <> '') GROUP BY \"order_id\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"order_id\"",
+    "rows_checked": 3,
+    "samples_json": [],
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 3,
+    "element_id": "key:paid_orders(order_id)",
+    "id": 2,
+    "null_key_rows": 0,
+    "query": "SELECT \"order_id\", COUNT(*) AS n FROM \"ds_3\" WHERE (\"order_id\" IS NOT NULL AND \"order_id\" <> '') GROUP BY \"order_id\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"order_id\"",
+    "rows_checked": 3,
+    "samples_json": [],
+    "status": "passed",
+    "violations": 0
+   }
+  ],
+  "checked_number": [],
+  "column": [
+   {
+    "dataset_id": 1,
+    "distinct_count": 3,
+    "inferred_type": "text",
+    "missing_count": 0,
+    "name": "order_id",
+    "position": 0,
+    "value_counts_json": {
+     "O1": 1,
+     "O2": 1,
+     "O3": 1
+    }
+   },
+   {
+    "dataset_id": 1,
+    "distinct_count": 2,
+    "inferred_type": "text",
+    "missing_count": 0,
+    "name": "customer",
+    "position": 1,
+    "value_counts_json": {
+     "C1": 2,
+     "C2": 1
+    }
+   },
+   {
+    "dataset_id": 1,
+    "distinct_count": 3,
+    "inferred_type": "integer",
+    "missing_count": 0,
+    "name": "amount",
+    "position": 2,
+    "value_counts_json": {
+     "100": 1,
+     "30": 1,
+     "50": 1
+    }
+   },
+   {
+    "dataset_id": 2,
+    "distinct_count": 3,
+    "inferred_type": "text",
+    "missing_count": 0,
+    "name": "payment_id",
+    "position": 0,
+    "value_counts_json": {
+     "Y1": 1,
+     "Y2": 1,
+     "Y3": 1
+    }
+   },
+   {
+    "dataset_id": 2,
+    "distinct_count": 3,
+    "inferred_type": "text",
+    "missing_count": 0,
+    "name": "order_id",
+    "position": 1,
+    "value_counts_json": {
+     "O1": 1,
+     "O2": 1,
+     "O3": 1
+    }
+   },
+   {
+    "dataset_id": 2,
+    "distinct_count": 3,
+    "inferred_type": "integer",
+    "missing_count": 0,
+    "name": "paid",
+    "position": 2,
+    "value_counts_json": {
+     "100": 1,
+     "30": 1,
+     "40": 1
+    }
+   },
+   {
+    "dataset_id": 3,
+    "distinct_count": 3,
+    "inferred_type": "text",
+    "missing_count": 0,
+    "name": "order_id",
+    "position": 0,
+    "value_counts_json": {
+     "O1": 1,
+     "O2": 1,
+     "O3": 1
+    }
+   },
+   {
+    "dataset_id": 3,
+    "distinct_count": 2,
+    "inferred_type": "text",
+    "missing_count": 0,
+    "name": "customer",
+    "position": 1,
+    "value_counts_json": {
+     "C1": 2,
+     "C2": 1
+    }
+   },
+   {
+    "dataset_id": 3,
+    "distinct_count": 3,
+    "inferred_type": "integer",
+    "missing_count": 0,
+    "name": "amount",
+    "position": 2,
+    "value_counts_json": {
+     "100": 1,
+     "30": 1,
+     "50": 1
+    }
+   },
+   {
+    "dataset_id": 3,
+    "distinct_count": 3,
+    "inferred_type": "text",
+    "missing_count": 0,
+    "name": "payment_id",
+    "position": 3,
+    "value_counts_json": {
+     "Y1": 1,
+     "Y2": 1,
+     "Y3": 1
+    }
+   },
+   {
+    "dataset_id": 3,
+    "distinct_count": 3,
+    "inferred_type": "integer",
+    "missing_count": 0,
+    "name": "paid",
+    "position": 4,
+    "value_counts_json": {
+     "100": 1,
+     "30": 1,
+     "40": 1
+    }
+   }
+  ],
+  "column_access": [],
+  "column_fan": [],
+  "column_mark": [],
+  "confirmation": [
+   {
+    "confirmed_at": "<time>",
+    "confirmed_by": "Bob",
+    "confirmed_by_user_id": 3,
+    "content_json": {
+     "definition_version": 1,
+     "description": "订单和订单行",
+     "name": "订单付款",
+     "spec": {
+      "steps": [
+       {
+        "dataset": "orders",
+        "id": "o",
+        "type": "input"
+       },
+       {
+        "dataset": "payments",
+        "id": "y",
+        "type": "input"
+       },
+       {
+        "how": "left",
+        "id": "j",
+        "left": "o",
+        "on": [
+         {
+          "left": "order_id",
+          "right": "order_id"
+         }
+        ],
+        "right": "y",
+        "type": "join"
+       },
+       {
+        "from": "j",
+        "id": "out",
+        "key": {
+         "columns": [
+          "order_id"
+         ]
+        },
+        "name": "paid_orders",
+        "type": "output"
+       }
+      ]
+     }
+    },
+    "dataset_versions_json": {
+     "orders": 1,
+     "payments": 1
+    },
+    "element_id": "pipeline:订单付款",
+    "evidence_ref": "pipeline:订单付款@d1",
+    "id": 1,
+    "proposed_by": "Ann",
+    "self_confirmed": 0,
+    "snapshot_json": {
+     "inputs": {
+      "orders": 1,
+      "payments": 1
+     },
+     "rows": {
+      "j": 3,
+      "o": 3,
+      "out": 3,
+      "y": 3
+     },
+     "stats": {
+      "j": [
+       {
+        "distinct": 3,
+        "length": [
+         2,
+         2
+        ],
+        "max": "O3",
+        "min": "O1",
+        "name": "order_id",
+        "nulls": 0,
+        "top": [
+         {
+          "rows": 1,
+          "value": "O1"
+         },
+         {
+          "rows": 1,
+          "value": "O2"
+         },
+         {
+          "rows": 1,
+          "value": "O3"
+         }
+        ],
+        "type": "text"
+       },
+       {
+        "distinct": 2,
+        "length": [
+         2,
+         2
+        ],
+        "max": "C2",
+        "min": "C1",
+        "name": "customer",
+        "nulls": 0,
+        "top": [
+         {
+          "rows": 2,
+          "value": "C1"
+         },
+         {
+          "rows": 1,
+          "value": "C2"
+         }
+        ],
+        "type": "text"
+       },
+       {
+        "distinct": 3,
+        "max": 100,
+        "mean": 60.0,
+        "min": 30,
+        "name": "amount",
+        "nulls": 0,
+        "type": "integer"
+       },
+       {
+        "distinct": 3,
+        "length": [
+         2,
+         2
+        ],
+        "max": "Y3",
+        "min": "Y1",
+        "name": "payment_id",
+        "nulls": 0,
+        "top": [
+         {
+          "rows": 1,
+          "value": "Y1"
+         },
+         {
+          "rows": 1,
+          "value": "Y2"
+         },
+         {
+          "rows": 1,
+          "value": "Y3"
+         }
+        ],
+        "type": "text"
+       },
+       {
+        "distinct": 3,
+        "max": 100,
+        "mean": 56.6667,
+        "min": 30,
+        "name": "paid",
+        "nulls": 0,
+        "type": "integer"
+       }
+      ],
+      "o": [
+       {
+        "distinct": 3,
+        "length": [
+         2,
+         2
+        ],
+        "max": "O3",
+        "min": "O1",
+        "name": "order_id",
+        "nulls": 0,
+        "top": [
+         {
+          "rows": 1,
+          "value": "O1"
+         },
+         {
+          "rows": 1,
+          "value": "O2"
+         },
+         {
+          "rows": 1,
+          "value": "O3"
+         }
+        ],
+        "type": "text"
+       },
+       {
+        "distinct": 2,
+        "length": [
+         2,
+         2
+        ],
+        "max": "C2",
+        "min": "C1",
+        "name": "customer",
+        "nulls": 0,
+        "top": [
+         {
+          "rows": 2,
+          "value": "C1"
+         },
+         {
+          "rows": 1,
+          "value": "C2"
+         }
+        ],
+        "type": "text"
+       },
+       {
+        "distinct": 3,
+        "max": 100,
+        "mean": 60.0,
+        "min": 30,
+        "name": "amount",
+        "nulls": 0,
+        "type": "integer"
+       }
+      ],
+      "out": [
+       {
+        "distinct": 3,
+        "length": [
+         2,
+         2
+        ],
+        "max": "O3",
+        "min": "O1",
+        "name": "order_id",
+        "nulls": 0,
+        "top": [
+         {
+          "rows": 1,
+          "value": "O1"
+         },
+         {
+          "rows": 1,
+          "value": "O2"
+         },
+         {
+          "rows": 1,
+          "value": "O3"
+         }
+        ],
+        "type": "text"
+       },
+       {
+        "distinct": 2,
+        "length": [
+         2,
+         2
+        ],
+        "max": "C2",
+        "min": "C1",
+        "name": "customer",
+        "nulls": 0,
+        "top": [
+         {
+          "rows": 2,
+          "value": "C1"
+         },
+         {
+          "rows": 1,
+          "value": "C2"
+         }
+        ],
+        "type": "text"
+       },
+       {
+        "distinct": 3,
+        "max": 100,
+        "mean": 60.0,
+        "min": 30,
+        "name": "amount",
+        "nulls": 0,
+        "type": "integer"
+       },
+       {
+        "distinct": 3,
+        "length": [
+         2,
+         2
+        ],
+        "max": "Y3",
+        "min": "Y1",
+        "name": "payment_id",
+        "nulls": 0,
+        "top": [
+         {
+          "rows": 1,
+          "value": "Y1"
+         },
+         {
+          "rows": 1,
+          "value": "Y2"
+         },
+         {
+          "rows": 1,
+          "value": "Y3"
+         }
+        ],
+        "type": "text"
+       },
+       {
+        "distinct": 3,
+        "max": 100,
+        "mean": 56.6667,
+        "min": 30,
+        "name": "paid",
+        "nulls": 0,
+        "type": "integer"
+       }
+      ],
+      "y": [
+       {
+        "distinct": 3,
+        "length": [
+         2,
+         2
+        ],
+        "max": "Y3",
+        "min": "Y1",
+        "name": "payment_id",
+        "nulls": 0,
+        "top": [
+         {
+          "rows": 1,
+          "value": "Y1"
+         },
+         {
+          "rows": 1,
+          "value": "Y2"
+         },
+         {
+          "rows": 1,
+          "value": "Y3"
+         }
+        ],
+        "type": "text"
+       },
+       {
+        "distinct": 3,
+        "length": [
+         2,
+         2
+        ],
+        "max": "O3",
+        "min": "O1",
+        "name": "order_id",
+        "nulls": 0,
+        "top": [
+         {
+          "rows": 1,
+          "value": "O1"
+         },
+         {
+          "rows": 1,
+          "value": "O2"
+         },
+         {
+          "rows": 1,
+          "value": "O3"
+         }
+        ],
+        "type": "text"
+       },
+       {
+        "distinct": 3,
+        "max": 100,
+        "mean": 56.6667,
+        "min": 30,
+        "name": "paid",
+        "nulls": 0,
+        "type": "integer"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "confirmed_at": "<time>",
+    "confirmed_by": "Bob",
+    "confirmed_by_user_id": 3,
+    "content_json": {
+     "dataset": "paid_orders",
+     "description": "",
+     "english_name": "paid_order",
+     "key": [
+      "order_id"
+     ],
+     "name": "付款订单",
+     "properties": [
+      {
+       "column": "order_id",
+       "enum": false,
+       "name": "order_id",
+       "type": "text"
+      },
+      {
+       "column": "customer",
+       "enum": false,
+       "name": "customer",
+       "type": "text"
+      },
+      {
+       "column": "amount",
+       "enum": false,
+       "name": "amount",
+       "type": "integer"
+      },
+      {
+       "column": "paid",
+       "enum": false,
+       "name": "paid",
+       "type": "integer"
+      }
+     ]
+    },
+    "dataset_versions_json": {
+     "paid_orders": 1
+    },
+    "element_id": "objtype:paid_order",
+    "evidence_ref": "check_result:2,dataset:paid_orders@v1",
+    "id": 2,
+    "proposed_by": "Ann",
+    "self_confirmed": 0,
+    "snapshot_json": null
+   }
+  ],
+  "current_dataset": [
+   {
+    "dataset_id": 1,
+    "name": "orders"
+   },
+   {
+    "dataset_id": 3,
+    "name": "paid_orders"
+   },
+   {
+    "dataset_id": 2,
+    "name": "payments"
+   }
+  ],
+  "data_source": [],
+  "dataset": [
+   {
+    "changes_json": {
+     "added": 3,
+     "changed": 0,
+     "unchanged": 0
+    },
+    "dropped_json": null,
+    "file_sha256": "837649bde251d7d86dd664aa857a20079e94051fdbd859eb18220525707289f2",
+    "id": 1,
+    "imported_at": "<time>",
+    "mode": "new",
+    "name": "orders",
+    "origin": "upload",
+    "rows_in": 3,
+    "rows_stored": 3,
+    "table_name": "ds_1",
+    "version": 1,
+    "who": "Ann",
+    "who_user_id": 2
+   },
+   {
+    "changes_json": {
+     "added": 3,
+     "changed": 0,
+     "unchanged": 0
+    },
+    "dropped_json": null,
+    "file_sha256": "455209466c00b53394973ff5f501a8f38d6e10345844cf5b2900efe5f8a8ee6f",
+    "id": 2,
+    "imported_at": "<time>",
+    "mode": "new",
+    "name": "payments",
+    "origin": "upload",
+    "rows_in": 3,
+    "rows_stored": 3,
+    "table_name": "ds_2",
+    "version": 1,
+    "who": "Ann",
+    "who_user_id": 2
+   },
+   {
+    "changes_json": {
+     "added": 3,
+     "changed": 0,
+     "pipeline": {
+      "definition_version": 1,
+      "id": "订单付款",
+      "inputs": {
+       "orders": 1,
+       "payments": 1
+      },
+      "run": 1
+     },
+     "unchanged": 0
+    },
+    "dropped_json": null,
+    "file_sha256": "a24f59be1766c0f0e6fbdc3cf820027b551edd4da2efbf4e4bb13c70c5929f83",
+    "id": 3,
+    "imported_at": "<time>",
+    "mode": "new",
+    "name": "paid_orders",
+    "origin": "pipeline:订单付款@run1",
+    "rows_in": 3,
+    "rows_stored": 3,
+    "table_name": "ds_3",
+    "version": 1,
+    "who": "Ann",
+    "who_user_id": 2
+   }
+  ],
+  "ds_1": [
+   {
+    "amount": "100",
+    "customer": "C1",
+    "order_id": "O1"
+   },
+   {
+    "amount": "50",
+    "customer": "C1",
+    "order_id": "O2"
+   },
+   {
+    "amount": "30",
+    "customer": "C2",
+    "order_id": "O3"
+   }
+  ],
+  "ds_2": [
+   {
+    "order_id": "O1",
+    "paid": "100",
+    "payment_id": "Y1"
+   },
+   {
+    "order_id": "O2",
+    "paid": "40",
+    "payment_id": "Y2"
+   },
+   {
+    "order_id": "O3",
+    "paid": "30",
+    "payment_id": "Y3"
+   }
+  ],
+  "ds_3": [
+   {
+    "amount": "100",
+    "customer": "C1",
+    "order_id": "O1",
+    "paid": "100",
+    "payment_id": "Y1"
+   },
+   {
+    "amount": "50",
+    "customer": "C1",
+    "order_id": "O2",
+    "paid": "40",
+    "payment_id": "Y2"
+   },
+   {
+    "amount": "30",
+    "customer": "C2",
+    "order_id": "O3",
+    "paid": "30",
+    "payment_id": "Y3"
+   }
+  ],
+  "element_dep": [
+   {
+    "depends_on": "dataset:orders",
+    "element_id": "pipeline:订单付款"
+   },
+   {
+    "depends_on": "dataset:payments",
+    "element_id": "pipeline:订单付款"
+   },
+   {
+    "depends_on": "pipeline:订单付款",
+    "element_id": "dataset:paid_orders"
+   },
+   {
+    "depends_on": "dataset:paid_orders",
+    "element_id": "objtype:paid_order"
+   }
+  ],
+  "element_state": [
+   {
+    "anchors_json": {
+     "definition_version": 1,
+     "inputs": {
+      "orders": 1,
+      "payments": 1
+     }
+    },
+    "cause": null,
+    "confirmed_at": "<time>",
+    "confirmed_by": "Bob",
+    "confirmed_by_user_id": 3,
+    "content_json": {
+     "definition_version": 1,
+     "description": "订单和订单行",
+     "name": "订单付款",
+     "spec": {
+      "steps": [
+       {
+        "dataset": "orders",
+        "id": "o",
+        "type": "input"
+       },
+       {
+        "dataset": "payments",
+        "id": "y",
+        "type": "input"
+       },
+       {
+        "how": "left",
+        "id": "j",
+        "left": "o",
+        "on": [
+         {
+          "left": "order_id",
+          "right": "order_id"
+         }
+        ],
+        "right": "y",
+        "type": "join"
+       },
+       {
+        "from": "j",
+        "id": "out",
+        "key": {
+         "columns": [
+          "order_id"
+         ]
+        },
+        "name": "paid_orders",
+        "type": "output"
+       }
+      ]
+     }
+    },
+    "element_id": "pipeline:订单付款",
+    "evidence_ref": "pipeline:订单付款@d1",
+    "proposed_by": "Ann",
+    "proposed_by_user_id": 2,
+    "reason": null,
+    "state": "confirmed",
+    "version": 2,
+    "via": null
+   },
+   {
+    "anchors_json": {
+     "dataset": "paid_orders",
+     "version": 1
+    },
+    "cause": null,
+    "confirmed_at": "<time>",
+    "confirmed_by": "Bob",
+    "confirmed_by_user_id": 3,
+    "content_json": {
+     "dataset": "paid_orders",
+     "description": "",
+     "english_name": "paid_order",
+     "key": [
+      "order_id"
+     ],
+     "name": "付款订单",
+     "properties": [
+      {
+       "column": "order_id",
+       "enum": false,
+       "name": "order_id",
+       "type": "text"
+      },
+      {
+       "column": "customer",
+       "enum": false,
+       "name": "customer",
+       "type": "text"
+      },
+      {
+       "column": "amount",
+       "enum": false,
+       "name": "amount",
+       "type": "integer"
+      },
+      {
+       "column": "paid",
+       "enum": false,
+       "name": "paid",
+       "type": "integer"
+      }
+     ]
+    },
+    "element_id": "objtype:paid_order",
+    "evidence_ref": "check_result:2,dataset:paid_orders@v1",
+    "proposed_by": "Ann",
+    "proposed_by_user_id": 2,
+    "reason": null,
+    "state": "confirmed",
+    "version": 2,
+    "via": null
+   }
+  ],
+  "llm_label": [],
+  "llm_review": [],
+  "log": [
+   {
+    "after_json": {
+     "role": "admin",
+     "username": "root"
+    },
+    "before_json": null,
+    "change": "user_created",
+    "element_id": "user:1",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "host"
+   },
+   {
+    "after_json": null,
+    "before_json": null,
+    "change": "login",
+    "element_id": "user:1",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "root"
+   },
+   {
+    "after_json": {
+     "role": "builder",
+     "username": "ann"
+    },
+    "before_json": null,
+    "change": "user_created",
+    "element_id": "user:2",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "root"
+   },
+   {
+    "after_json": null,
+    "before_json": null,
+    "change": "login",
+    "element_id": "user:2",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "ann"
+   },
+   {
+    "after_json": null,
+    "before_json": null,
+    "change": "password_changed",
+    "element_id": "user:2",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "ann"
+   },
+   {
+    "after_json": {
+     "role": "builder",
+     "username": "bob"
+    },
+    "before_json": null,
+    "change": "user_created",
+    "element_id": "user:3",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "root"
+   },
+   {
+    "after_json": null,
+    "before_json": null,
+    "change": "login",
+    "element_id": "user:3",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "bob"
+   },
+   {
+    "after_json": null,
+    "before_json": null,
+    "change": "password_changed",
+    "element_id": "user:3",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "bob"
+   },
+   {
+    "after_json": {
+     "dropped": {},
+     "file_sha256": "837649bde251d7d86dd664aa857a20079e94051fdbd859eb18220525707289f2",
+     "rows_in": 3,
+     "rows_stored": 3,
+     "version": 1
+    },
+    "before_json": null,
+    "change": "import v1: 3 rows in the file, 3 stored, 0 dropped",
+    "element_id": "dataset:orders",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": {
+     "dropped": {},
+     "file_sha256": "455209466c00b53394973ff5f501a8f38d6e10345844cf5b2900efe5f8a8ee6f",
+     "rows_in": 3,
+     "rows_stored": 3,
+     "version": 1
+    },
+    "before_json": null,
+    "change": "import v1: 3 rows in the file, 3 stored, 0 dropped",
+    "element_id": "dataset:payments",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": {
+     "anchors_json": "65 bytes, sha256 363b75e31ba3",
+     "confirmed_at": "<time>",
+     "confirmed_by": "Ann",
+     "content_json": "{\"definition_version\": 1, \"description\": \"订单和订单行\", \"name\": \"订单付款\", \"spec\": {\"steps\": [{\"dataset\": \"orders\", \"id\": \"o\", \"type\": \"input\"}, {\"dataset\": \"payments\", \"id\": \"y\", \"type\": \"input\"}, {\"how\": \"left\", \"id\": \"j\", \"left\": \"o\", \"on\": [{\"left\": \"order_id\", \"right\": \"order_id\"}], \"right\": \"y\", \"type\": \"join\"}, {\"from\": \"j\", \"id\": \"out\", \"key\": {\"columns\": [\"order_id\"]}, \"name\": \"paid_orders\", \"type\": \"output\"}]}}",
+     "evidence_ref": "pipeline:订单付款@d1",
+     "state": "checked",
+     "version": 1
+    },
+    "before_json": null,
+    "change": "checked",
+    "element_id": "pipeline:订单付款",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": {
+     "anchors_json": "65 bytes, sha256 363b75e31ba3",
+     "confirmed_at": "<time>",
+     "confirmed_by": "Bob",
+     "content_json": "{\"definition_version\": 1, \"description\": \"订单和订单行\", \"name\": \"订单付款\", \"spec\": {\"steps\": [{\"dataset\": \"orders\", \"id\": \"o\", \"type\": \"input\"}, {\"dataset\": \"payments\", \"id\": \"y\", \"type\": \"input\"}, {\"how\": \"left\", \"id\": \"j\", \"left\": \"o\", \"on\": [{\"left\": \"order_id\", \"right\": \"order_id\"}], \"right\": \"y\", \"type\": \"join\"}, {\"from\": \"j\", \"id\": \"out\", \"key\": {\"columns\": [\"order_id\"]}, \"name\": \"paid_orders\", \"type\": \"output\"}]}}",
+     "evidence_ref": "pipeline:订单付款@d1",
+     "state": "confirmed",
+     "version": 2
+    },
+    "before_json": {
+     "anchors_json": "65 bytes, sha256 363b75e31ba3",
+     "confirmed_at": "<time>",
+     "confirmed_by": "Ann",
+     "content_json": "{\"definition_version\": 1, \"description\": \"订单和订单行\", \"name\": \"订单付款\", \"spec\": {\"steps\": [{\"dataset\": \"orders\", \"id\": \"o\", \"type\": \"input\"}, {\"dataset\": \"payments\", \"id\": \"y\", \"type\": \"input\"}, {\"how\": \"left\", \"id\": \"j\", \"left\": \"o\", \"on\": [{\"left\": \"order_id\", \"right\": \"order_id\"}], \"right\": \"y\", \"type\": \"join\"}, {\"from\": \"j\", \"id\": \"out\", \"key\": {\"columns\": [\"order_id\"]}, \"name\": \"paid_orders\", \"type\": \"output\"}]}}",
+     "evidence_ref": "pipeline:订单付款@d1",
+     "state": "checked",
+     "version": 1
+    },
+    "change": "confirmed",
+    "element_id": "pipeline:订单付款",
+    "time": "<time>",
+    "user_id": 3,
+    "via_token": null,
+    "who": "Bob"
+   },
+   {
+    "after_json": {
+     "dropped": {},
+     "file_sha256": "a24f59be1766c0f0e6fbdc3cf820027b551edd4da2efbf4e4bb13c70c5929f83",
+     "rows_in": 3,
+     "rows_stored": 3,
+     "version": 1
+    },
+    "before_json": null,
+    "change": "import v1: 3 rows in the file, 3 stored, 0 dropped",
+    "element_id": "dataset:paid_orders",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": {
+     "outputs": [
+      "paid_orders"
+     ],
+     "run": 1
+    },
+    "before_json": null,
+    "change": "run",
+    "element_id": "pipeline:订单付款",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": {
+     "anchors_json": "55 bytes, sha256 19ee4c1611b9",
+     "confirmed_at": "<time>",
+     "confirmed_by": "Ann",
+     "content_json": "{\"dataset\": \"paid_orders\", \"description\": \"\", \"english_name\": \"paid_order\", \"key\": [\"order_id\"], \"name\": \"付款订单\", \"properties\": [{\"column\": \"order_id\", \"enum\": false, \"name\": \"order_id\", \"type\": \"text\"}, {\"column\": \"customer\", \"enum\": false, \"name\": \"customer\", \"type\": \"text\"}, {\"column\": \"amount\", \"enum\": false, \"name\": \"amount\", \"type\": \"integer\"}, {\"column\": \"paid\", \"enum\": false, \"name\": \"paid\", \"type\": \"integer\"}]}",
+     "evidence_ref": "check_result:1,dataset:paid_orders@v1",
+     "state": "checked",
+     "version": 1
+    },
+    "before_json": null,
+    "change": "checked",
+    "element_id": "objtype:paid_order",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": {
+     "anchors_json": "40 bytes, sha256 2aeefdde1826",
+     "confirmed_at": "<time>",
+     "confirmed_by": "Bob",
+     "content_json": "{\"dataset\": \"paid_orders\", \"description\": \"\", \"english_name\": \"paid_order\", \"key\": [\"order_id\"], \"name\": \"付款订单\", \"properties\": [{\"column\": \"order_id\", \"enum\": false, \"name\": \"order_id\", \"type\": \"text\"}, {\"column\": \"customer\", \"enum\": false, \"name\": \"customer\", \"type\": \"text\"}, {\"column\": \"amount\", \"enum\": false, \"name\": \"amount\", \"type\": \"integer\"}, {\"column\": \"paid\", \"enum\": false, \"name\": \"paid\", \"type\": \"integer\"}]}",
+     "evidence_ref": "check_result:2,dataset:paid_orders@v1",
+     "state": "confirmed",
+     "version": 2
+    },
+    "before_json": {
+     "anchors_json": "55 bytes, sha256 19ee4c1611b9",
+     "confirmed_at": "<time>",
+     "confirmed_by": "Ann",
+     "content_json": "{\"dataset\": \"paid_orders\", \"description\": \"\", \"english_name\": \"paid_order\", \"key\": [\"order_id\"], \"name\": \"付款订单\", \"properties\": [{\"column\": \"order_id\", \"enum\": false, \"name\": \"order_id\", \"type\": \"text\"}, {\"column\": \"customer\", \"enum\": false, \"name\": \"customer\", \"type\": \"text\"}, {\"column\": \"amount\", \"enum\": false, \"name\": \"amount\", \"type\": \"integer\"}, {\"column\": \"paid\", \"enum\": false, \"name\": \"paid\", \"type\": \"integer\"}]}",
+     "evidence_ref": "check_result:1,dataset:paid_orders@v1",
+     "state": "checked",
+     "version": 1
+    },
+    "change": "confirmed",
+    "element_id": "objtype:paid_order",
+    "time": "<time>",
+    "user_id": 3,
+    "via_token": null,
+    "who": "Bob"
+   }
+  ],
+  "needed_question": [],
+  "needed_result": [],
+  "needed_run": [],
+  "notice": [],
+  "pipeline_run": [
+   {
+    "definition_version": 1,
+    "duration_ms": "<ms>",
+    "error": null,
+    "failures_json": {},
+    "finished_at": "<time>",
+    "id": 1,
+    "input_versions_json": {
+     "orders": 1,
+     "payments": 1
+    },
+    "nodes_json": [
+     {
+      "columns": [
+       "order_id",
+       "customer",
+       "amount"
+      ],
+      "id": "o",
+      "reads": "表 orders",
+      "rows_in": [
+       3
+      ],
+      "rows_out": 3,
+      "type": "input"
+     },
+     {
+      "columns": [
+       "payment_id",
+       "order_id",
+       "paid"
+      ],
+      "id": "y",
+      "reads": "表 payments",
+      "rows_in": [
+       3
+      ],
+      "rows_out": 3,
+      "type": "input"
+     },
+     {
+      "columns": [
+       "order_id",
+       "customer",
+       "amount",
+       "payment_id",
+       "paid"
+      ],
+      "id": "j",
+      "join": {
+       "extra_rows": 0,
+       "fan_out": null,
+       "how": "left",
+       "left_blank": 0,
+       "left_rows": 3,
+       "left_unmatched": 0,
+       "matched_left": 3,
+       "near_matches": [],
+       "null_keys": "no_match",
+       "on": [
+        {
+         "left": "order_id",
+         "right": "order_id"
+        }
+       ],
+       "right_blank": 0,
+       "right_fan_out": null
+      },
+      "rows_in": [
+       3,
+       3
+      ],
+      "rows_out": 3,
+      "type": "join"
+     },
+     {
+      "columns": [
+       "order_id",
+       "customer",
+       "amount",
+       "payment_id",
+       "paid"
+      ],
+      "id": "out",
+      "output": {
+       "columns": [
+        {
+         "name": "order_id",
+         "origin": "orders.order_id",
+         "type": "text"
+        },
+        {
+         "name": "customer",
+         "origin": "orders.customer",
+         "type": "text"
+        },
+        {
+         "name": "amount",
+         "origin": "orders.amount",
+         "type": "integer"
+        },
+        {
+         "name": "payment_id",
+         "origin": "payments.payment_id",
+         "type": "text"
+        },
+        {
+         "name": "paid",
+         "origin": "payments.paid",
+         "type": "integer"
+        }
+       ],
+       "dropped": [],
+       "duplicate_keys": null,
+       "empty_keys": 0,
+       "key": [
+        "order_id"
+       ]
+      },
+      "rows_in": [
+       3
+      ],
+      "rows_out": 3,
+      "type": "output"
+     }
+    ],
+    "outputs_json": [
+     {
+      "created_version": true,
+      "dataset": "paid_orders",
+      "mode": "new",
+      "recheck_error": null,
+      "rows": 3,
+      "version": 1
+     }
+    ],
+    "pipeline_id": "pipeline:订单付款",
+    "started_at": "<time>",
+    "status": "success",
+    "who": "Ann",
+    "who_user_id": 2
+   }
+  ],
+  "pipeline_version": [
+   {
+    "definition_json": {
+     "description": "订单和订单行",
+     "spec": {
+      "steps": [
+       {
+        "dataset": "orders",
+        "id": "o",
+        "type": "input"
+       },
+       {
+        "dataset": "payments",
+        "id": "y",
+        "type": "input"
+       },
+       {
+        "how": "left",
+        "id": "j",
+        "left": "o",
+        "on": [
+         {
+          "left": "order_id",
+          "right": "order_id"
+         }
+        ],
+        "right": "y",
+        "type": "join"
+       },
+       {
+        "from": "j",
+        "id": "out",
+        "key": {
+         "columns": [
+          "order_id"
+         ]
+        },
+        "name": "paid_orders",
+        "type": "output"
+       }
+      ]
+     }
+    },
+    "pipeline_id": "pipeline:订单付款",
+    "saved_at": "<time>",
+    "saved_by": "Ann",
+    "saved_by_user_id": 2,
+    "version": 1
+   }
+  ],
+  "qa_question": [
+   {
+    "answer_json": {
+     "answer": {
+      "measure": {
+       "counted": 3,
+       "field": "paid",
+       "op": "sum",
+       "skipped": 0,
+       "value": 170
+      },
+      "total": 3
+     },
+     "data_as_of": [
+      {
+       "dataset": "paid_orders",
+       "imported_at": "<time>",
+       "version": 1
+      }
+     ],
+     "datasets": {
+      "paid_orders": 1
+     },
+     "definitions": [
+      {
+       "confirmed_at": "<time>",
+       "confirmed_by": "Bob",
+       "id": "objtype:paid_order",
+       "kind": "type",
+       "name": "付款订单",
+       "state": "confirmed",
+       "version": 2
+      }
+     ],
+     "hidden_columns": {
+      "paid_order": []
+     },
+     "model": "test-model",
+     "named": [
+      "objtype:paid_order"
+     ],
+     "path": "付款订单，把“paid”加起来",
+     "query": {
+      "group_by": null,
+      "measure": {
+       "field": "paid",
+       "op": "sum"
+      },
+      "share": null,
+      "start": "paid_order",
+      "via": [],
+      "where": []
+     },
+     "query_text": "SELECT sum(p.paid) AS 合计\nFROM (p:付款订单)",
+     "reasoning": "把金额加起来",
+     "rules": {
+      "paid_order": null
+     },
+     "status": "answered",
+     "steps": [
+      {
+       "name": "理解问题",
+       "text": "把金额加起来"
+      },
+      {
+       "name": "找对象类型",
+       "text": "付款订单"
+      },
+      {
+       "name": "找关系",
+       "text": "这道题用不到关系"
+      },
+      {
+       "name": "改写成查询",
+       "query": {
+        "group_by": null,
+        "measure": {
+         "field": "paid",
+         "op": "sum"
+        },
+        "share": null,
+        "start": "paid_order",
+        "via": [],
+        "where": []
+       },
+       "text": "付款订单，把“paid”加起来"
+      },
+      {
+       "failed": false,
+       "name": "结果",
+       "text": "算出了结果"
+      }
+     ],
+     "types": [
+      {
+       "id": "paid_order",
+       "name": "付款订单"
+      }
+     ]
+    },
+    "asked_at": "<time>",
+    "asked_by": "Ann",
+    "dataset_versions_json": {
+     "paid_orders": 1
+    },
+    "definitions_json": [
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "objtype:paid_order",
+      "kind": "type",
+      "name": "付款订单",
+      "state": "confirmed",
+      "version": 2
+     }
+    ],
+    "id": 1,
+    "question": "付款合计是多少？",
+    "status": "answered",
+    "types_json": [
+     {
+      "id": "paid_order",
+      "name": "付款订单"
+     }
+    ],
+    "user_id": 2
+   },
+   {
+    "answer_json": {
+     "answer": {
+      "measure": {
+       "counted": 3,
+       "field": "amount",
+       "op": "average",
+       "skipped": 0,
+       "value": 60
+      },
+      "total": 3
+     },
+     "data_as_of": [
+      {
+       "dataset": "paid_orders",
+       "imported_at": "<time>",
+       "version": 1
+      }
+     ],
+     "datasets": {
+      "paid_orders": 1
+     },
+     "definitions": [
+      {
+       "confirmed_at": "<time>",
+       "confirmed_by": "Bob",
+       "id": "objtype:paid_order",
+       "kind": "type",
+       "name": "付款订单",
+       "state": "confirmed",
+       "version": 2
+      }
+     ],
+     "hidden_columns": {
+      "paid_order": []
+     },
+     "model": "test-model",
+     "named": [
+      "objtype:paid_order"
+     ],
+     "path": "付款订单，算“amount”的平均",
+     "query": {
+      "group_by": null,
+      "measure": {
+       "field": "amount",
+       "op": "average"
+      },
+      "share": null,
+      "start": "paid_order",
+      "via": [],
+      "where": []
+     },
+     "query_text": "SELECT avg(p.amount) AS 平均\nFROM (p:付款订单)",
+     "reasoning": "把金额加起来",
+     "rules": {
+      "paid_order": null
+     },
+     "status": "answered",
+     "steps": [
+      {
+       "name": "理解问题",
+       "text": "把金额加起来"
+      },
+      {
+       "name": "找对象类型",
+       "text": "付款订单"
+      },
+      {
+       "name": "找关系",
+       "text": "这道题用不到关系"
+      },
+      {
+       "name": "改写成查询",
+       "query": {
+        "group_by": null,
+        "measure": {
+         "field": "amount",
+         "op": "average"
+        },
+        "share": null,
+        "start": "paid_order",
+        "via": [],
+        "where": []
+       },
+       "text": "付款订单，算“amount”的平均"
+      },
+      {
+       "failed": false,
+       "name": "结果",
+       "text": "算出了结果"
+      }
+     ],
+     "types": [
+      {
+       "id": "paid_order",
+       "name": "付款订单"
+      }
+     ]
+    },
+    "asked_at": "<time>",
+    "asked_by": "Ann",
+    "dataset_versions_json": {
+     "paid_orders": 1
+    },
+    "definitions_json": [
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "objtype:paid_order",
+      "kind": "type",
+      "name": "付款订单",
+      "state": "confirmed",
+      "version": 2
+     }
+    ],
+    "id": 2,
+    "question": "订单金额平均是多少？",
+    "status": "answered",
+    "types_json": [
+     {
+      "id": "paid_order",
+      "name": "付款订单"
+     }
+    ],
+    "user_id": 2
+   }
+  ],
+  "refresh_run": [],
+  "row_rule": [],
+  "schedule": [],
+  "source_table": [],
+  "type_access": [],
+  "value_privacy": []
+ },
+ "one_to_one_upload": [
+  200,
+  {
+   "results": [
+    {
+     "changes": {
+      "added": 3,
+      "changed": 0,
+      "unchanged": 0
+     },
+     "created_version": true,
+     "file": "orders.csv",
+     "key_check": null,
+     "mode": "new",
+     "name": "orders",
+     "overwrites_action_rows": [],
+     "recheck_error": null,
+     "reused": false,
+     "rows": 3,
+     "same_as": null,
+     "version": 1
+    },
+    {
+     "changes": {
+      "added": 3,
+      "changed": 0,
+      "unchanged": 0
+     },
+     "created_version": true,
+     "file": "payments.csv",
+     "key_check": null,
+     "mode": "new",
+     "name": "payments",
+     "overwrites_action_rows": [],
+     "recheck_error": null,
+     "reused": false,
+     "rows": 3,
+     "same_as": null,
+     "version": 1
+    }
+   ]
   }
  ],
  "query": [
