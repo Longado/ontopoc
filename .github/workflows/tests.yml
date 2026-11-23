@@ -12,7 +12,7 @@ permissions:
 jobs:
   unittest:
     runs-on: ubuntu-latest
-    timeout-minutes: 10   # the suite takes 3-5 minutes on a hosted runner; 5 cut a slow run off
+    timeout-minutes: 25   # the suite now takes about 10 minutes on a hosted runner; 10 cut two runs off with no test failing
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7

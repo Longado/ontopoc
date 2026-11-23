@@ -207,9 +207,10 @@ def check_llm_step(step: dict, sid: str, columns: list[dict]) -> list[dict]:
         if step.get('min_match') is not None and (not isinstance(step['min_match'], int) or isinstance(step['min_match'], bool) or step['min_match'] < 1):
             raise LlmError(tr('样本里至少要对上几行（min_match）要写成大于 0 的整数', 'The number of rows that must match in the sample (min_match) must be a whole number greater than 0'))
         added = []
+        copied = sorted({t for name in used for t in shown[name].get('rep', ())})   # written from a value a join copied: as copied as it (pipeline_ops.carry)
         for column in eff['columns']:
             _new_name([*columns, *added], column['name'], label)
-            added.append({**column, 'badge': 'new', 'ai': True})
+            added.append({**column, 'badge': 'new', 'ai': True, **({'rep': copied} if copied else {})})
     except ValueError as exc:   # OpError and LlmError are both ValueErrors
         text = str(exc)
         raise LlmError(text if text.startswith(label) else tr(f'{label}：{text}', f'{label}: {text}')) from None

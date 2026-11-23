@@ -48,6 +48,14 @@ export function besideView(record) {
   return { title: t("ask.beside.title"), lines, more: more.length ? t("ask.beside.more", { n: more.length, names: more.join(t("ask.sep")) }) : "", hint: t(all ? "ask.beside.hintView" : "ask.beside.hint") };
 }
 
+/** Which part of the refusal card a record fills: a kind the card has its own lines for ("unsettled", "not_in_scope", "definition_unmet"), or, for any other
+ * kind and for none, the service's own sentence (it comes in the asker's language), so a refusal of a kind the page does not know yet still says why. */
+const REFUSAL_BRANCHES = ["unsettled", "not_in_scope", "definition_unmet"];
+export function refusalBranch(record) {
+  const kind = record.refusal?.kind;
+  return REFUSAL_BRANCHES.includes(kind) ? { kind } : { kind: "reason", text: record.reason ?? "" };
+}
+
 /** The answer, or the refusal, in one word for the history list. */
 export const statusText = (status) => t(status === "answered" ? "ask.status.answered" : status === "no_data" ? "ask.status.noData" : "ask.status.refused");
 export const isAnswer = (record) => record.status === "answered" || record.status === "no_data";
