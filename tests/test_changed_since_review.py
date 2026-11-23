@@ -140,6 +140,31 @@ class Moved(Team):
         state = self.walk(edit, lambda team: self.assertEqual(self.put(team['cat'], 'derived', {'name': CANCELLED['name']})[0], 200), move)
         self.assertNotEqual(state, 'confirmed')
 
+    def test_a_type_put_back_after_the_pipeline_behind_its_dataset_changed_waits(self):
+        """Through what it reads: the type reads the dataset 客户合计, which the pipeline 客户合计 writes. A change of the pipeline (here its description, which keeps the
+        pipeline confirmed at a new version under its own rule) moves nothing the type reads directly, and still the type waits for a person."""
+        from tests.test_pipeline_server import PIPELINES, TOTAL_TYPE
+
+        def before(team):
+            self.assertEqual(team['ann'].post('/api/workspace/types', TOTAL_TYPE)[0], 200)
+            shown = team['bob'].get('/api/workspace/types/customer_total')[1]
+            self.assertEqual(team['bob'].post('/api/workspace/types/confirm', {'id': 'customer_total', 'version': shown['version'], 'seen': shown['seen']})[0], 200)
+
+        def put(client, description):
+            now = client.get('/api/workspace/types/customer_total')[1]
+            return client.post('/api/workspace/types/update', {**TOTAL_TYPE, 'id': 'customer_total', 'version': now['version'], 'description': description})
+
+        def edit(team):
+            self.assertEqual(put(team['cat'], 'ZZ')[0], 200)
+            return 'objtype:customer_total'
+
+        def move(team):
+            now = team['ann'].get(f'{PIPELINES}/{quote("客户合计")}')[1]
+            self.assertEqual(team['ann'].post(f'{PIPELINES}/update', {'id': '客户合计', 'version': now['version'], 'description': 'ZZ管道'})[0], 200)
+            self.assertEqual(self.state('pipeline:客户合计'), 'confirmed')
+        state = self.walk(edit, lambda team: self.assertEqual(put(team['cat'], '')[0], 200), move, before)
+        self.assertNotEqual(state, 'confirmed')
+
     def test_a_dependency_sent_back_and_still_waiting_keeps_the_put_back_definition_waiting(self):
         def edit(team):
             self.assertEqual(self.put(team['cat'], 'view', {'description': 'ZZ'})[0], 200)
