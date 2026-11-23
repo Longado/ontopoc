@@ -24,7 +24,7 @@ from ontology_poc_generator.object_relations import CARDINALITY, _relation_visib
 from ontology_poc_generator.object_types import (
     CAUSE_WORDS, DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, _confirmers, _content, _visible, _waiting_line, dataset_columns, element_row, enum_id, reason_for,
     _latest_counts, presented_row, rules_untrusted, settle_rules, stale_word, type_id, waiting_for_viewer)
-from ontology_poc_generator.ontopoc_query import MAX_LIST, TODAY, QueryError, canonical as canonical_query, compile_query, is_graph, parse as parse_query, to_text
+from ontology_poc_generator.ontopoc_query import MAX_LIST, TODAY, QueryError, canonical as canonical_query, compile_query, is_graph, parse as parse_query, reads_today, to_text
 from ontology_poc_generator.object_views import describe, kept_positions, view_id, view_visible, view_waiting_for_viewer
 from ontology_poc_generator.agent_harness import ask_model
 from ontology_poc_generator.ontology_questions import RANGES, _catalog, _resolve_field, answer_query, ask_questions, clean_used, graph_objects
@@ -680,7 +680,7 @@ def _engine(sc: dict, parts: dict, relations: list[dict], conn=None):
     ran = [None]   # the query the last answer ran, as a query text says it (answer.ran())
     held = column_values(bundle, bundle['meanings'], ontology, graph)   # what a filter that leaves codes out lets through
 
-    def answer(query, asked, used=None, check=True, told=None, instead=None, page=1):
+    def answer(query, asked, used=None, check=True, told=None, instead=None, page=1, today_word=True):
         listing, today = None, None
         if instead is None:
             ran[0] = query
@@ -689,9 +689,8 @@ def _engine(sc: dict, parts: dict, relations: list[dict], conn=None):
                 query = _without_objects(query)
             if instead is None:
                 ran[0] = _as_run(query)
-            query, today, problem = _with_today(sc, query)
-            if problem is not None:
-                return problem
+            if today_word:   # a written query whose today is quoted or given reads none (today_word False): its 'today' is text, as it always was
+                query, today = _with_today(sc, query)
             kind = _rows_kind(query)
             if kind == 'lookup':
                 applied[:] = []
@@ -751,13 +750,13 @@ def _without_objects(query: dict) -> dict:
 
 def _as_run(query: dict) -> dict:
     """The query as it is run, for the text that says it: a lookup is its type and its key and nothing else; a list is written as one (`true` is a list with no
-    properties named); anything else as it is. A range bound today stays the word."""
+    properties named) and has no lookup; a number has neither (an empty one is let be). A range bound today stays the word."""
     kind = _rows_kind(query)
     if kind == 'lookup':
         return {'start': query.get('start'), 'lookup': query['lookup']}
-    if kind == 'list' and query['list'] is True:
-        return {**query, 'list': {}}
-    return query
+    if kind == 'list':
+        return {**_without_objects(query), 'list': {} if query['list'] is True else query['list']}
+    return _without_objects(query) if 'list' in query or 'lookup' in query else query
 
 
 def _rows_kind(query) -> str | None:
@@ -787,22 +786,17 @@ def _property_type(sc: dict, start: str, field) -> str | None:
     return None
 
 
-def _with_today(sc: dict, query: dict) -> tuple[dict, dict | None, dict | None]:
-    """(the query with every range bound written `today` put as today's date, {'date', 'time_zone'} when one was, a query_limit answer when `today` bounds a
-    property that is not a date). A bound that is not exactly today is left as it is, so any other word is refused as before."""
+def _with_today(sc: dict, query: dict) -> tuple[dict, dict | None]:
+    """(the query with every range bound that is exactly the word `today` on a date property of the start type put as today's date, {'date', 'time_zone'}
+    when one was). Nothing else is read as today: 'Today ', a today on a property that is not a date, any other word, are left as they are and read as they
+    always were (a bound that is not a date)."""
     where = query.get('where')
-    if not isinstance(where, list) or not any(isinstance(w, dict) and any(isinstance(w.get(k), str) and w[k].strip().lower() == TODAY for k in RANGES) for w in where):
-        return query, None, None
+    reads = lambda w: isinstance(w, dict) and _property_type(sc, query.get('start'), w.get('field')) in DATE_TYPES and any(w.get(k) == TODAY for k in RANGES)
+    if not isinstance(where, list) or not any(reads(w) for w in where):
+        return query, None
     date, zone = _today()
-    out = []
-    for w in where:
-        if isinstance(w, dict) and any(isinstance(w.get(k), str) and w[k].strip().lower() == TODAY for k in RANGES):
-            kind = _property_type(sc, query.get('start'), w.get('field'))
-            if kind not in DATE_TYPES:
-                return query, None, {'status': 'query_limit', 'reason': tr(f'today 只能和日期属性比；“{w.get("field")}”不是日期', f'today can only be compared with a date property; "{w.get("field")}" is not a date')}
-            w = {k: (date if k in RANGES and isinstance(v, str) and v.strip().lower() == TODAY else v) for k, v in w.items()}
-        out.append(w)
-    return {**query, 'where': out}, {'date': date, 'time_zone': zone}, None
+    out = [{k: (date if k in RANGES and v == TODAY else v) for k, v in w.items()} if reads(w) else w for w in where]
+    return {**query, 'where': out}, {'date': date, 'time_zone': zone}
 
 
 def _said_today(result: dict, today: dict | None) -> dict:
@@ -1136,7 +1130,7 @@ def run_text(conn, user: dict | None, text, params=None, beside: bool = False, r
     if blockers:
         result = {**_refused_unsettled(blockers), 'definitions': [], 'types': [], 'datasets': {}, 'steps': [{'name': tr('核对定义', 'Check definitions'), 'text': tr('查询用到的定义还没有确认，没有计算', 'A definition the query uses is not confirmed, so nothing was calculated'), 'failed': True}]}
     else:
-        result = _run_compiled(conn, user, sc, query, beside=beside, page=page or 1) if rows else _run_compiled(conn, user, sc, query, beside=beside)
+        result = _run_compiled(conn, user, sc, query, beside=beside, page=page or 1, today=parsed['today']) if rows else _run_compiled(conn, user, sc, query, beside=beside)
         if result['status'] == 'query_limit':   # what the writer wrote and the engine cannot run (a bound that is no number or date): theirs to fix, said as such
             raise QaRefused(result['reason'])
         result['text'] = to_text(query, query_catalog(sc), rows) if rows else to_text(query, query_catalog(sc))
@@ -1145,10 +1139,11 @@ def run_text(conn, user: dict | None, text, params=None, beside: bool = False, r
     return result
 
 
-def _run_compiled(conn, user: dict | None, sc: dict, query: dict, asked: str = '', views: tuple = (), beside: bool = False, page: int = 1) -> dict:
+def _run_compiled(conn, user: dict | None, sc: dict, query: dict, asked: str = '', views: tuple = (), beside: bool = False, page: int = 1, today: bool = False) -> dict:
     """A compiled OntoPoc Query run as this person: refused naming the relation when one it walks cannot be walked, else run by the Q&A engine with the meanings
     the text uses (read from the text) and the views named. `asked`: the question it answers, so a meaning the question names and the text leaves out is caught.
-    `page`: the page of a list. A lookup by key reads only the rows that have the key (no other row is read)."""
+    `page`: the page of a list. A lookup by key reads only the rows that have the key (no other row is read). `today`: a range bound 'today' is the date it
+    runs on (with ROW_ANSWERS, for a text that writes it as the bare word, ontopoc_query.reads_today); otherwise it is text, as it always was."""
     walks = [k for k in dict.fromkeys([*query['via'], *(k for d in query['group_by'] or [] for k in d['via']), *(k for path in query.get('graph') or [] for k in path)])]
     stuck = [(k, why) for k in walks if (why := _walk_problem(sc, sc['relations'][k]['content']))]
     if stuck:
@@ -1167,7 +1162,7 @@ def _run_compiled(conn, user: dict | None, sc: dict, query: dict, asked: str = '
     if query.get('graph') is not None:
         return _finish(conn, user, sc, parts, {**_graph_answer(parts, query, asked, used), 'query': query, 'definitions_used': used}, [])
     answer = _engine(sc, parts, _checked_relations(conn, sc, parts), conn)
-    item = {**(answer(query, asked, used, page=page) if ROW_ANSWERS else answer(query, asked, used)), 'query': query, 'definitions_used': used}
+    item = {**(answer(query, asked, used, page=page, today_word=today) if ROW_ANSWERS else answer(query, asked, used)), 'query': query, 'definitions_used': used}
     if item['status'] == 'query_limit':
         return {'status': 'query_limit', 'reason': item['reason'], 'query': query, 'definitions': [], 'types': [], 'datasets': {}, 'steps': [{'name': tr('结果', 'Result'), 'text': item['reason'], 'failed': True}]}
     return _finish(conn, user, sc, parts, item, answer.applied, beside=(answer, asked) if beside else None)
@@ -1300,7 +1295,7 @@ def _answered_in_text(conn, gateway, user: dict | None, question: str, sc: dict)
     except (KeyError, TypeError, AttributeError):
         item = {'status': 'query_limit', 'reason': tr('模型写的查询读不了', 'The query the model wrote cannot be read'), 'reasoning': reasoning}
         return {**_finish(conn, user, sc, parts, item, []), **said, 'written': text}
-    result = _run_compiled(conn, user, sc, query, question, views, beside=True)
+    result = _run_compiled(conn, user, sc, query, question, views, beside=True, today=ROW_ANSWERS and reads_today(text))
     return {**result, **said, 'written': text, **({'query_text': to_text(query, query_catalog(sc), rows=True) if ROW_ANSWERS else to_text(query, query_catalog(sc))} if result['status'] in ('answered', 'no_data') else {})}
 
 

@@ -298,7 +298,7 @@ def _rerun(conn, asker: dict | None, question_id: int, stored: dict, question: s
         return {'status': 'refused', 'reason': tr(f'这条回答用到的视图{"、".join(f"「{v}」" for v in gone)}现在不在你的范围里（例如它用的列设成了不发送取值），没有重算',
                                                   f'The view{"s" if len(gone) > 1 else ""} {", ".join(f"{chr(34)}{v}{chr(34)}" for v in gone)} this answer used {"are" if len(gone) > 1 else "is"} no longer in your scope (for example a column it uses was set to not send values), so it was not worked out again')}
     try:
-        result = _run_compiled(conn, asker, sc, query, question, views)
+        result = _run_compiled(conn, asker, sc, query, question, views, today=True)   # a range bound today it kept was read as today when it was answered
     except (QueryError, KeyError, TypeError, ValueError, AttributeError):
         return {'status': 'refused', 'reason': tr('这条回答保存的查询现在跑不了', 'The query this answer kept cannot be run now')}
     if result.get('limited_by_rule'):   # the rows a rule lets the asker read are not the rows the team's number is about

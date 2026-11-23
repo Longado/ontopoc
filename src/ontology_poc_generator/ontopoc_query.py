@@ -93,6 +93,7 @@ def _tokens(text: str) -> list[tuple[str, str, int]]:
 class _Reader:
     def __init__(self, text: str, params: dict | None):
         self.text, self.tokens, self.i, self.params = text, _tokens(text), 0, params or {}
+        self.today = set()   # how range bounds said today: 'word' (the bare word), 'text' (a quoted 'today' or a parameter given 'today')
 
     def peek(self, kind=None, value=None, ahead=0) -> bool:
         k, v, _ = self.tokens[min(self.i + ahead, len(self.tokens) - 1)]
@@ -122,11 +123,14 @@ class _Reader:
         k, v, at = self.tokens[self.i]
         if today and k == 'name' and v.lower() == TODAY:
             self.i += 1
+            self.today.add('word')
             return TODAY
         if k in ('string', 'number'):
             self.i += 1
             if k == 'number' and self.tokens[self.i][0] == 'number' and self.tokens[self.i][1].startswith('-'):   # 2026-01-01 read as 2026, -01, -01
                 raise QueryError(tr(f'第 {at + 1} 个字附近：日期要加引号，例如 \'2026-01-01\'', f"Near character {at + 1}: a date needs quotes, for example '2026-01-01'"), at)
+            if today and v == TODAY:   # text that says today, not the word: read as it always was
+                self.today.add('text')
             return v
         if k == 'param':
             self.i += 1
@@ -135,6 +139,8 @@ class _Reader:
             given = self.params[v[1:]]
             if isinstance(given, bool) or not isinstance(given, (str, int, float)):
                 raise QueryError(tr(f'参数 {v} 要是一个文字或数字', f'Parameter {v} must be text or a number'), at)
+            if today and given == TODAY:
+                self.today.add('text')
             return given if isinstance(given, str) else format(given, 'g') if isinstance(given, float) else str(given)
         raise QueryError(tr(f'第 {at + 1} 个字附近应该是一个值（\'文字\'、数字或 $参数）', f"Expected a value near character {at + 1} ('text', a number or a $parameter)"), at)
 
@@ -296,7 +302,7 @@ def parse(text: str, params: dict | None = None, rows: bool = False) -> dict:
     r.take('kw', 'SELECT', 'SELECT')
     listing = _rows_head(r) if rows else None
     if listing:
-        return _parse_rows(r, listing)
+        return {**_parse_rows(r, listing), 'today': r.today == {'word'}}
     graph = r.peek('name') and r.tokens[r.i][1].upper() == 'GRAPH' and (r.peek('kw', 'FROM', 1) or r.peek('op', ',', 1))
     if graph:   # SELECT GRAPH: the objects and how they are related, not a number
         r.take()
@@ -372,7 +378,7 @@ def parse(text: str, params: dict | None = None, rows: bool = False) -> dict:
     if not r.peek('end'):
         k, v, at = r.tokens[r.i]
         raise QueryError(tr(f'第 {at + 1} 个字附近的“{v}”多出来了，或者这个位置还不支持它', f'"{v}" near character {at + 1} is extra, or is not supported in this position'), at)
-    return {'select': select, 'chains': chains, 'where': where, 'group': group, 'order': order, 'limit': limit, 'graph': bool(graph)}
+    return {'select': select, 'chains': chains, 'where': where, 'group': group, 'order': order, 'limit': limit, 'graph': bool(graph), **({'today': r.today == {'word'}} if rows else {})}
 
 
 def _parse_rows(r: _Reader, listing: dict) -> dict:
@@ -414,6 +420,15 @@ def _parse_rows(r: _Reader, listing: dict) -> dict:
         k, v, at = r.tokens[r.i]
         raise QueryError(tr(f'第 {at + 1} 个字附近的“{v}”多出来了，或者这个位置还不支持它', f'"{v}" near character {at + 1} is extra, or is not supported in this position'), at)
     return {'select': [], 'chains': [[node]], 'where': where, 'group': [], 'order': None, 'limit': limit, 'graph': False, 'rows': listing}
+
+
+def reads_today(text, params: dict | None = None) -> bool:
+    """Is today in this text the date the query runs on? Only when a range bound is the bare word today and none is a quoted 'today' or a parameter given
+    'today' (those are text, read as they always were: a bound that is not a date). False for anything that cannot be read."""
+    try:
+        return bool(parse(text, params, rows=True).get('today'))
+    except (QueryError, KeyError, TypeError, AttributeError):
+        return False
 
 
 def is_graph(text) -> bool:
@@ -783,7 +798,7 @@ def to_text(query: dict, catalog: dict, rows: bool = False) -> str:
         head_line = 'SELECT GRAPH' if graph is not None else f'SELECT {", ".join([*(dim_text(*d) for d in dims), f"{agg} AS {alias}"])}'
     lines = [head_line, f'FROM {", ".join(chains)}']
     conds = [f'{start_var}.{_ident(str(k))} = {_literal(v)}' for k, v in (lookup or {}).items()]
-    bound = lambda v: TODAY if rows and str(v).lower() == TODAY else str(v) if re.fullmatch(r'-?\d+(\.\d+)?', str(v)) else _literal(v)
+    bound = lambda v: TODAY if rows and v == TODAY else str(v) if re.fullmatch(r'-?\d+(\.\d+)?', str(v)) else _literal(v)
     for w in q['where']:
         ranged = [k for k in COMPARE.values() if isinstance(w, dict) and k in w]
         if not isinstance(w, dict) or not isinstance(w.get('field'), str) or not ('equals' in w or 'not_equals' in w or ranged):
