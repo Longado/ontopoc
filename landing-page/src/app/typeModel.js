@@ -37,8 +37,9 @@ export function stateLine(item, noun) {
 /** What a viewer reads of an object type whose data moved after it was confirmed: it is there, it waits for a second look. */
 export const reconfirmText = (names) => t("types.line.reconfirm", { who: names?.length ? joinList(names) : t("types.line.reconfirmAnyone") });
 
-/** Who could confirm, when it is waiting for someone and the reader is not one of them. */
-export const confirmersText = (item) => (item.confirmers?.length && !item.can_confirm ? t("types.line.confirmers", { names: joinList(item.confirmers) }) : "");
+/** Who could confirm, when it is waiting for someone and the reader is not one of them. When people are kept from confirming it because they put it forward or
+ * changed it since it was last confirmed, the service's sentence (`held`, in the reader's language) says who and the ways out, and names who can confirm. */
+export const confirmersText = (item) => (item.can_confirm ? "" : item.held || (item.confirmers?.length ? t("types.line.confirmers", { names: joinList(item.confirmers) }) : ""));
 
 const DATASET_LINE = [
   [/^import v(\d+)/, (m) => t("types.dataset.import", { version: m[1] })],

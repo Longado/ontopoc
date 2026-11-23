@@ -17,7 +17,7 @@ import re
 import sqlite3
 
 from ontology_poc_generator.accounts import SCHEMA as ACCOUNTS_SCHEMA, two_person
-from ontology_poc_generator.actor import actor_id_for, token_mark
+from ontology_poc_generator.actor import actor_id_for, current_actor, token_mark
 from ontology_poc_generator.public_ontology import normalize_proposal
 
 VALUE_COUNT_LIMIT = 20   # a column with more distinct values than this keeps no value counts
@@ -64,9 +64,13 @@ CREATE TABLE IF NOT EXISTS value_privacy (
 -- what a pipeline's output column was made from, kept with the dataset it wrote: 'unsent' (made from a column kept from the model), 'ai' (made from a model's answer)
 CREATE TABLE IF NOT EXISTS column_mark (
     dataset_id INTEGER NOT NULL REFERENCES dataset(id), column_name TEXT NOT NULL, mark TEXT NOT NULL CHECK (mark IN ('unsent', 'ai')), PRIMARY KEY (dataset_id, column_name, mark));
--- an output column of a pipeline whose figure was worked out over a join that made several rows of one (a sum or a count of a column the join repeated): FAN_NOTE says so
+-- an output column of a pipeline whose value a join copied onto several rows (directly, or through what was made from it): FAN_NOTE says so; origin is the pipeline
+-- whose join copied it (NULL in a file written before it was kept: the pipeline that wrote the version)
 CREATE TABLE IF NOT EXISTS column_fan (
-    dataset_id INTEGER NOT NULL REFERENCES dataset(id), column_name TEXT NOT NULL, PRIMARY KEY (dataset_id, column_name));
+    dataset_id INTEGER NOT NULL REFERENCES dataset(id), column_name TEXT NOT NULL, origin TEXT, PRIMARY KEY (dataset_id, column_name));
+-- a version a pipeline wrote whose copies were measured (column_fan holds what was copied). A version a pipeline with a join wrote that is not here was written
+-- before copies were measured, or from an input that was: not_measured refuses what copies would change on it. A file from before has none: it can only refuse more
+CREATE TABLE IF NOT EXISTS column_fan_measured (dataset_id INTEGER PRIMARY KEY REFERENCES dataset(id));
 CREATE TABLE IF NOT EXISTS row_rule (
     id INTEGER PRIMARY KEY AUTOINCREMENT, type_id TEXT NOT NULL, column_name TEXT NOT NULL, value TEXT NOT NULL, user_ids_json TEXT NOT NULL, user_attr TEXT);
 CREATE TABLE IF NOT EXISTS action_record (
@@ -182,7 +186,7 @@ def open_workspace(path) -> sqlite3.Connection:
                           ('element_state', 'cause'), ('element_state', 'via'), ('confirmation', 'snapshot_json'), ('llm_review', 'distinct_rows'), ('llm_review', 'detail_json'),
                           ('api_token', 'scope'), ('api_token', 'expires_at'), ('action_record', 'undo_of'), ('action_record', 'op'),
                           ('data_source', 'tls'), ('data_source', 'ca_pem'), ('refresh_run', 'error_public'), ('schedule', 'created_by_user_id'), ('user', 'attrs_json'), ('row_rule', 'user_attr'),
-                          ('needed_question', 'expect_blocker'), ('needed_run', 'owner')):
+                          ('needed_question', 'expect_blocker'), ('needed_run', 'owner'), ('element_state', 'changed_json'), ('needed_question', 'changed_json'), ('column_fan', 'origin')):
         if column not in {r[1] for r in conn.execute(f'PRAGMA table_info({table})')}:   # a file made before the column existed
             conn.execute(f'ALTER TABLE {table} ADD COLUMN {column} {"INTEGER" if column in ("dataset_id", "null_key_rows", "distinct_rows", "undo_of") or column.endswith("user_id") else "TEXT"}')
     if 'expect_version' not in {r[1] for r in conn.execute('PRAGMA table_info(needed_question)')}:   # counts each new expectation and each confirmation of one: a result belongs to one
@@ -367,6 +371,7 @@ def element_state_writes(conn, changes: list[tuple], versions: dict[str, int] | 
         conn.execute('BEGIN IMMEDIATE')   # the write lock now: a transaction that reads first and writes later is refused at once, not waited for, when another holds it
     try:
         two = two_person(conn)
+        back: dict[str, dict] = {}   # what a change put back to the version last confirmed, to be confirmed again as it was once the write is in
         for element_id, state, evidence_ref, confirmed_by, *rest in changes:
             content = json.dumps(rest[0], ensure_ascii=False, sort_keys=True) if rest and rest[0] is not None else None
             anchors = json.dumps(rest[1], ensure_ascii=False, sort_keys=True) if len(rest) > 1 and rest[1] is not None else None
@@ -391,13 +396,20 @@ def element_state_writes(conn, changes: list[tuple], versions: dict[str, int] | 
             self_confirmed = state == 'confirmed' and proposer_id is not None and proposer_id == actor_id
             if self_confirmed and two['active']:
                 raise SelfConfirmation(tr('这一条是你自己提的，要另一位来确认', 'You put this forward yourself, so someone else must confirm it'))
+            if state == 'confirmed' and before is not None and tracked(element_id) and not may_confirm(conn, before, actor_id):   # the callers say who and how to get out first (object_types.write_confirmation)
+                raise SelfConfirmation(tr('这一条在上次确认之后你改过，要另一位来确认', 'You changed this since it was last confirmed, so someone else must confirm it'))
+            record, was = next_record(conn, element_id, before, content, state, actor_id)
+            if was is not None:
+                back[element_id] = was
             after = {'state': state, 'evidence_ref': evidence_ref, 'confirmed_by': confirmed_by, 'confirmed_at': _now(),
                      'version': before['version'] + 1 if before else 1, 'content_json': content, 'anchors_json': anchors}
             conn.execute('INSERT OR REPLACE INTO element_state(element_id, state, evidence_ref, confirmed_by, confirmed_at, version, content_json, anchors_json,'
-                         ' proposed_by, confirmed_by_user_id, proposed_by_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                         (element_id, *after.values(), proposed_by, confirmer_id, proposer_id))
+                         ' proposed_by, confirmed_by_user_id, proposed_by_user_id, changed_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                         (element_id, *after.values(), proposed_by, confirmer_id, proposer_id, record))
             _log(conn, confirmed_by or tr('未署名', 'unsigned'), element_id, state, before=before and _logged({k: before[k] for k in after}),
                  after={**_logged(after), **({'self_confirmed': True} if self_confirmed else {})}, user_id=confirmer_id)
+        for element_id, was in back.items():   # after every change of this write is in: what a definition put back stands on may be among them
+            restore_if_back(conn, element_id, was)
         rows = {}
         for element_id, *_ in changes:
             cursor = conn.execute('SELECT * FROM element_state WHERE element_id = ?', (element_id,))
@@ -409,6 +421,233 @@ def element_state_writes(conn, changes: list[tuple], versions: dict[str, int] | 
         if not outer:
             conn.execute('ROLLBACK')
         raise
+
+
+# --- who changed a definition since it was last confirmed ---------------------------------------------------------------------------------------------
+# One rule for every definition kind of the team workspace that a second person confirms (pipelines keep their own: whoever saved its steps since the last
+# confirmation, workspace_pipelines._editors). Each keeps, in element_state.changed_json, the set of accounts that changed what it says since it was last
+# confirmed (or since it was put forward): {"by": [account ids], "of": a fingerprint of the content the record describes, "was": the confirmed row an edit sent
+# back, while it waits}. Nobody in the set and not its proposer may confirm it while two-person confirmation is active (may_confirm); confirming empties it;
+# nothing another person does takes a name out of it. The only ways out: what it says is again exactly what was last confirmed (the set empties and, when
+# nothing else sent it back, it is confirmed again as it was: restore_if_back), or a person outside the set confirms.
+TRACKED = ('objtype:', 'enum:', 'relation:', 'objview:', 'objaction:', 'derived:')
+
+
+def tracked(element_id: str) -> bool:
+    """Whether this rule covers the element: a definition of the team workspace that a second person confirms. The early screen's relations
+    (relation:<run>:<name>) share a prefix with the workspace's (relation:<English name>) and are not covered."""
+    if element_id.startswith('relation:'):
+        return ':' not in element_id[len('relation:'):]
+    return element_id.startswith(TRACKED)
+CONTENT_WRITES = ('proposed', 'checked', 'edited')   # the log lines of a write that put a definition's content forward or changed it
+SINCE = ('confirmed', 'restored')   # the log lines after which a definition is again what a second person confirmed
+
+
+def fingerprint(content_json: str | None) -> str | None:
+    return hashlib.sha256(content_json.encode()).hexdigest()[:16] if content_json else None
+
+
+_WAS = ('content_json', 'evidence_ref', 'confirmed_by', 'confirmed_at', 'anchors_json', 'proposed_by', 'confirmed_by_user_id', 'proposed_by_user_id')
+
+
+def fits(value, shape) -> bool:
+    """Whether a value read back from the file has exactly this shape, every nested field and type included. A shape is 'str', 'int' (never a yes/no), either with
+    '?' for "or null"; 'any' for any JSON value; ('is', v) for exactly v; ('list', item); ('pair', first, second) for a list of two; ('map', value) for an object of
+    any keys; ('object', required, optional) for an object with these keys and no other; ('json', inner, nullable) for text that is itself JSON of the inner shape (a
+    stored column put back as it was). Written once for every record a definition or an expectation keeps of who changed it."""
+    if shape == 'any':
+        return True
+    if isinstance(shape, str):
+        if value is None:
+            return shape.endswith('?')
+        base = shape.rstrip('?')
+        return isinstance(value, str) if base == 'str' else isinstance(value, int) and not isinstance(value, bool) if base == 'int' else False
+    kind = shape[0]
+    if kind == 'is':
+        return value == shape[1] and type(value) is type(shape[1])
+    if kind == 'json':
+        if value is None:
+            return shape[2]
+        try:
+            return isinstance(value, str) and fits(json.loads(value), shape[1])
+        except (ValueError, RecursionError):
+            return False
+    if kind == 'list':
+        return isinstance(value, list) and all(fits(v, shape[1]) for v in value)
+    if kind == 'pair':
+        return isinstance(value, list) and len(value) == 2 and fits(value[0], shape[1]) and fits(value[1], shape[2])
+    if kind == 'map':
+        return isinstance(value, dict) and all(isinstance(k, str) and fits(v, shape[1]) for k, v in value.items())
+    if kind == 'object':
+        required, optional = shape[1], shape[2] if len(shape) > 2 else {}
+        return (isinstance(value, dict) and set(required) <= set(value) <= set(required) | set(optional)
+                and all(fits(v, required[k] if k in required else optional[k]) for k, v in value.items()))
+    return False
+
+
+RECORD = ('object', {'by': ('list', 'int'), 'of': 'str?'}, {'was': ('object', {
+    'content_json': ('json', ('map', 'any'), False), 'evidence_ref': 'str?', 'confirmed_by': 'str?', 'confirmed_at': 'str', 'anchors_json': ('json', ('map', 'any'), True),
+    'proposed_by': 'str?', 'confirmed_by_user_id': 'int?',
+    'proposed_by_user_id': 'int?', 'deps': ('list', 'str'), 'reads': ('map', ('pair', 'str?', 'int?'))})})
+
+
+def read_record(text, shape) -> dict | None:
+    """The record kept in the file when it is JSON of exactly this shape (fits); None otherwise: a record that cannot be read whole is no record, and then who changed
+    the definition is not known."""
+    try:
+        kept = json.loads(text) if isinstance(text, str) and text else None
+    except (ValueError, RecursionError):
+        return None
+    return kept if fits(kept, shape) else None
+
+
+def parse_record(text) -> dict | None:
+    """A definition's record of who changed it (RECORD), or None."""
+    return read_record(text, RECORD)
+
+
+def _kept_record(row: dict) -> dict | None:
+    """The record of who changed it, when it is well formed and describes the content as it stands; None when there is none (a file from before it was kept), when it
+    cannot be read, or when the content was changed without it (older code writing to this file): then it is not trusted."""
+    kept = parse_record(row.get('changed_json'))
+    return kept if kept is not None and kept.get('of') == fingerprint(row.get('content_json')) else None
+
+
+def writers_in_log(conn, element_id: str, changes=CONTENT_WRITES, since=SINCE) -> set[int]:
+    """The accounts the log says wrote this element's content since its last confirmation (ever, when it never was)."""
+    last = conn.execute(f'SELECT MAX(rowid) FROM log WHERE element_id = ? AND change IN ({",".join("?" * len(since))})', (element_id, *since)).fetchone()[0] or 0
+    return {u for (u,) in conn.execute(f'SELECT user_id FROM log WHERE element_id = ? AND rowid > ? AND user_id IS NOT NULL AND change IN ({",".join("?" * len(changes))})',
+                                       (element_id, last, *changes))}
+
+
+def changers(conn, row: dict) -> set[int]:
+    """The accounts that changed what this definition says since it was last confirmed (or since it was put forward). Without a record that describes the content
+    as it stands, everyone the log names as having written it since, and whoever the record names: when in doubt, more people are kept from confirming, not
+    fewer. Empty for what this rule does not cover (a pipeline, the early screen's definitions)."""
+    if row['element_id'].startswith('pipeline:'):
+        return pipeline_editors(conn, row['element_id'])
+    if not tracked(row['element_id']):
+        return set()
+    kept = _kept_record(row)
+    if kept is not None:
+        return set(kept.get('by') or [])
+    stale = parse_record(row.get('changed_json')) or {}
+    return set(stale.get('by') or []) | writers_in_log(conn, row['element_id'])
+
+
+def pipeline_editors(conn, element_id: str) -> set[int]:
+    """A pipeline's own rule, its changers: the accounts that saved a definition version (its steps or its description) since its last confirmation (all of them when
+    it was never confirmed). Read from its saved versions, so there is no record of its own to keep."""
+    last = conn.execute('SELECT content_json FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1', (element_id,)).fetchone()
+    try:
+        since = json.loads(last[0]).get('definition_version', 0) if last and last[0] else 0
+    except (ValueError, AttributeError):
+        since = 0
+    since = since if isinstance(since, int) and not isinstance(since, bool) else 0
+    return {u for (u,) in conn.execute('SELECT saved_by_user_id FROM pipeline_version WHERE pipeline_id = ? AND version > ? AND saved_by_user_id IS NOT NULL', (element_id, since))}
+
+
+def barred(conn, row: dict) -> set[int]:
+    """Who may not confirm it while two-person confirmation is active: everyone who changed it since it was last confirmed, and the one who put it forward."""
+    return changers(conn, row) | ({row['proposed_by_user_id']} if row.get('proposed_by_user_id') is not None else set())
+
+
+def may_confirm(conn, row: dict, person_id: int | None) -> bool:
+    """The one test of whether this person may confirm this definition (as far as who they are goes): not while two-person confirmation is active and they are in
+    barred(). A person with no account (the built-in local admin of a service without sign-in) is not kept out, as before."""
+    return person_id is None or not two_person(conn)['active'] or person_id not in barred(conn, row)
+
+
+def last_confirmed_content(conn, element_id: str) -> str | None:
+    found = conn.execute('SELECT content_json FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1', (element_id,)).fetchone()
+    return found[0] if found else None
+
+
+def reads_now(conn, roots) -> dict[str, list]:
+    """Everything a definition reads, directly or through what those read, with what identifies it now: a definition's state and version (every change, every move to
+    needs another look and every confirmation gives it a new version), a dataset's current version. Columns are covered by their dataset's version."""
+    seen: dict[str, list] = {}
+    stack = list(roots)
+    while stack:
+        node = stack.pop()
+        if node in seen or node.startswith('column:'):
+            continue
+        if node.startswith('dataset:'):
+            held = conn.execute('SELECT dataset_id FROM current_dataset WHERE name = ?', (node[len('dataset:'):],)).fetchone()
+            seen[node] = ['dataset', held[0] if held else None]
+        else:
+            held = conn.execute('SELECT state, version FROM element_state WHERE element_id = ?', (node,)).fetchone()
+            seen[node] = list(held) if held else [None, None]
+        stack += [d for (d,) in conn.execute('SELECT depends_on FROM element_dep WHERE element_id = ? ORDER BY depends_on', (node,))]
+    return seen
+
+
+def next_record(conn, element_id: str, before: dict | None, content: str | None, state: str, actor_id: int | None) -> tuple[str | None, dict | None]:
+    """(the record to keep with this write, the confirmed row to put back when the content is again what was last confirmed). A confirmation empties the set; a
+    change of the content adds its writer, unless the content is again exactly what was last confirmed, which empties it; a write that changes nothing of the content
+    keeps it. An edit that sends a confirmed definition back keeps the confirmed row it replaced ("was") for as long as it waits, so that putting the content back
+    confirms it again as it was."""
+    if not tracked(element_id):
+        return None, None
+    if state == 'confirmed':
+        return json.dumps({'by': [], 'of': fingerprint(content)}), None
+    kept = _kept_record(before) if before else None
+    was = (kept or {}).get('was')
+    by = changers(conn, before) if before else set()
+    if before is None or content != before['content_json']:
+        if before is not None and before['state'] == 'confirmed':
+            deps = [d for (d,) in conn.execute('SELECT depends_on FROM element_dep WHERE element_id = ? ORDER BY depends_on', (element_id,))]
+            was = {**{k: before[k] for k in _WAS}, 'deps': deps, 'reads': reads_now(conn, deps)}   # what it read when the edit set it aside, to compare when it is put back
+        if content is not None and content == last_confirmed_content(conn, element_id):
+            by = set()
+        elif actor_id is not None:
+            by = by | {actor_id}
+    record = {'by': sorted(by), 'of': fingerprint(content), **({'was': was} if was else {})}
+    return json.dumps(record, ensure_ascii=False, sort_keys=True), (was if was and content == was['content_json'] and state in ('proposed', 'checked') else None)
+
+
+def _stands_as_confirmed(conn, element_id: str, was: dict) -> bool:
+    """Whether it would still be confirmed today had the edit never happened: the datasets it was last confirmed on are still at those versions, and everything it
+    reads, directly or through what those read, is exactly as it was when the edit set it aside (no change, no move to needs another look, no new confirmation, no
+    new data version) and confirmed. Anything else, or anything not known, is no: then a person looks again."""
+    found = conn.execute('SELECT dataset_versions_json, content_json, confirmed_by, confirmed_by_user_id, confirmed_at, evidence_ref, proposed_by FROM confirmation '
+                         'WHERE element_id = ? ORDER BY id DESC LIMIT 1', (element_id,)).fetchone()
+    if found is None or list(found[1:]) != [was[k] for k in ('content_json', 'confirmed_by', 'confirmed_by_user_id', 'confirmed_at', 'evidence_ref', 'proposed_by')]:
+        return False   # what would be put back is not the confirmation on file
+    try:
+        versions = json.loads(found[0]) if found[0] else {}
+    except ValueError:
+        return False
+    for name, version in (versions.items() if isinstance(versions, dict) else ()):
+        now = current_dataset(conn, name)
+        if now is None or now['version'] != version:
+            return False
+    then = was.get('reads')
+    if not isinstance(then, dict) or reads_now(conn, was.get('deps') or []) != then:
+        return False
+    return all(mark[0] in ('confirmed', 'dataset') and mark[1] is not None for mark in then.values())
+
+
+def restore_if_back(conn, element_id: str, was: dict) -> bool:
+    """Inside the caller's transaction: a definition an edit sent back whose content is again exactly what was last confirmed is confirmed again as it was (the same
+    person, time, evidence and anchors; no new confirmation is recorded) when nothing else sent it back (_stands_as_confirmed). The log says it was put back."""
+    row = conn.execute('SELECT state, content_json, version FROM element_state WHERE element_id = ?', (element_id,)).fetchone()
+    if row is None or row[0] not in ('proposed', 'checked') or row[1] != was['content_json'] or not _stands_as_confirmed(conn, element_id, was):
+        return False
+    conn.execute("UPDATE element_state SET state = 'confirmed', evidence_ref = ?, confirmed_by = ?, confirmed_at = ?, anchors_json = ?, proposed_by = ?, confirmed_by_user_id = ?, "
+                 "proposed_by_user_id = ?, reason = NULL, cause = NULL, via = NULL, changed_json = ? WHERE element_id = ?",
+                 (was['evidence_ref'], was['confirmed_by'], was['confirmed_at'], was['anchors_json'], was['proposed_by'], was['confirmed_by_user_id'], was['proposed_by_user_id'],
+                  json.dumps({'by': [], 'of': fingerprint(was['content_json'])}), element_id))
+    actor = current_actor()
+    _log(conn, actor['display_name'] if actor else tr('未署名', 'unsigned'), element_id, 'restored', before={'state': row[0], 'version': row[2]},
+         after={'state': 'confirmed', 'confirmed_by': was['confirmed_by'], 'confirmed_at': was['confirmed_at'], 'version': row[2]})
+    return True
+
+
+def drop_was(conn, element_id: str) -> None:
+    """Something other than an edit sent it back (a person sent it back): putting its content back no longer confirms it again by itself."""
+    conn.execute("UPDATE element_state SET changed_json = json_remove(changed_json, '$.was') WHERE element_id = ? AND json_valid(changed_json) AND json_type(changed_json) = 'object'",
+                 (element_id,))
 
 
 def set_element_states(conn, changes: list[tuple]) -> dict[str, dict]:
@@ -469,8 +708,91 @@ def fan_note() -> str:
 
 
 def fan_marks(conn, dataset_id: int) -> set[str]:
-    """The columns of this version of a dataset that a pipeline wrote from a figure a join repeated (FAN_NOTE)."""
-    return {c for (c,) in conn.execute('SELECT column_name FROM column_fan WHERE dataset_id = ?', (dataset_id,))}
+    """The number columns of this version of a dataset that a pipeline wrote from a figure a join repeated: the ones FAN_NOTE is shown on. A name or a code a join
+    copied is marked too (fan_origins: what refuses reads that), but the note stays with what a person adds up."""
+    return {c for (c,) in conn.execute('SELECT f.column_name FROM column_fan f JOIN "column" c ON c.dataset_id = f.dataset_id AND c.name = f.column_name '
+                                       "WHERE f.dataset_id = ? AND c.inferred_type IN ('integer', 'decimal')", (dataset_id,))}
+
+
+def fan_origins(conn, dataset_id: int) -> dict[str, str]:
+    """{column: the pipeline whose join copied it} for the columns of fan_marks; empty when there are none."""
+    rows = conn.execute('SELECT column_name, origin FROM column_fan WHERE dataset_id = ? ORDER BY column_name', (dataset_id,)).fetchall()
+    if not rows:
+        return {}
+    origin, changes = conn.execute('SELECT origin, changes_json FROM dataset WHERE id = ?', (dataset_id,)).fetchone()
+    writer = ((json.loads(changes) if changes else {}).get('pipeline') or {}).get('id') or (origin or '').removeprefix('pipeline:').rpartition('@')[0] or origin
+    return {column: marked or writer for column, marked in rows}
+
+
+def shown_pipeline(conn, pipeline: str | None, user: dict | None) -> str | None:
+    """The pipeline's name for a person who may open it; None for anyone else."""
+    from ontology_poc_generator.object_types import element_row   # these modules read this one: imported where it is used
+    from ontology_poc_generator.workspace_pipelines import pipeline_id, pipeline_visible
+    row = element_row(conn, pipeline_id(pipeline)) if pipeline else None
+    return pipeline if row is not None and pipeline_visible(conn, row, user) else None
+
+
+def fan_pipelines(conn, dataset_id: int, user: dict | None) -> dict[str, str | None]:
+    """{column: the pipeline whose join copied it, or None for a person who may not open that pipeline} for every marked column of this version, of any type."""
+    out, seen = {}, {}
+    for column, pipeline in fan_origins(conn, dataset_id).items():
+        if pipeline not in seen:
+            seen[pipeline] = shown_pipeline(conn, pipeline, user)
+        out[column] = seen[pipeline]
+    return out
+
+
+def input_versions(conn, versions: dict) -> list[int]:
+    """The ids of the dataset versions a run read ({name: version}; a view's entry is not a dataset)."""
+    return [r[0] for name, version in (versions or {}).items() if isinstance(version, int)
+            for r in conn.execute('SELECT id FROM dataset WHERE name = ? AND version = ?', (name, version)).fetchall()]
+
+
+def not_measured(conn, dataset_id: int, seen: frozenset = frozenset()) -> str | None:
+    """The pipeline to run again when this version was written by a pipeline before its copies were measured: one with a join (or whose run left no steps to tell),
+    or one that read a version that was not measured. The one named is the first to run again: an input's, when the current version of an input is not measured
+    either. None for an upload, a measured version, and a pipeline without a join over measured inputs."""
+    row = conn.execute('SELECT changes_json FROM dataset WHERE id = ?', (dataset_id,)).fetchone()
+    pipeline = ((json.loads(row[0]) if row and row[0] else {}) or {}).get('pipeline')
+    if not pipeline or dataset_id in seen or conn.execute('SELECT 1 FROM column_fan_measured WHERE dataset_id = ?', (dataset_id,)).fetchone():
+        return None
+    seen = seen | {dataset_id}
+    read = pipeline.get('inputs') or {}
+    nodes = conn.execute('SELECT nodes_json FROM pipeline_run WHERE id = ?', (pipeline.get('run'),)).fetchone()
+    joins = nodes is None or not nodes[0] or any(n.get('type') == 'join' for n in json.loads(nodes[0]))
+    if not joins and not any(not_measured(conn, d, seen) for d in input_versions(conn, read)):
+        return None
+    for name in read:   # an input still not measured now is the one to run first
+        now = current_dataset(conn, name)
+        upstream = not_measured(conn, now['id'], seen) if now else None
+        if upstream:
+            return upstream
+    return pipeline.get('id')
+
+
+def not_measured_refusal(dataset: str, pipeline: str | None) -> str:
+    """Why every aggregate but a count, a count distinct, a min and a max is refused on a version not measured, and what to do. Nothing is said of rows."""
+    if not pipeline:   # a person who may not open pipelines: neither what is behind the type nor a step they cannot take
+        return tr('这些数据是在检查重复之前由管道写出的：没有量过关联有没有把一行变成几行，所以现在不拿它的数来统计（计数、去重计数、最大、最小照常）。请建设者把写它的管道重新运行一次',
+                  'This data was written by a pipeline before repeats were measured: nobody measured whether a join turned one row into several, so its figures are not '
+                  'worked out now (a count, a distinct count, a max and a min still are). Ask a builder to run the pipeline that writes it again once')
+    return tr(f'“{dataset}”这一版是在检查重复之前写出的：没有量过关联有没有把一行变成几行，所以现在不拿它的数来统计（计数、去重计数、最大、最小照常）。请把管道“{pipeline}”重新运行一次',
+              f'This version of "{dataset}" was written before repeats were measured: nobody measured whether a join turned one row into several, so its figures are not '
+              f'worked out now (a count, a distinct count, a max and a min still are). Have the pipeline "{pipeline}" run again once')
+
+
+REPEAT_SAFE = ('count', 'count_distinct', 'min', 'max')   # what copies of a value do not change: every other aggregate of a column in fan_marks is refused
+
+
+def fan_refusal(column: str, pipeline: str | None, fn: str) -> str:
+    """Why an aggregate (a sum, an average, a median, a percentile, a distribution) of a column in fan_marks is not worked out, and where to work it out instead.
+    Refused, never corrected: which copies of the figure are the same one is the pipeline's to say, not the question's. `pipeline` None: the asker may not open it,
+    so it is not named. Nothing is said of rows: a person limited to some rows gets the same sentence."""
+    how = tr('加起来', 'adding it up') if fn == 'sum' else tr('求平均', 'averaging it') if fn in ('avg', 'average') else tr('拿来统计', 'working it out')
+    who = tr(f'管道“{pipeline}”', f'the pipeline "{pipeline}"') if pipeline else tr('一个管道', 'a pipeline')
+    return tr(f'“{column}”是{who}关联后写出的数：关联把一行变成了几行，这个数重复了，{how}会把同一笔算好几次，所以不算。请到每件事只有一行的类型上去算（例如每个订单一行的那个类型）',
+              f'"{column}" was written by {who} after a join turned one row into several: the figure repeats, and {how} would count the same amount several times, '
+              f'so it is not worked out. Work it out on the type that has one row per thing (for example the one with one row per order)')
 
 
 def current_dataset(conn, name: str) -> dict | None:

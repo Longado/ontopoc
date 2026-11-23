@@ -144,8 +144,9 @@ def _input_columns(step: dict, sid: str, datasets: dict, views: dict, ctx: dict)
     from such a column or from a model's answer (`ctx['ai']`), is marked, and the mark travels with it."""
     data = _input_of(step, sid, datasets, views)[1]
     origin = data['source'] if 'view' in step else step['dataset']
+    fan = ctx.get('fan') or {}
     return [{**c, 'origin': f'{origin}.{c["name"]}', **{mark: True for mark in ('unsent', 'ai') if f'{origin}.{c["name"]}' in ctx.get(mark, ())},
-             **({'fan_agg': [UPSTREAM]} if f'{origin}.{c["name"]}' in ctx.get('fan', ()) else {})} for c in data['columns']]
+             **({'fan_agg': [UPSTREAM], 'rep': [UPSTREAM + ':' + (fan[f'{origin}.{c["name"]}'] or '')]} if f'{origin}.{c["name"]}' in fan else {})} for c in data['columns']]
 
 
 def _split_read(sid: str, ref: str):
@@ -172,12 +173,18 @@ def _join_columns(step: dict, left: list[dict], right: list[dict]) -> list[dict]
     right_shown = [c for c in visible(right) if c['name'] not in same_key and (chosen is None or c['name'] in chosen)]
     clash = {c['name'] for c in visible(left)} & {c['name'] for c in right_shown}
     lname, rname = _lineage(step['id'], 'l'), _lineage(step['id'], 'r')
-    prefixed = lambda c, side, tag: {**c, 'name': f'{side}_{c["name"]}' if c['name'] in clash else c['name'], 'source': c['name'], 'side': side[0], 'fan': [*c.get('fan', []), tag]}
+    prefixed = lambda c, side, tag: {**c, 'name': f'{side}_{c["name"]}' if c['name'] in clash else c['name'], 'source': c['name'], 'side': side[0], 'fan': [*c.get('fan', []), tag],
+                                     'rep': [*c.get('rep', []), tag]}
     carried = lambda c, side: {**{k: v for k, v in c.items() if k != 'rowid_of'}, 'source': c['name'], 'side': side}   # a hidden column of an earlier join is passed along as it is
     out = [prefixed(c, 'left', lname) if not c.get('hidden') else carried(c, 'l') for c in left] \
         + [prefixed(c, 'right', rname) for c in right_shown] \
         + [carried(c, 'r') for c in right if c.get('hidden')] \
         + [{'name': lname, 'type': 'integer', 'hidden': True, 'rowid_of': 'l'}, {'name': rname, 'type': 'integer', 'hidden': True, 'rowid_of': 'r'}]
+    pairs = len(step['on'])
+    for i, p in enumerate(step['on']):   # a key column holds both sides' key (equal on every joined row): a later dedupe or grouping on it goes back to either side
+        for c in out:
+            if not c.get('hidden') and ((c['side'] == 'l' and c['source'] == p['left']) or (c['side'] == 'r' and c['source'] == p['right'])):
+                c['key_of'] = [*c.get('key_of', []), [lname, i, pairs], [rname, i, pairs]]
     names = [c['name'] for c in out]
     if len(set(names)) < len(names):
         raise ValueError(tr(f'步骤 {step["id"]}：连接后有重名的列：{sorted({n for n in names if names.count(n) > 1})[0]}', f'Step {step["id"]}: columns have the same name after the join: {sorted({n for n in names if names.count(n) > 1})[0]}'))
@@ -213,7 +220,8 @@ def _transform(step: dict, sid: str, src: str, columns: list[dict], ctx: dict, i
         label = tr(f'步骤 {sid} 的第 {j + 1} 个操作', f'operator {j + 1} of step {sid}')
         stage = compile_op(op, src, columns, ctx, tr(f'{label}（{op.get("op") if isinstance(op, dict) else op}）', f'{label} ({op.get("op") if isinstance(op, dict) else op})'))
         table = f'pl_{index}_{j}'
-        stages.append({'op': op['op'], 'table': table, 'sql': f'CREATE TEMP TABLE {table} AS {stage["select"]}', 'params': stage['params'], 'measure': stage['measure']})
+        stages.append({'op': op['op'], 'table': table, 'sql': f'CREATE TEMP TABLE {table} AS {stage["select"]}', 'params': stage['params'], 'measure': stage['measure'],
+                       'resolve': stage.get('resolve')})
         src, columns = table, stage['columns']
     return src, columns, stages
 
@@ -282,6 +290,27 @@ def _union_columns(step: dict, sid: str, sources: list[tuple[str, list[dict]]], 
         if not isinstance(added, str) or not added.strip() or len(added) > 60 or added in names or added.startswith('__'):
             raise ValueError(tr(f'步骤 {sid}：标出来源的新列（source_column）要写一个和别的列都不重名的列名', f'Step {sid}: the new column that marks the source (source_column) needs a name that no other column has'))
         out.append({'name': added, 'type': 'text'})
+    return out
+
+
+def _union_sides(columns: list[dict], table: str) -> tuple[list[dict], dict]:
+    """A union loses the hidden row columns, so each side a column comes from becomes a side of its own (`<side>@<table>`), settled when the union runs
+    (_settle_union). An earlier pipeline's mark goes through as it is."""
+    settle, out = {}, []
+    for c in columns:
+        sides = [t if t.startswith(f'{UPSTREAM}:') else f'{t}@{table}' for t in c.get('rep', ())]
+        settle.update({f'{t}@{table}': t for t in c.get('rep', ()) if not t.startswith(f'{UPSTREAM}:')})
+        out.append({**{k: v for k, v in c.items() if k != 'rep'}, **({'rep': sorted(set(sides))} if sides else {})})
+    return out, settle
+
+
+def _settle_union(conn, settle: dict, inputs: list[dict], facts: dict) -> dict:
+    """{side of the union: copied}: copied when a row of the side is copied in one of the inputs, or when the side is in more than one input (the same row can
+    then be stacked twice)."""
+    out = {}
+    for new, side in settle.items():
+        holding = [i for i in inputs if any(c['name'] == side or side in c.get('rep', ()) for c in i['columns'])]
+        out[new] = len(holding) > 1 or any(facts['copied'](conn, i['table'], side) for i in holding)
     return out
 
 
@@ -430,6 +459,7 @@ def compile_pipeline(spec: dict, datasets: dict, views: dict | None = None, ctx:
             sources = [(r, *kept[r]) for r in step['inputs']]
             columns = _union_columns(step, sid, [(r, cols) for r, _, cols in sources], ctx)
             sql, params = _union_sql(step, table, sources, columns)
+            columns, settle = _union_sides(columns, table)
         elif step['type'] == 'split':
             src, columns = kept[step['from']]
             columns = [{k: v for k, v in c.items() if k != 'badge'} for c in columns]
@@ -464,7 +494,7 @@ def compile_pipeline(spec: dict, datasets: dict, views: dict | None = None, ctx:
                 table, sql = src, ''
         kept[sid] = (table, columns)
         steps.append({'id': sid, 'type': step['type'], 'table': table, 'columns': columns, 'sql': sql, 'params': params, 'stages': stages, 'output': output, 'llm': llm,
-                      'split': split})
+                      'split': split, **({'settle': settle} if step['type'] == 'union' and settle else {})})
     return steps
 
 
@@ -627,6 +657,41 @@ def _output_report(conn, table: str, output: dict) -> dict:
 FAILURE_KEYS = (('failures', 'cast_failures'), ('errors', 'calc_errors'), ('unmapped_rows', 'unmapped_rows'), ('dropped_null', 'dropped_by_empty_condition'))
 
 
+def _facts() -> dict:
+    """What a run knows about the join sides: {'copied': copied(conn, table, side), 'status': {settled side: copied}, 'unique': {side: its join key has no repeat
+    on its own input}}. `copied` measures a side on its hidden row column when the table has it; an aggregate's or a union's side is as settled; an earlier
+    pipeline's mark, or a side that cannot be measured any more, is copied (what cannot be proved stays)."""
+    status, unique, seen = {}, {}, {}
+
+    def copied(conn, table: str, side: str) -> bool:
+        if side in status:
+            return status[side]
+        if side.startswith(f'{UPSTREAM}:'):
+            return True
+        if table not in seen:
+            seen[table] = {d[0] for d in conn.execute(f'SELECT * FROM {table} LIMIT 0').description}
+        if side not in seen[table]:
+            return True
+        if (table, side) not in seen:
+            seen[(table, side)] = conn.execute(f'SELECT 1 FROM {table} WHERE {_q(side)} IS NOT NULL GROUP BY {_q(side)} HAVING COUNT(*) > 1 LIMIT 1').fetchone() is not None
+        return seen[(table, side)]
+    return {'copied': copied, 'status': status, 'unique': unique}
+
+
+def _repeated(conn, source: dict, output: dict, facts: dict) -> dict:
+    """{column: None, or the pipeline that marked it upstream}: the columns an output keeps (of any type) whose value comes from a join side one row of which is
+    on more than one row here (measured on the output's own rows while the side's hidden row column is there) or that an earlier pipeline marked."""
+    by_name = {c['name']: c for c in visible(source['columns'])}
+    found = {}
+    for c in output['columns']:
+        sides = (by_name.get(c['name']) or c).get('rep', ())
+        if any(not t.startswith(f'{UPSTREAM}:') and facts['copied'](conn, source['table'], t) for t in sides):
+            found[c['name']] = None
+        elif any(t.startswith(f'{UPSTREAM}:') for t in sides):
+            found[c['name']] = next(t for t in sides if t.startswith(f'{UPSTREAM}:'))[len(UPSTREAM) + 1:] or None
+    return found
+
+
 def _union_report(conn, step: dict, sources: list[tuple[str, str, list[dict]]], columns: list[dict]) -> dict:
     """What a union did beyond stacking: {'filled_empty': {column: rows left empty because their input had no such column}, 'same_rows': {'count': distinct rows found
     in more than one input, 'examples': the first EXAMPLES as {column: value}}}. Rows found twice are counted twice by a later sum: the run says so instead."""
@@ -696,7 +761,7 @@ def run_pipeline(conn, spec: dict, datasets: dict, views: dict | None = None, sk
     by_id.update({b['id']: {'table': b['table'], 'columns': s['columns']} for s in steps if s['split'] for b in s['split']})   # a branch is read as a table of its own
     feeds = needed_steps(spec, [s['id'] for s in spec['steps'] if s['type'] == 'output'])
     register(conn)
-    nodes, made = [], []
+    nodes, made, facts, marks = [], [], _facts(), {}
     try:
         for index, (step, compiled) in enumerate(zip(spec['steps'], steps)):
             if upto is not None and step['id'] not in upto:
@@ -707,6 +772,9 @@ def run_pipeline(conn, spec: dict, datasets: dict, views: dict | None = None, sk
                 left, right = by_id[step['left']], by_id[step['right']]
                 made += [f'jl_{index}', f'jr_{index}']
                 measured = _measure_join(conn, index, step, left['table'], right['table'], row_cap)
+                lside, rside = _lineage(step['id'], 'l'), _lineage(step['id'], 'r')
+                facts['unique'][lside] = conn.execute(f'SELECT 1 FROM jl_{index} WHERE n > 1 LIMIT 1').fetchone() is None
+                facts['unique'][rside] = conn.execute(f'SELECT 1 FROM jr_{index} WHERE n > 1 LIMIT 1').fetchone() is None
             if step['type'] == 'join':
                 _index_right(conn, index, step, by_id[step['right']]['table'])
             report = None
@@ -729,6 +797,8 @@ def run_pipeline(conn, spec: dict, datasets: dict, views: dict | None = None, sk
                     conn.execute(f'DROP TABLE IF EXISTS temp.{stage["table"]}')
                     conn.execute(stage['sql'], stage['params'])
                     extra = stage['measure'](conn, previous, stage['table'])
+                    if stage.get('resolve'):
+                        facts['status'].update(stage['resolve'](conn, previous, facts))
                     operators.append({'op': stage['op'], 'rows_in': conn.execute(f'SELECT COUNT(*) FROM {previous}').fetchone()[0],
                                       'rows_out': conn.execute(f'SELECT COUNT(*) FROM {stage["table"]}').fetchone()[0], **{k: v for k, v in extra.items() if k != 'halt'}})
                     if extra.get('halt'):
@@ -754,6 +824,11 @@ def run_pipeline(conn, spec: dict, datasets: dict, views: dict | None = None, sk
                 node['failures'] = report['failures']
             if step['type'] == 'output':
                 node['output'] = _output_report(conn, compiled['table'], compiled['output'])
+                repeated = _repeated(conn, by_id[step['from']], compiled['output'], facts)
+                if repeated:   # kept beside the nodes, not in them: what a run stores of its nodes stays as it was
+                    marks[step['id']] = repeated
+            if compiled.get('settle'):
+                facts['status'].update(_settle_union(conn, compiled['settle'], [by_id[r] for r in step['inputs']], facts))
             if step['type'] == 'union':
                 node['union'] = _union_report(conn, step, [(r, by_id[r]['table'], by_id[r]['columns']) for r in step['inputs']], compiled['columns'])
             if compiled['split']:
@@ -764,4 +839,4 @@ def run_pipeline(conn, spec: dict, datasets: dict, views: dict | None = None, sk
     finally:
         for table in made:
             conn.execute(f'DROP TABLE IF EXISTS temp.{table}')
-    return {'nodes': nodes, 'row_cap': row_cap}
+    return {'nodes': nodes, 'row_cap': row_cap, **({'repeated': marks} if marks else {})}

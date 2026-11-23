@@ -1,0 +1,121 @@
+name: release
+
+# A tag vX.Y.Z publishes the MCP server: the wheel and sdist to PyPI by trusted publishing, then server.json to the
+# official MCP Registry as io.github.Longado/ontopoc by GitHub OIDC. No stored token: PyPI trusts this workflow file
+# in the `pypi` environment (a pending publisher the owner adds once), and the registry trusts the OIDC token of
+# this repository. Nothing is published unless the tag, pyproject.toml, server.json and the package name one
+# version, the built wheel's `ontopoc mcp` answers initialize and tools/list, and the registry accepts server.json.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false   # never stop a release halfway between PyPI and the registry
+
+env:
+  MCP_PUBLISHER_VERSION: v1.8.10   # change on purpose; the download is checked against its Sigstore signature
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: The tag, pyproject.toml, server.json and the package name one version
+        run: python scripts/check_release_version.py "$GITHUB_REF_NAME"
+      - name: Release tests
+        run: PYTHONPATH=src python -m unittest tests.test_release -v
+      - name: Build the wheel and sdist
+        run: |
+          python -m pip install --disable-pip-version-check build twine
+          python -m build
+          python -m twine check --strict dist/*
+      - name: The built wheel's ontopoc command answers initialize and tools/list, and its PyPI page has the mcp-name line
+        run: |
+          set -euo pipefail
+          python -m venv "$RUNNER_TEMP/try"
+          "$RUNNER_TEMP/try/bin/pip" install --disable-pip-version-check dist/*.whl
+          python scripts/check_mcp_stdio.py -- "$RUNNER_TEMP/try/bin/ontopoc" mcp
+          unzip -p dist/*.whl '*.dist-info/METADATA' | grep -q 'mcp-name: io.github.Longado/ontopoc'
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Download and verify mcp-publisher
+        run: |
+          set -euo pipefail
+          archive="mcp-publisher_linux_amd64.tar.gz"
+          base_url="https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}"
+          curl --fail --location --silent --show-error --output "$archive" "$base_url/$archive"
+          curl --fail --location --silent --show-error --output "$archive.sigstore.json" "$base_url/$archive.sigstore.json"
+          cosign verify-blob \
+            --bundle "$archive.sigstore.json" \
+            --certificate-identity "https://github.com/modelcontextprotocol/registry/.github/workflows/release.yml@refs/tags/${MCP_PUBLISHER_VERSION}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "$archive"
+          mkdir -p "$RUNNER_TEMP/publisher"
+          tar xzf "$archive" -C "$RUNNER_TEMP/publisher" mcp-publisher
+          rm -f "$archive" "$archive.sigstore.json"
+          echo "$RUNNER_TEMP/publisher" >> "$GITHUB_PATH"
+      - name: The registry accepts server.json (schema and rules only; nothing is published)
+        run: mcp-publisher validate server.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: mcp-publisher
+          path: ${{ runner.temp }}/publisher/mcp-publisher
+          if-no-files-found: error
+
+  pypi:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/p/ontopoc
+    permissions:
+      id-token: write   # trusted publishing: PyPI exchanges this workflow's OIDC token for a short-lived upload token
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  registry:
+    needs: pypi
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      id-token: write   # GitHub OIDC proves the io.github.Longado namespace to the registry
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: mcp-publisher
+          path: ${{ runner.temp }}/publisher
+      - name: Wait until PyPI serves this version (the registry reads the mcp-name line from it)
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          for i in $(seq 1 30); do
+            curl -sf -o /dev/null "https://pypi.org/pypi/ontopoc/$version/json" && exit 0
+            sleep 10
+          done
+          echo "PyPI does not show ontopoc $version after 5 minutes"; exit 1
+      - name: Publish server.json to the MCP Registry
+        run: |
+          set -euo pipefail
+          chmod +x "$RUNNER_TEMP/publisher/mcp-publisher"   # an artifact does not keep the executable bit
+          export PATH="$RUNNER_TEMP/publisher:$PATH"
+          mcp-publisher login github-oidc
+          mcp-publisher publish

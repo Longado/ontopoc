@@ -48,6 +48,10 @@ Three outcomes, all on the bundled sample data (150 orders, status codes 0 to 5)
 
 An answer on every row also shows each confirmed view's own number beside it, and an answer on one confirmed view also shows the number for every row. Which rows the main number covers is decided as before.
 
+**A figure a join repeated is not worked out.** When a pipeline joins orders to their lines, every line row carries its order's amount; adding that amount up on an "order line" type counts an order once per line. A run looks at structure, not values: as soon as one row of a join's side stands on more than one output row, every column from that side is marked ("Counts repeated rows"), even when a total happens to come out right, and whatever its type, so an amount stored as text does not escape (the note on pages is shown on number columns only). The mark follows the column through the later steps of the same pipeline (cast, calculated column, fill, filter, union, an AI step) and into a pipeline that reads it. It comes off by measurement, not by the kind of step: while the join's hidden row columns are there, the output is measured again, and the mark goes only when no row of that side stands on more than one row; an aggregate loses them, and then only a grouping by exactly that side's join key (nothing added), unique on that side, with max, min or count distinct takes it off. Only the current version of a dataset counts. From then on Q&A, OntoPoc Query, MCP, derived properties, boards and charts, checked numbers and questions we need refuse a sum, an average, a median, a percentile or a distribution of such a column (group totals included), and point to the way out: work it out on the type that has one row per thing (one row per order, say). A person who may open the pipeline is told which one; anyone else gets the same sentence without the name, and a person limited to some rows gets the same sentence too. It refuses; it never de-duplicates for you. A count of objects, a count distinct, a max or a min still answer (in Q&A and charts: OntoPoc Query has count but no max or min); confirming such a type is not blocked, and the confirm screen carries the note.
+
+**Upgrading from an earlier version.** A pipeline output with a join written by an earlier version was never measured for repeats. After the upgrade, on such a version every aggregate of any column but a count, a count distinct, a max and a min is refused, with a sentence that says which pipeline to run again (named only to those who may open pipelines); its checked numbers show as refused and its questions we need go back to "needs another look". Run each pipeline that has a join once after upgrading; a pipeline without a join over uploaded data is not affected. The demo and the sample data have no pipelines: their boards and questions answer as before.
+
 On the live demo a guest gets the first answer and one refusal of the third kind: the type Customer was confirmed once and now waits for a second look, so a question that names it is refused before the model is asked, and the guest is told only that the answer waits for a confirmation. A question names it by its name, Customer (any case, singular or plural, as a whole word, for example "Valid order amount by Customer city"), or by its other name 客户 ("按客户城市看有效订单金额").
 
 **Other names.** An object type, a property, a code meaning, a view or a derived property can carry up to five other names, for example the Chinese name of an English one (the demo's view *Valid orders* is also called 有效订单). A question that uses one is read as if it used the name: it is refused before the model where the name would be, and a question that says a confirmed view's other name is refused when the model does not read that view, as with its name. The model is told the other names of the confirmed definitions it is told about. Nothing else changes: which rows an answer covers is still the model's reading, checked by code. A definition's own name is always heard; an other name found only inside a longer name of another definition is not (on the demo, Customer's other name 客户 inside the property's 客户号). Other names are part of the definition, so the person who confirms it confirms them; an other name may not equal a name of a definition of another kind; two definitions in one scope may not share one, a name in Chinese may not contain another in its scope, and a view's name may not be inside an object type's (the other way round is fine: 订单 inside 有效订单).
@@ -58,7 +62,7 @@ The sum of the amount column is 162,960. It is arithmetically right and it is no
 
 1. **Put it forward.** A builder writes the definition, asks the model to suggest one from the datasets, or imports the tests of a dbt `manifest.json` (a suggestion or an import is only a proposal).
 2. **Code checks it on every row.** Keys are unique and filled, relations connect (and say how many rows do not), every code has a meaning, and each value rule on a type's properties holds (not empty; greater than, at least, less than, at most or between numbers; one of the codes with a meaning; one date not before another), with the rows that break it counted and up to 20 named by key. A rule the data breaks can be proposed, but the type cannot be confirmed until no row breaks it. A key check over no rows does not count as passed (relation checks do not yet make that distinction).
-3. **A second builder confirms it.** Never the one who proposed it; with one builder the rule opens up and the log says so. The confirmation keeps who, when and which data version.
+3. **A second builder confirms it.** Never the one who proposed it, and never anyone who changed it since it was last confirmed, whether they changed its name, its description or its other names. Any change to a confirmed definition, by anyone (its last confirmer included), sends it back to wait for a second person; putting it back exactly as it was last confirmed confirms it again. The cost: when two builders have both changed a definition, a third person has to confirm it, or one of them puts it back; whoever is held is told who changed it and the ways out. A pipeline's new description counts as a change of the pipeline, as a new step does: it waits for a second person, its scheduled runs stop, and the definitions on what it writes go back for another look until they are confirmed again. With one builder the rule opens up and the log says so. The confirmation keeps who, when and which data version.
 4. **It is used.** Q&A, boards and agents see it, each number with the line it rests on.
 5. **It goes back when things move.** A new upload or pull re-checks it; if it no longer holds, it and what reads it go to "needs another look", with the cause (data changed, definition changed, upstream). The review queue brings it back to step 3.
 
@@ -109,6 +113,8 @@ PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --origin http:/
 # terminal 2: the page
 cd landing-page && npm run dev -- --host 127.0.0.1 --port 5178 --strictPort
 ```
+
+The dev server listens on this machine only. To open it to other machines (for example as `terminal.local`), start it with `ONTOPOC_DEV_HOST=0.0.0.0`; anyone on the network can then reach it.
 
 The admin adds other people on the Users page. After changing backend code, restart the service; the page says so when it finds the service running old code.
 
@@ -209,8 +215,8 @@ Issues and pull requests are welcome. Read the [development guardrails](docs/DEV
 ## Development
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (2,573 on 2026-11-22; install ".[check,sources]" first, or the Turtle, OWL and SHACL tests and some source checks are skipped)
-npm --prefix landing-page run test:unit                       # page tests (826 on 2026-11-22)
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (2,669 on 2026-11-23; install ".[check,sources]" first, or the Turtle, OWL and SHACL tests and some source checks are skipped)
+npm --prefix landing-page run test:unit                       # page tests (829 on 2026-11-23)
 PYTHONPATH=src:. python3 scripts/real_model_check.py --out /tmp/check   # real model against SQL (needs a model key; fails only on a wrong number)
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # a trial run in another data directory
 ```
@@ -233,3 +239,5 @@ Page code: the team app is in `landing-page/src/app/` and uses only `/api/worksp
 ---
 
 The earlier screen, organised around one modelling run at a time (drafting an ontology from a few tables or a document, the caliber card, object forms and Turtle export; a PDF upload there also needs `pdftotext` from poppler), is still at `legacy.html`: [docs/LEGACY_SCREEN.en.md](docs/LEGACY_SCREEN.en.md).
+
+<!-- mcp-name: io.github.Longado/ontopoc -->

@@ -15,6 +15,7 @@ from ontology_poc_generator.derived_measures import compute as compute_derived, 
 from ontology_poc_generator.ontology_card import evidence as card_evidence, is_period_to_date, measure_fields, refusal as card_refusal
 from ontology_poc_generator import ontopoc_query
 from ontology_poc_generator.lang import english, tr
+from ontology_poc_generator.workspace_store import fan_refusal, not_measured_refusal
 
 ontopoc_query.SAY = tr   # the query language says its messages in the asker's language (it imports nothing itself)
 
@@ -601,6 +602,13 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
     seen = [(tuple(d['via']), d['field'], d.get('by')) for d in dims]
     if len(set(seen)) < len(seen):   # "which X go together": one dimension cannot pair two different values of itself
         return {'status': 'query_limit', 'reason': tr('同一个字段沿同一条路径分了两次组，这是在问哪些值常在一起出现；查询只会把每个值和它自己配成一对，这种问法还不支持', 'The same field is grouped twice along the same path, which asks which values often appear together. A query only pairs each value with itself, so this kind of question is not supported yet')}
+    unmeasured = (bundle.get('unmeasured') or {}).get(measure['field'].partition('.')[0]) if measure else None   # a version written before copies were measured
+    if unmeasured:
+        return {'status': 'query_limit', 'reason': not_measured_refusal(unmeasured['dataset'], unmeasured['pipeline']), 'fan': 'not_measured',
+                'fan_detail': {'dataset': unmeasured['dataset'], 'version': unmeasured['version']}}
+    fanned = bundle.get('fan') or {}   # {"table.path": the pipeline, or None when the asker may not open it}: a figure a join copied (workspace_store.fan_marks)
+    if measure and measure['field'] in fanned:   # a sum and an average are both changed by copies of a row
+        return {'status': 'query_limit', 'reason': fan_refusal(measure['field'].partition('.')[2], fanned[measure['field']], measure['op']), 'fan': 'repeated'}
     refused = card_refusal(card, bundle, measure, where, dims) if card and measure else None
     if refused:
         return refused
@@ -879,7 +887,7 @@ def _for_reader(reasoning: str, status: str) -> str:
 
 def _in_names(ontology: dict, result: dict) -> dict:
     """The reason of an answer that did not succeed, written in the names a person reads instead of the ontology's keys."""
-    if result['status'] != 'answered' and result.get('reason') and 'refused_by_card' not in result:   # the card's reason names a column, not an object
+    if result['status'] != 'answered' and result.get('reason') and 'refused_by_card' not in result and 'fan' not in result:   # the card's and the repeat's reason name a column, not an object
         return {**result, 'reason': plain_reason(ontology, result['reason'])}
     return result
 

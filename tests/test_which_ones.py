@@ -726,9 +726,13 @@ class WithOtherNames(Sample):
             self.assertEqual(status, 200, body)
             self.confirm_view(bob)
             self.assertEqual(keys(self.ask(ann, model, '哪些加急订单是高风险的？', item(LIST_VIEW, VIEW_USED))), URGENT_HIGH)
-            line = self.formula(ann)   # another other name only: the formula stays confirmed, and so does the view on it
+            line = self.formula(ann)   # another other name only: like any change to a confirmed definition it goes back for a second person, and the view on it with it
             self.assertEqual(ann.post('/api/workspace/types/derived/update', {**HIGH_RISK, 'other_names': ['风险高'], 'version': line['version']})[0], 200)
-            self.assertEqual((self.formula(ann)['state'], self.view(ann)['state']), ('confirmed', 'confirmed'))
+            self.assertEqual((self.formula(ann)['state'], self.view(ann)['state']), ('checked', 'needs_look'))
+            self.assertEqual(self.ask(ann, model, '哪些加急订单是高风险的？', item(LIST_VIEW, VIEW_USED))['status'], 'refused')
+            self.confirm_formula(bob)
+            self.confirm_view(bob)
+            self.assertEqual((self.formula(ann)['state'], self.view(ann)['state']), ('confirmed', 'confirmed'))   # confirmed again: the same rows as before
             self.assertEqual(keys(self.ask(ann, model, '哪些加急订单是高风险的？', item(LIST_VIEW, VIEW_USED))), URGENT_HIGH)
 
     def test_a_list_or_lookup_of_a_type_whose_value_rules_are_not_known_to_hold_is_refused_as_a_number_is(self):

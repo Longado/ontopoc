@@ -99,9 +99,13 @@ class AltLabelTests(SchemaCase):
         props = [{'column': p['column'], **({'enum': True} if p['enum'] else {}), **({'other_names': ['货款']} if p['column'] == '金额' else {})} for p in now['properties']]
         status, body = ann.post('/api/workspace/types/update', {'id': 'order', 'version': now['version'], 'name': now['name'], 'description': now.get('description') or '', 'dataset': now['dataset'],
                                                                 'key': now['key'], 'properties': props, 'other_names': ['销售单']})
-        self.assertEqual((status, body.get('state')), (200, 'confirmed'), body)
+        self.assertEqual((status, body.get('state')), (200, 'checked'), body)   # new other names wait for a second person, as any change does
         view = ann.get('/api/workspace/types/order/views')[1]['views'][0]
         self.assertEqual(ann.post('/api/workspace/types/views/update', {'id': view['name'], 'version': view['version'], 'type': 'order', 'filters': view['filters'], 'other_names': ['好订单']})[0], 200)
+        bob = team['bob']   # who changed none of it confirms both
+        self.confirm_type(bob, 'order')
+        view = bob.get('/api/workspace/types/order/views')[1]['views'][0]
+        self.assertEqual(bob.post('/api/workspace/types/views/confirm', {'id': view['name'], 'version': view['version'], 'seen': view['seen']})[0], 200)
 
     def test_confirmed_definitions_carry_their_other_names_as_skos_altlabel_declared_as_skos_declares_it(self):
         from rdflib import Literal, RDF
@@ -130,6 +134,7 @@ class AltLabelTests(SchemaCase):
             status, body = ann.post('/api/workspace/types/update', {'id': 'order', 'version': now['version'], 'name': now['name'], 'description': 'see skos:altLabel for names',
                                                                     'dataset': now['dataset'], 'key': now['key'], 'properties': props})
             self.assertEqual(status, 200, body)
+            self.confirm_type(team['bob'], 'order')   # the new description waits for a second person
             text = self.files(out, 'bob')['ontology.ttl']
             self.assertIn('see skos:altLabel for names', text)   # the description is there, as text
             self.assertNotIn('skos:altLabel a ', text)           # and nothing is declared: no other name was written
@@ -143,6 +148,7 @@ class AltLabelTests(SchemaCase):
             now = ann.get('/api/workspace/types/ticket')[1]
             status, body = ann.post('/api/workspace/types/update', {**TICKET, 'id': 'ticket', 'version': now['version'], 'other_names': ['维修单']})
             self.assertEqual(status, 200, body)
+            self.confirm_type(team['bob'], 'ticket')   # the new other name waits for a second person
             self.assertEqual(ann.post('/api/workspace/types/derived', {**GROSS, 'other_names': ['税后总额']})[0], 200)   # waits: nobody confirmed it
             ids = {u['username']: u['id'] for u in admin.get('/api/users')[1]['users']}
             self.assertEqual(admin.post('/api/workspace/permissions', {'type': 'ticket', 'visible_to': [ids['ann']]})[0], 200)

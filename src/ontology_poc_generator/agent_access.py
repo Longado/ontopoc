@@ -118,6 +118,15 @@ def _last_confirmation(conn, element_id: str) -> dict:
     return {'confirmed_by': last[0] if last else None, 'confirmed_at': last[1] if last else None, 'data_versions': json.loads(last[2]) if last and last[2] else None}
 
 
+def _last_confirmation_of_words(conn, row: dict | None) -> dict:
+    """_last_confirmation for a definition that is not confirmed now: who confirmed it last only while it says what they confirmed. A waiting definition whose words
+    changed since names no confirmer beside words nobody confirmed (all None, as for one nobody ever confirmed)."""
+    last = conn.execute('SELECT content_json FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1', (row['element_id'],)).fetchone() if row else None
+    if last is None or last[0] != row['content_json']:
+        return {'confirmed_by': None, 'confirmed_at': None, 'data_versions': None}
+    return _last_confirmation(conn, row['element_id'])
+
+
 def _proposed_with_token(conn, element_id: str) -> str | None:
     """The label of the token the definition was last put forward with ('' for one without a label), from the log; None when a person put it forward."""
     last = conn.execute("SELECT via_token FROM log WHERE element_id = ? AND change IN ('proposed', 'checked') ORDER BY rowid DESC LIMIT 1", (element_id,)).fetchone()
@@ -143,7 +152,7 @@ def _standing(conn, user: dict | None) -> tuple[list[dict], dict]:
         entries.append({'id': row['element_id'], 'kind': kind, 'name': name, **_standing_called(conn, row, kind), 'state': 'confirmed', 'confirmed': True, **_last_confirmation(conn, row['element_id'])})
         says[row['element_id']] = _says(conn, sc, kind, _content(row)) if open_text else None
     for line in _not_confirmed(conn, user):
-        entries.append({'id': line['id'], 'kind': line['kind'], 'name': line['name'], **_standing_called(conn, element_row(conn, line['id']), line['kind']), 'state': line['state'], 'confirmed': False, **_last_confirmation(conn, line['id']),
+        entries.append({'id': line['id'], 'kind': line['kind'], 'name': line['name'], **_standing_called(conn, element_row(conn, line['id']), line['kind']), 'state': line['state'], 'confirmed': False, **_last_confirmation_of_words(conn, element_row(conn, line['id'])),
                         **{k: line[k] for k in ('reason_hidden', 'cause_word', 'stale_word', 'who_can_confirm', 'proposed_by')}, 'proposed_with_token': _proposed_with_token(conn, line['id']),
                         'reason': line['reason'] or (None if line['reason_hidden'] else _state_words(line['state']))})   # one that only waits: its state is the cause
     return sorted(entries, key=lambda e: (KINDS.index(e['kind']), e['id'])), says

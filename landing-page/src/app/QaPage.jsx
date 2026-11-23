@@ -11,7 +11,7 @@ import { MeaningsCard, NoModel, PlanCard, ProposalCard } from "./AssistantCards.
 import { filterByMode, filterModes, pastTurn, railItems, scopeOf } from "./assistantHistoryModel.js";
 import { PastTurn, modeLabel } from "./PastTurn.jsx";
 import { timeText } from "./format.js";
-import { answerView, besideView, criteriaLine, dataAsOf, definitionHref, historyView, namedLines, isAnswer, isThenAnswer, objectsView, paramsIn, queryExample, queryParams, queryRecord, rangeNotes, readText, staleHeading, staleLines, standingText, timeWarning, todayNote } from "./qaModel.js";
+import { answerView, besideView, criteriaLine, dataAsOf, definitionHref, historyView, namedLines, isAnswer, isThenAnswer, objectsView, paramsIn, queryExample, queryParams, queryRecord, rangeNotes, readText, refusalBranch, staleHeading, staleLines, standingText, timeWarning, todayNote } from "./qaModel.js";
 import { groupByDay, isThinking, newTurn, savedTurn, sendsOn, settle, suggestions, threadTitle } from "./chatModel.js";
 import { ObjectGraph } from "./ObjectGraph.jsx";
 import { State } from "./TypesPage.jsx";
@@ -45,6 +45,7 @@ function Named({ list, mayBuild }) {
 function Refusal({ record, mayBuild }) {
   const t = useT();
   const r = record.refusal;
+  const branch = refusalBranch(record);
   return (
     <div className="refusal-card">
       <h2 className="section"><Icon name="info" size={16} />{t("ask.refusal.title")}</h2>
@@ -75,7 +76,7 @@ function Refusal({ record, mayBuild }) {
           </ul>
         </>
       )}
-      {!r && <p>{record.reason}</p>}
+      {branch.kind === "reason" && <p>{branch.text}</p>}
     </div>
   );
 }

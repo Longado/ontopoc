@@ -39,7 +39,8 @@ from ontology_poc_generator.name_checks import STAT_WORDS, claim_of
 from ontology_poc_generator.named_views import ORDERED_TEXT, orderable
 from ontology_poc_generator.object_relations import _relation_visible, relation_id
 from ontology_poc_generator.object_types import (
-    token_edit,
+    edit_sends_back,
+    keep_unsaid,
     DERIVED_PREFIX, ENGLISH_NAME, limited_note, MAX_DESCRIPTION, MAX_NAME, TypeRefused, _content, _edit_names, _state_view, _text, _type_row, _visible,
     dataset_columns, element_row, enum_id, log_entries, refuse_if_limited, type_id, whole_type_row, write_confirmation, write_elements)
 from ontology_poc_generator.object_views import _by_code, _choices, meaning_labels, new_value_words
@@ -49,7 +50,7 @@ from ontology_poc_generator.pipelines import PipelineRunError, deadline
 from ontology_poc_generator.pipeline_ops import AGGREGATIONS, NUMBER_TYPES, _aggregate_sql, _q, aggregation_options
 from ontology_poc_generator.row_rules import positions, restriction, types_on_dataset_of
 from ontology_poc_generator.type_access import reads_hidden
-from ontology_poc_generator.workspace_store import current_dataset, dataset_records
+from ontology_poc_generator.workspace_store import REPEAT_SAFE, current_dataset, dataset_records, fan_pipelines, fan_refusal, not_measured, not_measured_refusal, shown_pipeline
 from ontology_poc_generator.lang import tr
 
 KINDS = WordMap({'function': ('函数', 'Function'), 'statistic': ('统计', 'Statistic')})
@@ -172,6 +173,13 @@ def _chain(conn, content: dict, user: dict | None) -> dict:
         measured = hops[-1]['to_type']
         need(measured, [c for c in (content['measure']['column'], *(f['column'] for f in content['conditions']), *((content['latest']['order'], content['latest'].get('tie')) if content['latest'] else ())) if c])
         output, compiled = None, None
+        distorted = not problems and content['fn'] not in (*REPEAT_SAFE, 'latest', 'value')
+        marked = fan_pipelines(conn, types[measured]['dataset']['id'], user) if distorted else {}
+        unmeasured = not_measured(conn, types[measured]['dataset']['id']) if distorted else None
+        if unmeasured:   # a version whose copies were never measured: nothing but a count, a distinct count, a min or a max of it
+            problems.append(not_measured_refusal(types[measured]['dataset']['name'], shown_pipeline(conn, unmeasured, user)))
+        elif content['measure']['column'] in marked:   # a figure a join copied, worked out per object by what copies change: refused, the same as a question would be
+            problems.append(fan_refusal(content['measure']['column'], marked[content['measure']['column']], content['fn']))
         if not problems:
             output = _output_type(content['fn'], types[measured]['cols'][content['measure']['column']]['type'] if content['measure']['column'] else None)
             for f in content['conditions']:
@@ -765,15 +773,15 @@ def create_derived(conn, payload: dict, who: str | None, user: dict | None) -> d
 
 def update_derived(conn, payload: dict, who: str | None, user: dict | None) -> dict:
     """{type, english_name, version, ...the fields of create}: a change to what it computes puts it forward again as this person's, and a confirmed one stops being
-    confirmed (what it had been confirmed on stays in the history); so does saving one that was sent back. The display name and the description keep the state (made by a person signed in; made with a token, a confirmed one is put forward again: object_types.token_edit)."""
+    confirmed (what it had been confirmed on stays in the history); so does saving one that was sent back. The display name and the description keep the state (on one that waits; a confirmed one is put forward again by any change of what it says, whoever makes it: object_types.edit_sends_back)."""
     row = _derived_row(conn, payload.get('type'), payload.get('english_name'), user)
     if payload.get('version') != row['version']:
         raise TypeRefused(tr('这个派生属性在你打开之后被改了，请刷新后再改', 'This derived property was changed after you opened it. Refresh and edit again'), 409)
     old = _content(row)
-    content = check_definition(conn, {**payload, 'type': old['type'], 'other_names': payload['other_names'] if 'other_names' in payload else other_names.of(old)}, user, old['english_name'])
+    content = check_definition(conn, {**keep_unsaid(payload, old), 'type': old['type'], 'other_names': payload['other_names'] if 'other_names' in payload else other_names.of(old)}, user, old['english_name'])
     check_names_free(conn, content)
     others = other_names.of(old) != other_names.of(content)
-    reset = reset_reasons(old, content) or token_edit(row, user, (old['name'], old['description']) != (content['name'], content['description']), others)
+    reset = reset_reasons(old, content) or edit_sends_back(row, user, (old['name'], old['description']) != (content['name'], content['description']), others)
     if reset or row['state'] in ('proposed', 'rejected'):
         chain, result = _chain(conn, content, None), evaluate(conn, content, None)
         from ontology_poc_generator.object_types import _flag_readers   # a view that uses it as a condition stops being confirmed with it

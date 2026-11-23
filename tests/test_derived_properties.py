@@ -449,9 +449,9 @@ class ConfirmAndVersionTests(DerivedTestCase):
             line = self.line(bob, 'order', 'gross')
             self.assertEqual((line['state'], line['confirmed_by']), ('confirmed', 'Bob'))
             first_version = line['version']
-            # the display name and the description are not what was confirmed
+            # a new display name or description waits for a second person, as any change does, its confirmer's too
             status, body = bob.post('/api/workspace/types/derived/update', {**GROSS, 'name': '含税金额（元）', 'description': '按 13% 税率', 'version': first_version})
-            self.assertEqual((status, body['state'], body['reset']), (200, 'confirmed', []), body)
+            self.assertEqual((status, body['state'], body['reset']), (200, 'checked', ['名称或说明']), body)
             # a change to what it computes is a new version that is put forward again, as the editor's own
             line = self.line(bob, 'order', 'gross')
             status, body = bob.post('/api/workspace/types/derived/update', {**GROSS, 'name': '含税金额（元）', 'expression': '金额 * 1.13 + 数量', 'version': line['version']})

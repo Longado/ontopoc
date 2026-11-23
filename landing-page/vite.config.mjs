@@ -23,7 +23,8 @@ export default defineConfig({
       "/api/users": { target: service, changeOrigin: true },
       "/api/settings": { target: service, changeOrigin: true },
     },
-    host: "0.0.0.0",
+    // localhost only; set ONTOPOC_DEV_HOST=0.0.0.0 to open the dev page to other machines (e.g. terminal.local)
+    host: process.env.ONTOPOC_DEV_HOST || "localhost",
     allowedHosts: ["terminal.local"],
     warmup: {
       clientFiles: ["./src/app/main.jsx"],

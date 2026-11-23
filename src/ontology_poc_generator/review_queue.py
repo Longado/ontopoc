@@ -22,7 +22,7 @@ from ontology_poc_generator.workspace_pipelines import (
     _inputs_now, confirm_pipeline, output_states, pipeline_state, pipeline_visible, waiting_on as pipeline_waiting)
 from ontology_poc_generator.row_rules import restriction, without_rules
 from ontology_poc_generator.type_access import hidden_columns, reads_hidden
-from ontology_poc_generator.workspace_store import fan_note, current_dataset, fan_marks, log_line
+from ontology_poc_generator.workspace_store import drop_was, fan_note, current_dataset, fan_marks, log_line
 
 IN_QUEUE = ('proposed', 'checked', 'needs_look')
 ORDER = {'needs_look': 0, 'pending': 1, 'checked': 1, 'proposed': 2}
@@ -286,6 +286,7 @@ def send_back(conn, payload: dict, who: str | None, user: dict | None) -> dict:
                         (reason, element, row['version'])).rowcount != 1:   # someone wrote it between the read and here
             raise TypeRefused(stale_note(), 409)
         log_line(conn, who or tr('未署名', 'unsigned'), element, 'sent_back', before={'state': row['state']}, after={'state': 'rejected', 'reason': reason})
+        drop_was(conn, element)   # sent back by a person: putting its words back does not confirm it again by itself
         conn.execute('COMMIT')
     except BaseException:
         conn.execute('ROLLBACK')
