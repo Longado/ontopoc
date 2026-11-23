@@ -10,7 +10,10 @@ distort is refused (sum, average, median, percentiles, a histogram, a statistics
 person who may open pipelines is told which pipeline; the refusal says nothing of rows or columns the asker may not see."""
 import json
 import sqlite3
+import tempfile
+from pathlib import Path
 import unittest
+from urllib.parse import quote
 
 from tests.test_fan_sum import FAN_NOTE, LINES, ORDERS, PIPELINES, FanSumTests, asks
 from tests.test_object_relations import table_csv
@@ -324,6 +327,77 @@ class MarkingTests(FanSumTests):
             ann = self.world(base, stacked, {'english_name': 'order_line', 'name': '订单行', 'dataset': 'line_amounts', 'key': ['row_key'],
                                              'properties': [{'column': 'row_key'}, {'column': 'amount'}]}, lines=one_each)['ann']
             self.refused(ann, 'SELECT sum(l.amount) FROM (l:订单行)')
+
+    def test_a_pipeline_sent_back_by_a_description_edit_and_run_again_by_hand_is_measured_and_marked_as_before(self):
+        """With the rule that a changed pipeline (its description too) goes back for a look: Cat edits the description, the pipeline waits, Ann runs it by hand.
+        Its output is measured again and the amount stays marked; a version from before marking is measured by that run; the pipeline is named to builders only."""
+        with self.service() as (base, out):
+            team = self.world(base, spec(), line_type('amount'), people=('ann', 'bob', 'cat', 'vera'), roles={'vera': 'viewer'})
+            ann, cat, vera = team['ann'], team['cat'], team['vera']
+            conn = sqlite3.connect(out / 'workspace.sqlite')
+            conn.execute('DELETE FROM column_fan_measured')   # as a file from before marking: the version is not measured
+            conn.commit()
+            conn.close()
+            self.assertIn('重新运行一次', self.refused(ann, 'SELECT sum(l.amount) FROM (l:订单行)'))
+            shown = cat.get(f'{PIPELINES}/{quote(P1)}')[1]
+            status, body = cat.post(f'{PIPELINES}/update', {'id': P1, 'version': shown['version'], 'description': '订单行和它们订单的金额'})
+            self.assertEqual(status, 200, body)
+            self.assertNotEqual(cat.get(f'{PIPELINES}/{quote(P1)}')[1]['state'], 'confirmed')   # sent back by the description edit
+            run = ann.post(f'{PIPELINES}/run', {'id': P1})[1]
+            self.assertEqual(run['status'], 'success', run)
+            conn = sqlite3.connect(out / 'workspace.sqlite')
+            current = conn.execute("SELECT dataset_id FROM current_dataset WHERE name = 'line_amounts'").fetchone()[0]
+            self.assertEqual((conn.execute('SELECT COUNT(*) FROM column_fan_measured WHERE dataset_id = ?', (current,)).fetchone()[0],
+                              {c for (c,) in conn.execute('SELECT column_name FROM column_fan WHERE dataset_id = ?', (current,))}), (1, {'amount', 'customer'}))
+            conn.close()
+            status, waiting = self.query(ann, 'SELECT sum(l.amount) FROM (l:订单行)')
+            self.assertEqual((status, waiting.get('status'), waiting['refusal']['kind']), (200, 'refused', 'unsettled'), waiting)   # the type waits first: no number either way
+            bob = team['bob']
+            self.confirm_pipeline(bob, P1)
+            shown = bob.get('/api/workspace/types/order_line')[1]
+            self.assertEqual(bob.post('/api/workspace/types/confirm', {'id': 'order_line', 'version': shown['version'], 'seen': shown['seen']})[0], 200)
+            said = self.refused(ann, 'SELECT sum(l.amount) FROM (l:订单行)')
+            self.assertNotIn('重新运行一次', said)   # measured by that run: refused as repeated now, not as unmeasured
+            self.assertEqual(self.marks(ann)['amount'], FAN_NOTE)
+            viewer = self.refused(vera, 'SELECT sum(l.amount) FROM (l:订单行)', pipeline=None)
+            self.assertNotIn(P1, viewer)
+
+    def test_a_file_in_the_shape_of_main_before_or_after_the_changed_since_rule_or_of_this_branch_before_it_opens_and_only_refuses_more(self):
+        """Files as main a9d6a76 (no changed_json, no column_fan.origin, no column_fan_measured), main 9b94d2c (changed_json, neither of these) and this branch
+        before the merge (these, no changed_json) left them, made by taking those parts out of a file this code wrote: each opens, gains what it lacks in either
+        order, twice without harm, and a pipeline output with a join that no record says was measured refuses its sum until the pipeline runs again."""
+        from ontology_poc_generator.workspace_store import open_workspace
+        shapes = {'main a9d6a76': ('changed_json', 'origin', 'measured'), 'main 9b94d2c': ('origin', 'measured'), 'fan-sum before the merge': ('changed_json',)}
+        with self.service() as (base, out):
+            self.world(base, spec(), line_type('amount'))
+            conn = sqlite3.connect(out / 'workspace.sqlite')
+            conn.backup(made := sqlite3.connect(':memory:'))
+            conn.close()
+        for shape, lacks in shapes.items():
+            with self.subTest(shape):
+                with tempfile.TemporaryDirectory() as tmp:
+                    path = Path(tmp) / 'workspace.sqlite'
+                    old = sqlite3.connect(path)
+                    made.backup(old)
+                    if 'changed_json' in lacks:
+                        old.execute('ALTER TABLE element_state DROP COLUMN changed_json')
+                        old.execute('ALTER TABLE needed_question DROP COLUMN changed_json')
+                    if 'origin' in lacks:
+                        old.execute('DELETE FROM column_fan')   # main measured no copies
+                        old.execute('ALTER TABLE column_fan DROP COLUMN origin')
+                    if 'measured' in lacks:
+                        old.execute('DROP TABLE column_fan_measured')
+                    old.commit()
+                    old.close()
+                    for _ in range(2):
+                        conn = open_workspace(path)
+                        columns = lambda t: {r[1] for r in conn.execute(f'PRAGMA table_info({t})')}
+                        self.assertTrue({'origin'} <= columns('column_fan') and {'dataset_id'} <= columns('column_fan_measured')
+                                        and 'changed_json' in columns('element_state') and 'changed_json' in columns('needed_question'), shape)
+                        from ontology_poc_generator.workspace_store import current_dataset, not_measured
+                        unmeasured = not_measured(conn, current_dataset(conn, 'line_amounts')['id'])
+                        conn.close()
+                        self.assertEqual(unmeasured, P1 if 'measured' in lacks else None, shape)
 
     def needed(self, bob, question):
         body = self.run_needed(bob)
