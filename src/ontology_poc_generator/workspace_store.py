@@ -64,9 +64,10 @@ CREATE TABLE IF NOT EXISTS value_privacy (
 -- what a pipeline's output column was made from, kept with the dataset it wrote: 'unsent' (made from a column kept from the model), 'ai' (made from a model's answer)
 CREATE TABLE IF NOT EXISTS column_mark (
     dataset_id INTEGER NOT NULL REFERENCES dataset(id), column_name TEXT NOT NULL, mark TEXT NOT NULL CHECK (mark IN ('unsent', 'ai')), PRIMARY KEY (dataset_id, column_name, mark));
--- an output column of a pipeline whose figure was worked out over a join that made several rows of one (a sum or a count of a column the join repeated): FAN_NOTE says so
+-- an output column of a pipeline whose value a join copied onto several rows (directly, or through what was made from it): FAN_NOTE says so; origin is the pipeline
+-- whose join copied it (NULL in a file written before it was kept: the pipeline that wrote the version)
 CREATE TABLE IF NOT EXISTS column_fan (
-    dataset_id INTEGER NOT NULL REFERENCES dataset(id), column_name TEXT NOT NULL, PRIMARY KEY (dataset_id, column_name));
+    dataset_id INTEGER NOT NULL REFERENCES dataset(id), column_name TEXT NOT NULL, origin TEXT, PRIMARY KEY (dataset_id, column_name));
 CREATE TABLE IF NOT EXISTS row_rule (
     id INTEGER PRIMARY KEY AUTOINCREMENT, type_id TEXT NOT NULL, column_name TEXT NOT NULL, value TEXT NOT NULL, user_ids_json TEXT NOT NULL, user_attr TEXT);
 CREATE TABLE IF NOT EXISTS action_record (
@@ -182,7 +183,7 @@ def open_workspace(path) -> sqlite3.Connection:
                           ('element_state', 'cause'), ('element_state', 'via'), ('confirmation', 'snapshot_json'), ('llm_review', 'distinct_rows'), ('llm_review', 'detail_json'),
                           ('api_token', 'scope'), ('api_token', 'expires_at'), ('action_record', 'undo_of'), ('action_record', 'op'),
                           ('data_source', 'tls'), ('data_source', 'ca_pem'), ('refresh_run', 'error_public'), ('schedule', 'created_by_user_id'), ('user', 'attrs_json'), ('row_rule', 'user_attr'),
-                          ('needed_question', 'expect_blocker'), ('needed_run', 'owner')):
+                          ('needed_question', 'expect_blocker'), ('needed_run', 'owner'), ('column_fan', 'origin')):
         if column not in {r[1] for r in conn.execute(f'PRAGMA table_info({table})')}:   # a file made before the column existed
             conn.execute(f'ALTER TABLE {table} ADD COLUMN {column} {"INTEGER" if column in ("dataset_id", "null_key_rows", "distinct_rows", "undo_of") or column.endswith("user_id") else "TEXT"}')
     if 'expect_version' not in {r[1] for r in conn.execute('PRAGMA table_info(needed_question)')}:   # counts each new expectation and each confirmation of one: a result belongs to one
@@ -473,22 +474,40 @@ def fan_marks(conn, dataset_id: int) -> set[str]:
     return {c for (c,) in conn.execute('SELECT column_name FROM column_fan WHERE dataset_id = ?', (dataset_id,))}
 
 
-def fan_pipelines(conn, dataset_id: int) -> dict[str, str]:
-    """{column: the pipeline that wrote this version of the dataset} for the columns of fan_marks; empty when it has none."""
-    marked = fan_marks(conn, dataset_id)
-    if not marked:
+def fan_origins(conn, dataset_id: int) -> dict[str, str]:
+    """{column: the pipeline whose join copied it} for the columns of fan_marks; empty when there are none."""
+    rows = conn.execute('SELECT column_name, origin FROM column_fan WHERE dataset_id = ? ORDER BY column_name', (dataset_id,)).fetchall()
+    if not rows:
         return {}
     origin, changes = conn.execute('SELECT origin, changes_json FROM dataset WHERE id = ?', (dataset_id,)).fetchone()
-    pipeline = ((json.loads(changes) if changes else {}).get('pipeline') or {}).get('id') or (origin or '').removeprefix('pipeline:').rpartition('@')[0] or origin
-    return {c: pipeline for c in sorted(marked)}
+    writer = ((json.loads(changes) if changes else {}).get('pipeline') or {}).get('id') or (origin or '').removeprefix('pipeline:').rpartition('@')[0] or origin
+    return {column: marked or writer for column, marked in rows}
 
 
-def fan_refusal(column: str, pipeline: str, fn: str) -> str:
-    """Why a sum or an average (fn 'sum', 'avg' or 'average') of a column in fan_marks is not worked out, and where to work it out instead. Refused, never corrected:
-    which copies of the figure are the same one is the pipeline's to say, not the question's."""
-    how = tr('加起来', 'adding it up') if fn == 'sum' else tr('求平均', 'averaging it')
-    return tr(f'“{column}”是管道“{pipeline}”关联后写出的数：关联把一行变成了几行，这个数重复了，{how}会把同一笔算好几次，所以不算。请到每件事只有一行的类型上去算（例如每个订单一行的那个类型）',
-              f'"{column}" was written by the pipeline "{pipeline}" after a join turned one row into several: the figure repeats, and {how} would count the same amount several times, '
+def fan_pipelines(conn, dataset_id: int, user: dict | None) -> dict[str, str | None]:
+    """{column: the pipeline whose join copied it, or None for a person who may not open that pipeline} for the columns of fan_marks of this version."""
+    from ontology_poc_generator.object_types import element_row   # these modules read this one: imported where it is used
+    from ontology_poc_generator.workspace_pipelines import pipeline_id, pipeline_visible
+    out, seen = {}, {}
+    for column, pipeline in fan_origins(conn, dataset_id).items():
+        if pipeline not in seen:
+            row = element_row(conn, pipeline_id(pipeline)) if pipeline else None
+            seen[pipeline] = pipeline if row is not None and pipeline_visible(conn, row, user) else None
+        out[column] = seen[pipeline]
+    return out
+
+
+REPEAT_SAFE = ('count', 'count_distinct', 'min', 'max')   # what copies of a value do not change: every other aggregate of a column in fan_marks is refused
+
+
+def fan_refusal(column: str, pipeline: str | None, fn: str) -> str:
+    """Why an aggregate (a sum, an average, a median, a percentile, a distribution) of a column in fan_marks is not worked out, and where to work it out instead.
+    Refused, never corrected: which copies of the figure are the same one is the pipeline's to say, not the question's. `pipeline` None: the asker may not open it,
+    so it is not named. Nothing is said of rows: a person limited to some rows gets the same sentence."""
+    how = tr('加起来', 'adding it up') if fn == 'sum' else tr('求平均', 'averaging it') if fn in ('avg', 'average') else tr('拿来统计', 'working it out')
+    who = tr(f'管道“{pipeline}”', f'the pipeline "{pipeline}"') if pipeline else tr('一个管道', 'a pipeline')
+    return tr(f'“{column}”是{who}关联后写出的数：关联把一行变成了几行，这个数重复了，{how}会把同一笔算好几次，所以不算。请到每件事只有一行的类型上去算（例如每个订单一行的那个类型）',
+              f'"{column}" was written by {who} after a join turned one row into several: the figure repeats, and {how} would count the same amount several times, '
               f'so it is not worked out. Work it out on the type that has one row per thing (for example the one with one row per order)')
 
 

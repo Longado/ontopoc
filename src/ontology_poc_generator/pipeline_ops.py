@@ -6,7 +6,11 @@ was false, a value that cannot be converted is counted and listed, a code that n
 
 A column is {'name', 'type'} with, where it has them, 'origin' ("dataset.column", which is how a code column is recognised after a join), 'badge' ('new' or
 'replaced' in the transform that made it), 'hidden' (the row-identity columns a join adds so that a later sum can say what it counted twice; no person writes them
-and no output carries them) and 'fan' (the hidden columns that identify the source row of this column's value).
+and no output carries them) and 'fan' (the hidden columns that identify the source row of this column's value). Two more say whether a figure was copied onto
+several rows: 'rep', the join sides (the names of their hidden columns, or UPSTREAM:<pipeline> for a column an earlier pipeline marked) whose rows this value was
+copied from, which every column made from it inherits (carry) until a step provably goes back to one row per row of that side; and 'key_of', on a column that
+holds a side's join key, [side, which pair of the join's `on`, how many pairs], which is how that step is recognised. Which sides really copied a row is known
+once the join has run (pipelines.run_pipeline).
 """
 from __future__ import annotations
 
@@ -59,21 +63,42 @@ def _q(name: str) -> str:
 def new_context(meanings: dict | None = None, codes=frozenset(), unsent=frozenset(), ai=frozenset(), fan=frozenset()) -> dict:
     """What the operators may ask the workspace: meanings {"dataset.column": {label: [codes]}} (confirmed ones only), codes {"dataset.column"} (columns that are
     code lists, confirmed or not), unsent {"dataset.column"} (columns whose values a builder keeps from the model, or that a pipeline wrote from such columns), ai
-    {"dataset.column"} (columns a pipeline wrote from what a model answered), fan {"dataset.column"} (columns a pipeline wrote from a figure a join repeated), and `used`, which the operators fill with the meanings they read."""
-    return {'meanings': meanings or {}, 'codes': set(codes), 'unsent': set(unsent), 'ai': set(ai), 'fan': set(fan), 'used': set()}
+    {"dataset.column"} (columns a pipeline wrote from what a model answered), fan {"dataset.column": the pipeline whose join repeated it} (columns of the current version
+of a dataset a pipeline wrote from a figure a join repeated), and `used`, which the operators fill with the meanings they read."""
+    return {'meanings': meanings or {}, 'codes': set(codes), 'unsent': set(unsent), 'ai': set(ai), 'fan': dict(fan) if isinstance(fan, dict) else dict.fromkeys(fan),
+            'used': set()}
 
 
 FLAGS = ('unsent', 'ai')   # what a column made from other columns inherits: not to be sent to the model, written by the model
 
 
-UPSTREAM = '__upstream'   # in `fan_agg`: the column was already worked out over a repeated join in the pipeline that wrote its dataset
+UPSTREAM = '__upstream'   # in `fan_agg`: the column was already worked out over a repeated join in the pipeline that wrote its dataset; in `rep`, UPSTREAM:<that pipeline>
+SURVIVE_REPEATS = ('min', 'max', 'count_distinct')   # what a copy of a row does not change, inside one group
 
 
 def carry(*sources: dict) -> dict:
-    """The marks a column made from these columns inherits: the flags of FLAGS, and `fan_agg`, the names of the aggregations (over a column a join repeated) it comes from;
-    which of them really counted a row twice is known only once the run has measured it."""
+    """The marks a column made from these columns inherits: the flags of FLAGS, `fan_agg`, the names of the aggregations (over a column a join repeated) it comes from
+    (which of them really counted a row twice is known only once the run has measured it), and `rep`, the join sides whose rows its value was copied from."""
     aggs = sorted({n for c in sources for n in c.get('fan_agg', ())})
-    return {**{k: True for k in FLAGS if any(c.get(k) for c in sources)}, **({'fan_agg': aggs} if aggs else {})}
+    reps = sorted({t for c in sources for t in c.get('rep', ())})
+    return {**{k: True for k in FLAGS if any(c.get(k) for c in sources)}, **({'fan_agg': aggs} if aggs else {}), **({'rep': reps} if reps else {})}
+
+
+def covered(keys: list[dict]) -> set[str]:
+    """The join sides whose whole join key is among these columns ('key_of'): one row per value of them is at most one row per row of that side."""
+    have = {}
+    for c in keys:
+        for side, pair, pairs in c.get('key_of', ()):
+            have.setdefault((side, pairs), set()).add(pair)
+    return {side for (side, pairs), got in have.items() if len(got) == pairs}
+
+
+def _without(column: dict, sides: set[str]) -> dict:
+    """The column with these sides taken off its `rep`."""
+    if not sides & set(column.get('rep', ())):
+        return column
+    kept = [t for t in column['rep'] if t not in sides]
+    return {**{k: v for k, v in column.items() if k != 'rep'}, **({'rep': kept} if kept else {})}
 
 
 def visible(columns: list[dict]) -> list[dict]:
@@ -489,8 +514,10 @@ def _aggregate(op, src, columns, ctx, label):
     selects = [_q(c['name']) for c in group_cols] + [f'{a["sql"]} AS {_q(a["name"])}' for a in aggs]
     params = [p for a in aggs for p in a['params']]
     group_by = f' GROUP BY {", ".join(_q(c["name"]) for c in group_cols)}' if group_cols else ''
-    out_columns = [{'name': c['name'], 'type': c['type'], **({'origin': c['origin']} if c.get('origin') else {}), **carry(c)} for c in group_cols] + \
-                  [{'name': a['name'], 'type': a['type'], 'badge': 'new', **_fanned(a), 'aggregation': {'fn': a['fn'], 'column': a['col']['name'] if a['col'] else None, 'exact': a['fn'] in PERCENTILE}} for a in aggs]
+    back = covered(group_cols)   # the sides this grouping goes back to one row per row of
+    out_columns = [_grouped_mark({'name': c['name'], 'type': c['type'], **({'origin': c['origin']} if c.get('origin') else {}), **({'key_of': c['key_of']} if c.get('key_of') else {}), **carry(c)},
+                                 back, len(group_cols)) for c in group_cols] + \
+                  [{'name': a['name'], 'type': a['type'], 'badge': 'new', **_fanned(a, back), 'aggregation': {'fn': a['fn'], 'column': a['col']['name'] if a['col'] else None, 'exact': a['fn'] in PERCENTILE}} for a in aggs]
 
     def measure(conn, src, out):
         doubled = [d for a in aggs for d in _double_counted(conn, src, group_cols, a)]
@@ -499,15 +526,22 @@ def _aggregate(op, src, columns, ctx, label):
     return {'columns': out_columns, 'select': f'SELECT {", ".join(selects)} FROM {src}{group_by}', 'params': params, 'measure': measure}
 
 
-def _fanned(agg: dict) -> dict:
-    """The marks an aggregated column starts with: those of the column it reads, and its own name in `fan_agg` when it adds, averages or counts a column a join repeated."""
+def _grouped_mark(column: dict, back: set[str], groups: int) -> dict:
+    """A column the aggregate groups by: alone, each of its values is on one output row, so nothing of it is copied; with other columns, a value can stand on
+    several rows, and only the sides the grouping goes back to come off."""
+    return _without(column, set(column.get('rep', ())) if groups == 1 else back)
+
+
+def _fanned(agg: dict, back: set[str] = frozenset()) -> dict:
+    """The marks an aggregated column starts with: those of the column it reads, and its own name in `fan_agg` when it adds, averages or counts a column a join repeated.
+    Its `rep` stays, but for a min, a max or a count distinct grouped by a side's whole key: within one row of that side copies change none of them."""
     col = agg['col']
     if col is None:
         return {}
     marks = carry(col)
     if agg['fn'] in ('sum', 'avg', 'count') and col.get('fan'):
         marks = {**marks, 'fan_agg': sorted({*marks.get('fan_agg', []), agg['name']})}
-    return marks
+    return _without(marks, set(back)) if agg['fn'] in SURVIVE_REPEATS else marks
 
 
 def _agg_name(item: dict, fn: str, col: dict | None, used: set, label: str) -> str:
@@ -564,6 +598,8 @@ def _dedupe(op, src, columns, ctx, label):
     order = _col(columns, op.get('order_by'), label, tr('排序的列', 'order-by column')) if op.get('order_by') else None
     if order is None:
         raise OpError(tr(f'{label}：按主键排重要指定按哪一列排先后（order_by），否则留哪一条是不确定的', f'{label}: removing duplicates by key needs the column to order by (order_by), otherwise which row is kept is not defined'))
+    back = covered(keys)   # one row per key of a side is at most one row per row of that side: its copies are gone
+    columns = [_without(c, back) for c in columns]
     part = ', '.join(_q(c['name']) for c in keys)
     ref = _ref(order)
     direction = '' if keep == 'first' else ' DESC'

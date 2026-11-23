@@ -600,9 +600,9 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
     seen = [(tuple(d['via']), d['field'], d.get('by')) for d in dims]
     if len(set(seen)) < len(seen):   # "which X go together": one dimension cannot pair two different values of itself
         return {'status': 'query_limit', 'reason': tr('同一个字段沿同一条路径分了两次组，这是在问哪些值常在一起出现；查询只会把每个值和它自己配成一对，这种问法还不支持', 'The same field is grouped twice along the same path, which asks which values often appear together. A query only pairs each value with itself, so this kind of question is not supported yet')}
-    fanned = (bundle.get('fan') or {}).get(measure['field']) if measure else None   # {"table.path": pipeline}: a figure a join repeated (workspace_store.fan_marks)
-    if fanned:
-        return {'status': 'query_limit', 'reason': fan_refusal(measure['field'].partition('.')[2], fanned, measure['op'])}
+    fanned = bundle.get('fan') or {}   # {"table.path": the pipeline, or None when the asker may not open it}: a figure a join copied (workspace_store.fan_marks)
+    if measure and measure['field'] in fanned:   # a sum and an average are both changed by copies of a row
+        return {'status': 'query_limit', 'reason': fan_refusal(measure['field'].partition('.')[2], fanned[measure['field']], measure['op']), 'fan': True}
     refused = card_refusal(card, bundle, measure, where, dims) if card and measure else None
     if refused:
         return refused
@@ -879,7 +879,7 @@ def _for_reader(reasoning: str, status: str) -> str:
 
 def _in_names(ontology: dict, result: dict) -> dict:
     """The reason of an answer that did not succeed, written in the names a person reads instead of the ontology's keys."""
-    if result['status'] != 'answered' and result.get('reason') and 'refused_by_card' not in result:   # the card's reason names a column, not an object
+    if result['status'] != 'answered' and result.get('reason') and 'refused_by_card' not in result and 'fan' not in result:   # the card's and the repeat's reason name a column, not an object
         return {**result, 'reason': plain_reason(ontology, result['reason'])}
     return result
 

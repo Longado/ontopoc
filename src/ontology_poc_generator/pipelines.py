@@ -34,7 +34,7 @@ import time
 
 from ontology_poc_generator.pipeline_funcs import register
 from ontology_poc_generator.pipeline_llm import check_llm_step, llm_sql
-from ontology_poc_generator.pipeline_ops import MAX_OPERATORS, OpError, UPSTREAM, _double_counted, _where, carry, compile_op, new_context, visible
+from ontology_poc_generator.pipeline_ops import MAX_OPERATORS, OpError, UPSTREAM, _where, carry, compile_op, new_context, visible
 from ontology_poc_generator.lang import tr
 from ontology_poc_generator.pipeline_expr import WordMap
 
@@ -144,8 +144,9 @@ def _input_columns(step: dict, sid: str, datasets: dict, views: dict, ctx: dict)
     from such a column or from a model's answer (`ctx['ai']`), is marked, and the mark travels with it."""
     data = _input_of(step, sid, datasets, views)[1]
     origin = data['source'] if 'view' in step else step['dataset']
+    fan = ctx.get('fan') or {}
     return [{**c, 'origin': f'{origin}.{c["name"]}', **{mark: True for mark in ('unsent', 'ai') if f'{origin}.{c["name"]}' in ctx.get(mark, ())},
-             **({'fan_agg': [UPSTREAM]} if f'{origin}.{c["name"]}' in ctx.get('fan', ()) else {})} for c in data['columns']]
+             **({'fan_agg': [UPSTREAM], 'rep': [UPSTREAM + ':' + (fan[f'{origin}.{c["name"]}'] or '')]} if f'{origin}.{c["name"]}' in fan else {})} for c in data['columns']]
 
 
 def _split_read(sid: str, ref: str):
@@ -172,12 +173,18 @@ def _join_columns(step: dict, left: list[dict], right: list[dict]) -> list[dict]
     right_shown = [c for c in visible(right) if c['name'] not in same_key and (chosen is None or c['name'] in chosen)]
     clash = {c['name'] for c in visible(left)} & {c['name'] for c in right_shown}
     lname, rname = _lineage(step['id'], 'l'), _lineage(step['id'], 'r')
-    prefixed = lambda c, side, tag: {**c, 'name': f'{side}_{c["name"]}' if c['name'] in clash else c['name'], 'source': c['name'], 'side': side[0], 'fan': [*c.get('fan', []), tag]}
+    prefixed = lambda c, side, tag: {**c, 'name': f'{side}_{c["name"]}' if c['name'] in clash else c['name'], 'source': c['name'], 'side': side[0], 'fan': [*c.get('fan', []), tag],
+                                     'rep': [*c.get('rep', []), tag]}
     carried = lambda c, side: {**{k: v for k, v in c.items() if k != 'rowid_of'}, 'source': c['name'], 'side': side}   # a hidden column of an earlier join is passed along as it is
     out = [prefixed(c, 'left', lname) if not c.get('hidden') else carried(c, 'l') for c in left] \
         + [prefixed(c, 'right', rname) for c in right_shown] \
         + [carried(c, 'r') for c in right if c.get('hidden')] \
         + [{'name': lname, 'type': 'integer', 'hidden': True, 'rowid_of': 'l'}, {'name': rname, 'type': 'integer', 'hidden': True, 'rowid_of': 'r'}]
+    pairs = len(step['on'])
+    for i, p in enumerate(step['on']):   # a key column holds both sides' key (equal on every joined row): a later dedupe or grouping on it goes back to either side
+        for c in out:
+            if not c.get('hidden') and ((c['side'] == 'l' and c['source'] == p['left']) or (c['side'] == 'r' and c['source'] == p['right'])):
+                c['key_of'] = [*c.get('key_of', []), [lname, i, pairs], [rname, i, pairs]]
     names = [c['name'] for c in out]
     if len(set(names)) < len(names):
         raise ValueError(tr(f'步骤 {step["id"]}：连接后有重名的列：{sorted({n for n in names if names.count(n) > 1})[0]}', f'Step {step["id"]}: columns have the same name after the join: {sorted({n for n in names if names.count(n) > 1})[0]}'))
@@ -627,18 +634,25 @@ def _output_report(conn, table: str, output: dict) -> dict:
 FAILURE_KEYS = (('failures', 'cast_failures'), ('errors', 'calc_errors'), ('unmapped_rows', 'unmapped_rows'), ('dropped_null', 'dropped_by_empty_condition'))
 
 
-def _repeated(conn, source: dict, output: dict, skip) -> list[str]:
-    """The number columns an output keeps as a join repeated them: their sum over the output's rows differs from the sum that counts each source row once (the
-    hidden columns of the join name it, `fan`). A figure a later aggregation worked out is not one of them (fan_agg says that); a code column is not a sum."""
-    by_name = {c['name']: c for c in source['columns'] if not c.get('hidden')}
-    there = {c['name'] for c in source['columns'] if c.get('hidden')}
-    found = []
+def copied_sides(conn, table: str, columns: list[dict]) -> set[str]:
+    """The sides of a join (the names of its hidden row columns) one row of which stands on more than one row of its output. Values do not matter: a copy is a copy."""
+    return {c['name'] for c in columns if c.get('rowid_of') and conn.execute(
+        f'SELECT 1 FROM {table} WHERE {_q(c["name"])} IS NOT NULL GROUP BY {_q(c["name"])} HAVING COUNT(*) > 1 LIMIT 1').fetchone()}
+
+
+def _repeated(source: dict, output: dict, copied: set[str]) -> dict:
+    """{column: None, or the pipeline that marked it upstream}: the number columns an output keeps whose value was copied onto several rows by a join this run made
+    (None: this pipeline) or that an earlier pipeline marked. `rep` says which sides a column's value comes from (pipeline_ops.carry)."""
+    by_name = {c['name']: c for c in visible(source['columns'])}
+    found = {}
     for c in output['columns']:
-        s = by_name.get(c['name'])
-        if s is None or not s.get('fan') or not set(s['fan']) <= there or s['type'] not in NUMERIC or s.get('origin') in skip:
+        sides = by_name.get(c['name'], {}).get('rep', ())
+        if c['type'] not in NUMERIC:
             continue
-        if _double_counted(conn, source['table'], [], {'fn': 'sum', 'col': s, 'name': c['name']}):
-            found.append(c['name'])
+        if any(t in copied for t in sides):
+            found[c['name']] = None
+        elif any(t.startswith(f'{UPSTREAM}:') for t in sides):
+            found[c['name']] = next(t for t in sides if t.startswith(f'{UPSTREAM}:'))[len(UPSTREAM) + 1:] or None
     return found
 
 
@@ -711,7 +725,7 @@ def run_pipeline(conn, spec: dict, datasets: dict, views: dict | None = None, sk
     by_id.update({b['id']: {'table': b['table'], 'columns': s['columns']} for s in steps if s['split'] for b in s['split']})   # a branch is read as a table of its own
     feeds = needed_steps(spec, [s['id'] for s in spec['steps'] if s['type'] == 'output'])
     register(conn)
-    nodes, made = [], []
+    nodes, made, copied = [], [], set()   # copied: the join sides of this run one row of which went onto several rows
     try:
         for index, (step, compiled) in enumerate(zip(spec['steps'], steps)):
             if upto is not None and step['id'] not in upto:
@@ -760,6 +774,7 @@ def run_pipeline(conn, spec: dict, datasets: dict, views: dict | None = None, sk
             if step['type'] == 'input':
                 node['reads'] = _input_of(step, step['id'], datasets, views)[0]
             if measured:
+                copied |= copied_sides(conn, compiled['table'], compiled['columns'])
                 node['join'] = _join_report(conn, index, step, compiled, (left['table'], left['columns']), (right['table'], right['columns']), rows_out, measured, skip)
             if step['type'] == 'transform':
                 node['operators'] = operators
@@ -769,7 +784,7 @@ def run_pipeline(conn, spec: dict, datasets: dict, views: dict | None = None, sk
                 node['failures'] = report['failures']
             if step['type'] == 'output':
                 node['output'] = _output_report(conn, compiled['table'], compiled['output'])
-                repeated = _repeated(conn, by_id[step['from']], compiled['output'], skip)
+                repeated = _repeated(by_id[step['from']], compiled['output'], copied)
                 if repeated:   # said only when there is one: an output without stays as it was
                     node['output']['repeated'] = repeated
             if step['type'] == 'union':

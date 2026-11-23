@@ -49,7 +49,7 @@ from ontology_poc_generator.pipelines import PipelineRunError, deadline
 from ontology_poc_generator.pipeline_ops import AGGREGATIONS, NUMBER_TYPES, _aggregate_sql, _q, aggregation_options
 from ontology_poc_generator.row_rules import positions, restriction, types_on_dataset_of
 from ontology_poc_generator.type_access import reads_hidden
-from ontology_poc_generator.workspace_store import current_dataset, dataset_records, fan_pipelines, fan_refusal
+from ontology_poc_generator.workspace_store import REPEAT_SAFE, current_dataset, dataset_records, fan_pipelines, fan_refusal
 from ontology_poc_generator.lang import tr
 
 KINDS = WordMap({'function': ('函数', 'Function'), 'statistic': ('统计', 'Statistic')})
@@ -172,9 +172,9 @@ def _chain(conn, content: dict, user: dict | None) -> dict:
         measured = hops[-1]['to_type']
         need(measured, [c for c in (content['measure']['column'], *(f['column'] for f in content['conditions']), *((content['latest']['order'], content['latest'].get('tie')) if content['latest'] else ())) if c])
         output, compiled = None, None
-        fanned = fan_pipelines(conn, types[measured]['dataset']['id']).get(content['measure']['column']) if not problems and content['fn'] in ('sum', 'avg') else None
-        if fanned:   # a figure a join repeated, added up or averaged per object: refused, the same as a question would be
-            problems.append(fan_refusal(content['measure']['column'], fanned, content['fn']))
+        marked = fan_pipelines(conn, types[measured]['dataset']['id'], user) if not problems and content['fn'] not in (*REPEAT_SAFE, 'latest', 'value') else {}
+        if content['measure']['column'] in marked:   # a figure a join copied, worked out per object by what copies change: refused, the same as a question would be
+            problems.append(fan_refusal(content['measure']['column'], marked[content['measure']['column']], content['fn']))
         if not problems:
             output = _output_type(content['fn'], types[measured]['cols'][content['measure']['column']]['type'] if content['measure']['column'] else None)
             for f in content['conditions']:

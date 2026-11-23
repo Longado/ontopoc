@@ -30,7 +30,7 @@ from ontology_poc_generator.pipeline_funcs import register
 from ontology_poc_generator.pipeline_ops import AGGREGATIONS, _aggregate_sql, aggregation_options
 from ontology_poc_generator.row_rules import keeps, restriction
 from ontology_poc_generator.type_access import hidden_columns
-from ontology_poc_generator.workspace_store import fan_note, _canonical, current_dataset, dataset_records, fan_marks, fan_pipelines, fan_refusal
+from ontology_poc_generator.workspace_store import REPEAT_SAFE, fan_note, _canonical, current_dataset, dataset_records, fan_marks, fan_pipelines, fan_refusal
 
 FILTER_OPS = TrMap({'eq': ('等于', 'equals'), 'ne': ('不等于', 'does not equal'), 'contains': ('包含', 'contains'), 'name_is': ('名称或别名等于', 'matches a name or alias'), 'gt': ('大于', 'is greater than'), 'ge': ('不小于', 'is at least'), 'lt': ('小于', 'is less than'), 'le': ('不大于', 'is at most'), 'empty': ('为空', 'is empty'), 'filled': ('有值', 'has a value')})
 NO_VALUE = ('empty', 'filled')
@@ -290,16 +290,17 @@ def _fan_notes(conn, table: dict, fields: list) -> list[str]:
     return [tr(f'“{f["name"]}”{fan_note()}', f'"{f["name"]}" {fan_note()}') for f in fields if f is not None and not f['derived'] and not f.get('via') and f.get('column') in fanned]
 
 
-def _fan_of(conn, table: dict, field: dict) -> str | None:
-    """The pipeline that wrote this field of the type as a figure a join repeated (fan_marks of the dataset version it reads), or a derived function worked out
-    from such a column; None for any other field."""
-    marked = fan_pipelines(conn, table['dataset']['id'])
+def _fan_of(conn, user: dict | None, table: dict, field: dict) -> tuple[bool, str | None]:
+    """(whether this field of the type is a figure a join copied: a column in fan_marks of the dataset version it reads, or a derived function worked out from one;
+    the pipeline whose join did, None when this person may not open it)."""
+    marked = fan_pipelines(conn, table['dataset']['id'], user)
     if not marked or field.get('via'):
-        return None
+        return False, None
     if not field['derived']:
-        return marked.get(field['column'])
+        return field['column'] in marked, marked.get(field['column'])
     content = _content(element_row(conn, field['element']))
-    return next((marked[i['column']] for i in content.get('inputs') or [] if i.get('column') in marked), None) if content['kind'] == 'function' else None
+    hit = [i['column'] for i in content.get('inputs') or [] if i.get('column') in marked] if content['kind'] == 'function' else []
+    return bool(hit), marked[hit[0]] if hit else None
 
 
 def _type_line(conn, user: dict | None, row: dict) -> dict:
@@ -542,10 +543,10 @@ def explore_chart(conn, user: dict | None, raw_query, raw_chart) -> dict:
         used.append(group['meaning']['element'])
         meaning = group['meaning']['state'] == 'confirmed'
     kind = chart['kind']
-    adds = kind == 'table' or (kind in ('number', 'bar', 'pie') and chart['fn'] in ('sum', 'avg'))   # a statistics table carries a sum and an average
-    fanned = _fan_of(conn, table, measure) if adds and measure is not None else None
+    distorted = kind in ('table', 'histogram') or (kind in ('number', 'bar', 'pie') and chart['fn'] not in REPEAT_SAFE)   # a statistics table carries a sum; a histogram counts the copies
+    fanned, pipeline = _fan_of(conn, user, table, measure) if distorted and measure is not None else (False, None)
     if fanned:
-        raise TypeRefused(fan_refusal(measure['name'], fanned, 'avg' if chart['fn'] == 'avg' and kind != 'table' else 'sum'))
+        raise TypeRefused(fan_refusal(measure['name'], pipeline, chart['fn'] if kind in ('number', 'bar', 'pie') else 'table'))
     out = {'query': query, 'chart': chart, 'rows': len(got['rows']), 'standing': _standing(conn, used, _fan_notes(conn, table, [group, measure])), 'group': group and group['name'], 'measure': measure and measure['name'],
            'fn': chart['fn'], 'rows_limited': table['limit'] is not None}
     if kind == 'histogram':

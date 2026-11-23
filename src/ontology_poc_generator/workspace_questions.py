@@ -432,18 +432,18 @@ def _inputs(conn, sc: dict, asked: str = '') -> dict:
 
 
 def _fanned(conn, sc: dict, alias: dict) -> dict:
-    """{"table.path": the pipeline}: the columns of the dataset version each type reads that a pipeline wrote as a figure a join repeated (workspace_store.fan_marks),
+    """{"table.path": the pipeline, None when this person may not open it}: the columns of the dataset version each type reads that a pipeline wrote as a figure a join repeated (workspace_store.fan_marks),
     and the confirmed derived functions worked out from one of them (a copy of a repeated figure repeats too). The engine refuses to add them up or average them."""
     out = {}
     for t in sc['types'].values():
-        marked = fan_pipelines(conn, t['dataset']['id'])
+        marked = fan_pipelines(conn, t['dataset']['id'], sc['user'])
         out |= {f'{alias[t["dataset"]["name"]]}.{column}': pipeline for column, pipeline in marked.items()}
     for d in sc['derived'].values():
         content, owner = d['content'], sc['types'][d['content']['type']]
-        marked = fan_pipelines(conn, owner['dataset']['id'])
-        hit = next((marked[i['column']] for i in content.get('inputs') or [] if i.get('column') in marked), None) if content['kind'] == 'function' else None
+        marked = fan_pipelines(conn, owner['dataset']['id'], sc['user'])
+        hit = [i['column'] for i in content.get('inputs') or [] if i.get('column') in marked] if content['kind'] == 'function' else []
         if hit:
-            out[f'{alias[owner["dataset"]["name"]]}.{content["name"]}'] = hit
+            out[f'{alias[owner["dataset"]["name"]]}.{content["name"]}'] = marked[hit[0]]
     return out
 
 
