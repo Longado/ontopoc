@@ -380,7 +380,7 @@ class TwoBuildersTests(World):
             self.assertEqual(bob.post('/api/workspace/types/update', {**CUSTOMER, 'id': 'customer', 'version': now['version'], 'description': 'ZZ鲍勃的说明'})[0], 200)
             status, body = confirm(ann)
             self.assertEqual(status, 403, body)
-            for said in ('Ann', 'Bob', '第三位', '管理员可以加一位'):   # nobody else may confirm it: say so, and how to get one
+            for said in ('Ann', 'Bob', '第三位', '设为建设者'):   # nobody else may confirm it: say so, and how to get one
                 self.assertIn(said, body['error'])
 
 

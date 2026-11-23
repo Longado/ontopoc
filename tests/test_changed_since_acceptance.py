@@ -14,7 +14,7 @@ from urllib.error import HTTPError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-from tests.test_changed_since_confirm import ELEMENTS, Q, Team, text
+from tests.test_changed_since_confirm import ELEMENTS, Q, Team, customer_properties, text
 from tests.test_changed_since_review import NeededTeam
 from tests.test_needed_questions import NEEDED, number
 from tests.test_pipeline_server import JOIN, PIPELINES, SPEC, TOTAL_TYPE
@@ -269,3 +269,127 @@ class PipelineWordsTests(Team):
                     json.dumps(bob.get('/api/workspace/agent/standing')[1], ensure_ascii=False), json.dumps(bob.get('/api/workspace/agent/definitions')[1], ensure_ascii=False), skill]
             for body in read:
                 self.assertNotIn('ZZ管道说明', body)
+
+
+class PipelineHeldTests(Team):
+    """A pipeline both people who can confirm have changed: the refusal and the page say who changed it and the way out, as for every other kind."""
+
+    def two(self, base):
+        """Only Ann (an admin) and Bob (a builder) can confirm: root makes them, and Ann disables root."""
+        from tests.test_object_relations import customers_mended
+        from tests.test_object_types import TABLES
+        team = self.people(base, 'ann', 'bob', roles={'ann': 'admin'})
+        root_id = next(u['id'] for u in team['admin'].get('/api/users')[1]['users'] if u['username'] == 'root')
+        self.assertEqual(team['ann'].post('/api/users/disable', {'id': root_id, 'disabled': True})[0], 200)
+        self.assertEqual(team['ann'].post('/api/workspace/datasets/upload', {'files': TABLES})[0], 200)
+        self.assertEqual(team['ann'].post('/api/workspace/datasets/upload', {'files': [customers_mended()]})[0], 200)
+        return team
+
+    def held(self, change):
+        with self.service() as (base, out):
+            self.out = out
+            team = self.two(base)
+            ann, bob = team['ann'], team['bob']
+            self.assertEqual(ann.post(PIPELINES, {'name': 'p2', 'description': '安写的', 'spec': SPEC})[0], 200)
+            status, body = ann.post(f'{PIPELINES}/run', {'id': 'p2'})
+            self.assertEqual((status, body.get('status')), (200, 'success'), body)
+            shown = lambda client, **more: client.get(f'{PIPELINES}/p2', **more)[1]
+            now = shown(bob)
+            self.assertEqual(bob.post(f'{PIPELINES}/update', {'id': 'p2', 'version': now['version'], **change})[0], 200)
+            facts = {}
+            for who, client in (('ann', ann), ('bob', bob)):
+                for lang in ('zh', 'en'):
+                    more = {'headers': {'Accept-Language': lang}}
+                    page = shown(client, **more)
+                    status, body = client.post(f'{PIPELINES}/confirm', {'id': 'p2', 'version': page['version'], 'seen': {'inputs': page['inputs_now']}}, **more)
+                    facts[(who, lang)] = (status, body.get('error'), page['can_confirm'], page['confirmers'], page['held'])
+            return facts
+
+    def check(self, facts):
+        for (who, lang), (status, error, can, confirmers, held) in facts.items():
+            self.assertEqual((status, can, confirmers), (403, False, []), (who, lang))
+            words = ('Ann', 'Bob', '设为建设者') if lang == 'zh' else ('Ann', 'Bob', 'builder role')
+            for said in (error, held):
+                for word in words:
+                    self.assertIn(word, said or '', (who, lang, said))
+            self.assertNotIn('改回' if lang == 'zh' else 'put back', error)   # a pipeline has no undo: the sentence offers none
+
+    def test_a_description_edit_by_the_other_person_leaves_a_sentence_with_the_way_out(self):
+        self.check(self.held({'description': 'root'}))
+
+    def test_a_step_edit_by_the_other_person_leaves_the_same_sentence(self):
+        self.check(self.held({'spec': {**SPEC, 'steps': [{**s, 'how': 'inner'} if s['id'] == JOIN['id'] else s for s in SPEC['steps']]}}))
+
+
+# (kind, the definition as the page or an agent may send it again unchanged, with optional fields left out)
+class OmittedFieldTests(Team):
+    """A save that leaves an optional field out keeps what is stored: it is no change, it sends nothing back and it puts nobody in the set."""
+
+    def resend(self, client, kind):
+        from tests.test_changed_since_confirm import ORDER_CUSTOMER, VALID
+        from tests.test_derived_properties import CANCELLED
+        from tests.test_notices import ACTION
+        from tests.test_object_relations import CUSTOMER
+        if kind == 'type':   # no description, properties without their display names
+            now = client.get('/api/workspace/types/customer')[1]
+            return client.post('/api/workspace/types/update', {**{k: v for k, v in CUSTOMER.items() if k != 'description'}, 'id': 'customer', 'version': now['version'], 'name': now['name'],
+                                                               'properties': [{'column': p['column']} for p in CUSTOMER['properties']]})
+        if kind == 'meanings':   # a value without its description
+            return client.post('/api/workspace/types/meanings', {'id': 'order', 'column': '状态码', 'values': [{'value': '1', 'label': '生产中'}]})
+        if kind == 'view':
+            now = next(v for v in client.get('/api/workspace/types/order/views')[1]['views'] if v['name'] == VALID['name'])
+            return client.post('/api/workspace/types/views/update', {**VALID, 'id': VALID['name'], 'version': now['version']})
+        if kind == 'derived':
+            now = self.line(client, 'customer', 'cancelled_orders')
+            return client.post('/api/workspace/types/derived/update', {**CANCELLED, 'name': now['name'], 'version': now['version']})
+        if kind == 'relation':
+            now = client.get('/api/workspace/relations/order_customer')[1]
+            return client.post('/api/workspace/relations/update', {**ORDER_CUSTOMER, 'id': 'order_customer', 'name': now['name'], 'version': now['version']})
+        if kind == 'action':
+            now = client.get('/api/workspace/actions/' + quote(ACTION['name']))[1]
+            return client.post('/api/workspace/actions/update', {**{k: v for k, v in ACTION.items() if k != 'description'}, 'id': ACTION['name'], 'version': now['version']})
+        now = client.get(f'{PIPELINES}/{quote("客户合计")}')[1]
+        return client.post(f'{PIPELINES}/update', {'id': '客户合计', 'version': now['version'], 'spec': now['spec']})   # the page's own shape
+
+    def describe(self, team):
+        """Every kind given a description (and the customer type a property display name, a meaning a description) by Ann, confirmed by Bob."""
+        ann, bob = team['ann'], team['bob']
+        for kind, fields in (('action', {'description': 'ZZ行为说明'}), ('derived', {'description': 'ZZ派生说明'}), ('view', {'description': 'ZZ视图说明'}),
+                             ('relation', {'description': 'ZZ关系说明'}), ('meanings', [{'value': '1', 'label': '生产中', 'description': 'ZZ含义说明'}]),
+                             ('type', {'description': 'ZZ类型说明', 'properties': customer_properties(客户等级={'name': 'ZZ等级'})})):
+            self.assertEqual(self.put(ann, kind, fields)[0], 200, kind)
+        for kind in ('meanings', 'order', 'type', 'relation', 'view', 'derived', 'action'):   # Bob confirms all of it again, what it stands on first
+            if kind == 'order':
+                shown = bob.get('/api/workspace/types/order')[1]
+                if shown['state'] != 'confirmed':
+                    self.assertEqual(bob.post('/api/workspace/types/confirm', {'id': 'order', 'version': shown['version'], 'seen': shown['seen']})[0], 200)
+            elif self.state_of(kind) != 'confirmed':
+                self.assertEqual(self.confirm_kind(bob, kind)[0], 200, kind)
+
+    def test_an_unchanged_resubmission_without_optional_fields_keeps_a_confirmed_definition_and_its_words(self):
+        with self.service() as (base, out):
+            self.out = out
+            team = self.team(base)
+            self.world(team)
+            self.describe(team)
+            before = {k: self.db('SELECT content_json FROM element_state WHERE element_id = ?', (e,))[0][0] for k, e in ELEMENTS.items()}
+            facts = {}
+            for kind in ('action', 'derived', 'view', 'relation', 'meanings', 'type', 'pipeline'):
+                status, body = self.resend(team['cat'], kind)
+                facts[kind] = (status, self.state_of(kind) if kind != 'pipeline' else self.states_now()['pipeline'])
+            after = {k: self.db('SELECT content_json FROM element_state WHERE element_id = ?', (e,))[0][0] for k, e in ELEMENTS.items()}
+            self.assertEqual(facts, {kind: (200, 'confirmed') for kind in facts})
+            self.assertEqual({k for k in ELEMENTS if json.loads(after[k]) != json.loads(before[k])}, set())
+
+    def test_an_unchanged_resubmission_puts_nobody_in_the_set_of_a_waiting_definition(self):
+        with self.service() as (base, out):
+            self.out = out
+            team = self.team(base)
+            self.world(team)
+            self.describe(team)
+            facts = {}
+            for kind, fields in (('action', {'description': 'ZZ安改'}), ('view', {'description': 'ZZ安改'}), ('type', {'description': 'ZZ安改', 'properties': customer_properties(客户等级={'name': 'ZZ等级'})})):
+                self.assertEqual(self.put(team['ann'], kind, fields)[0], 200)
+                self.assertEqual(self.resend(team['cat'], kind)[0], 200)   # Cat sends it again without the description: no change
+                facts[kind] = self.confirm_kind(team['cat'], kind)[0]
+            self.assertEqual(facts, {kind: 200 for kind in facts})
