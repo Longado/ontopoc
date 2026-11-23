@@ -304,6 +304,26 @@ class MarkingTests(FanSumTests):
             self.assertNotIn('重新运行一次', self.refused(ann, 'SELECT sum(l.amount) FROM (l:订单行)'))
             self.answered(ann, 'SELECT sum(l.qty) FROM (l:订单行)', 11)
 
+    def test_an_aggregate_over_rows_no_longer_copied_is_not_marked_and_a_union_that_stacks_a_row_twice_is(self):
+        # deduped on the order key first: the sum per customer reads each order once, 150 and 30, and is answered
+        once = {'steps': [*spec()['steps'][:3], transform({'op': 'dedupe', 'keys': ['order_id'], 'order_by': 'line_id'},
+                                                          {'op': 'aggregate', 'group_by': ['customer'], 'aggregations': [{'fn': 'sum', 'column': 'amount', 'as': 'total'}]}),
+                          {'id': 'out', 'type': 'output', 'from': 't', 'name': 'per_customer', 'key': {'columns': ['customer']}}]}
+        with self.service() as (base, out):
+            ann = self.world(base, once, {'english_name': 'per_customer', 'name': '每客户', 'dataset': 'per_customer', 'key': ['customer'],
+                                          'properties': [{'column': 'customer'}, {'column': 'total'}]})['ann']
+            self.assertEqual(self.marks(ann, 'per_customer')['total'], None)
+            self.answered(ann, 'SELECT sum(c.total) FROM (c:每客户)', 180)
+        # every order on one line, but the union stacks the P1 lines a second time: O1 and O2 are on two rows (330, not 180)
+        one_each = [l for l in LINES if l['line_id'] != 'L2']
+        stacked = spec(transform({'op': 'filter', 'where': {'column': 'product', 'cmp': 'eq', 'value': 'P1'}}), {'id': 'u', 'type': 'union', 'inputs': ['j', 't'], 'source_column': 'src'},
+                       last='u')
+        stacked['steps'][-1]['key'] = {'columns': ['line_id', 'src'], 'as': 'row_key'}
+        with self.service() as (base, out):
+            ann = self.world(base, stacked, {'english_name': 'order_line', 'name': '订单行', 'dataset': 'line_amounts', 'key': ['row_key'],
+                                             'properties': [{'column': 'row_key'}, {'column': 'amount'}]}, lines=one_each)['ann']
+            self.refused(ann, 'SELECT sum(l.amount) FROM (l:订单行)')
+
     def needed(self, bob, question):
         body = bob.post('/api/workspace/needed/run', {'repeats': 1})[1]
         for _ in range(500):
