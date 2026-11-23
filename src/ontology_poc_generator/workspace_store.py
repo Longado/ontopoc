@@ -443,33 +443,63 @@ def fingerprint(content_json: str | None) -> str | None:
     return hashlib.sha256(content_json.encode()).hexdigest()[:16] if content_json else None
 
 
-def _ids(value) -> bool:
-    return isinstance(value, list) and all(isinstance(v, int) and not isinstance(v, bool) for v in value)
-
-
 _WAS = ('content_json', 'evidence_ref', 'confirmed_by', 'confirmed_at', 'anchors_json', 'proposed_by', 'confirmed_by_user_id', 'proposed_by_user_id')
 
 
-def record_shape(text) -> dict | None:
-    """The record as an object with `by` a list of account ids and `of` a fingerprint (or null), or None: not JSON, not an object, or not that shape."""
+def fits(value, shape) -> bool:
+    """Whether a value read back from the file has exactly this shape, every nested field and type included. A shape is 'str', 'int' (never a yes/no), either with
+    '?' for "or null"; 'any' for any JSON value; ('is', v) for exactly v; ('list', item); ('pair', first, second) for a list of two; ('map', value) for an object of
+    any keys; ('object', required, optional) for an object with these keys and no other; ('json', inner, nullable) for text that is itself JSON of the inner shape (a
+    stored column put back as it was). Written once for every record a definition or an expectation keeps of who changed it."""
+    if shape == 'any':
+        return True
+    if isinstance(shape, str):
+        if value is None:
+            return shape.endswith('?')
+        base = shape.rstrip('?')
+        return isinstance(value, str) if base == 'str' else isinstance(value, int) and not isinstance(value, bool) if base == 'int' else False
+    kind = shape[0]
+    if kind == 'is':
+        return value == shape[1] and type(value) is type(shape[1])
+    if kind == 'json':
+        if value is None:
+            return shape[2]
+        try:
+            return isinstance(value, str) and fits(json.loads(value), shape[1])
+        except (ValueError, RecursionError):
+            return False
+    if kind == 'list':
+        return isinstance(value, list) and all(fits(v, shape[1]) for v in value)
+    if kind == 'pair':
+        return isinstance(value, list) and len(value) == 2 and fits(value[0], shape[1]) and fits(value[1], shape[2])
+    if kind == 'map':
+        return isinstance(value, dict) and all(isinstance(k, str) and fits(v, shape[1]) for k, v in value.items())
+    if kind == 'object':
+        required, optional = shape[1], shape[2] if len(shape) > 2 else {}
+        return (isinstance(value, dict) and set(required) <= set(value) <= set(required) | set(optional)
+                and all(fits(v, required[k] if k in required else optional[k]) for k, v in value.items()))
+    return False
+
+
+RECORD = ('object', {'by': ('list', 'int'), 'of': 'str?'}, {'was': ('object', {
+    'content_json': ('json', ('map', 'any'), False), 'evidence_ref': 'str?', 'confirmed_by': 'str?', 'confirmed_at': 'str', 'anchors_json': ('json', ('map', 'any'), True),
+    'proposed_by': 'str?', 'confirmed_by_user_id': 'int?',
+    'proposed_by_user_id': 'int?', 'deps': ('list', 'str'), 'reads': ('map', ('pair', 'str?', 'int?'))})})
+
+
+def read_record(text, shape) -> dict | None:
+    """The record kept in the file when it is JSON of exactly this shape (fits); None otherwise: a record that cannot be read whole is no record, and then who changed
+    the definition is not known."""
     try:
         kept = json.loads(text) if isinstance(text, str) and text else None
-    except ValueError:
+    except (ValueError, RecursionError):
         return None
-    return kept if isinstance(kept, dict) and _ids(kept.get('by')) and isinstance(kept.get('of'), (str, type(None))) else None
+    return kept if fits(kept, shape) else None
 
 
 def parse_record(text) -> dict | None:
-    """A kept record of who changed a definition, or None when there is none or it is not well formed (record_shape, and a `was` with what putting it back needs): a
-    record that cannot be read is no record, and then who changed it is not known."""
-    kept = record_shape(text)
-    if kept is None:
-        return None
-    was = kept.get('was')
-    if was is not None and not (isinstance(was, dict) and all(k in was for k in _WAS) and isinstance(was['content_json'], str)
-                                and isinstance(was.get('deps'), list) and isinstance(was.get('reads'), dict)):
-        return None
-    return kept
+    """A definition's record of who changed it (RECORD), or None."""
+    return read_record(text, RECORD)
 
 
 def _kept_record(row: dict) -> dict | None:
@@ -562,9 +592,12 @@ def _stands_as_confirmed(conn, element_id: str, was: dict) -> bool:
     """Whether it would still be confirmed today had the edit never happened: the datasets it was last confirmed on are still at those versions, and everything it
     reads, directly or through what those read, is exactly as it was when the edit set it aside (no change, no move to needs another look, no new confirmation, no
     new data version) and confirmed. Anything else, or anything not known, is no: then a person looks again."""
-    found = conn.execute('SELECT dataset_versions_json FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1', (element_id,)).fetchone()
+    found = conn.execute('SELECT dataset_versions_json, content_json, confirmed_by, confirmed_by_user_id, confirmed_at, evidence_ref, proposed_by FROM confirmation '
+                         'WHERE element_id = ? ORDER BY id DESC LIMIT 1', (element_id,)).fetchone()
+    if found is None or list(found[1:]) != [was[k] for k in ('content_json', 'confirmed_by', 'confirmed_by_user_id', 'confirmed_at', 'evidence_ref', 'proposed_by')]:
+        return False   # what would be put back is not the confirmation on file
     try:
-        versions = json.loads(found[0]) if found and found[0] else {}
+        versions = json.loads(found[0]) if found[0] else {}
     except ValueError:
         return False
     for name, version in (versions.items() if isinstance(versions, dict) else ()):

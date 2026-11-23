@@ -53,7 +53,7 @@ from ontology_poc_generator.lang import tr
 from ontology_poc_generator.object_types import element_row
 from ontology_poc_generator.ontology_questions import QUESTION_PROMPT_VERSION
 from ontology_poc_generator.workspace_questions import HELD_BACK as GATE, QaRefused, _clean_question, ask
-from ontology_poc_generator.workspace_store import current_dataset, fingerprint, log_line, now_text, record_shape, writers_in_log
+from ontology_poc_generator.workspace_store import current_dataset, fingerprint, log_line, now_text, read_record, writers_in_log
 
 MAX_QUESTIONS = 30
 MAX_REPEATS = 5
@@ -124,15 +124,16 @@ def _content(row: dict) -> str:
     return json.dumps([row['question'], row['expect_kind'], row['expect_value'] if row['expect_kind'] == 'number' else None, row['expect_blocker']], ensure_ascii=False)
 
 
+RECORD = ('object', {'by': ('list', 'int'), 'of': 'str?'}, {'confirmed': 'str', 'was': ('object', {
+    'state': ('is', 'confirmed'), 'expect_version': 'int', 'written_by': 'str?', 'written_by_user_id': 'int?', 'written_at': 'str', 'confirmed_by': 'str?',
+    'confirmed_by_user_id': 'int?', 'confirmed_at': 'str', 'self_confirmed': 'int', 'basis_json': ('json', ('map', 'any'), True),
+    'look_json': ('json', ('list', 'any'), True)})})
+
+
 def _parsed(text) -> dict | None:
-    """The record when it is well formed (workspace_store.record_shape, with what an expectation keeps of what was confirmed); None otherwise: who changed it is not known."""
-    kept = record_shape(text)
-    if kept is None or not isinstance(kept.get('confirmed', ''), str):
-        return None
-    was = kept.get('was')
-    if was is not None and not (isinstance(was, dict) and all(k in was for k in _WAS)):
-        return None
-    return kept
+    """An expectation's record of who changed it when it is exactly RECORD's shape (workspace_store.read_record); None otherwise: who changed it is not known."""
+    kept = read_record(text, RECORD)
+    return kept if kept is None or 'was' not in kept or 'confirmed' in kept else None   # what was confirmed goes with the state to put back
 
 
 def _kept(row: dict) -> dict | None:
@@ -485,7 +486,13 @@ def _next_record(conn, row: dict, new: dict, uid) -> tuple[str, dict | None]:
     elif uid is not None:
         by = by | {uid}
     record = {'by': sorted(by), 'of': fingerprint(content), **({'confirmed': confirmed} if confirmed is not None else {}), **({'was': was} if was else {})}
-    return json.dumps(record, ensure_ascii=False, sort_keys=True), (was if was and content == confirmed else None)
+    return json.dumps(record, ensure_ascii=False, sort_keys=True), (was if was and content == confirmed and _was_confirmed_so(conn, row['id'], was) else None)
+
+
+def _was_confirmed_so(conn, qid: int, was: dict) -> bool:
+    """Whether what would be put back is the last confirmation the log holds for this question: the same person, the same account. Anything else: not put back."""
+    last = conn.execute("SELECT who, user_id FROM log WHERE element_id = ? AND change = 'confirmed' ORDER BY rowid DESC LIMIT 1", (f'needed:{qid}',)).fetchone()
+    return last is not None and (last[0], last[1]) == (was['confirmed_by'], was['confirmed_by_user_id'])
 
 
 def delete(conn, user: dict | None, payload: dict) -> dict:
