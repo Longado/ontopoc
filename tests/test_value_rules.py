@@ -439,8 +439,9 @@ class ValueRuleTests(SigningTestCase):
             self.confirm(bob)
             page = self.page(ann, 'order')
             status, body = ann.post('/api/workspace/types/update', {**ORDER, 'id': 'order', 'version': page['version'], 'description': '改了说明'})   # no rules in the request: they stay
-            self.assertEqual((status, body['state'], body['reset']), (200, 'confirmed', []))
+            self.assertEqual((status, body['state'], body['reset']), (200, 'checked', ['名称或说明']))   # a new description waits for a second person, as any change does
             self.assertEqual([r['check'] for r in self.page(ann, 'order')['rules']], ['gt'])
+            self.confirm(bob)
             for rules in ([rule, {'column': '金额', 'check': 'le', 'value': 999999}], [{'column': '金额', 'check': 'ge', 'value': 0}], []):
                 page = self.page(ann, 'order')
                 status, body = ann.post('/api/workspace/types/update', {**ORDER, 'id': 'order', 'version': page['version'], 'rules': rules})

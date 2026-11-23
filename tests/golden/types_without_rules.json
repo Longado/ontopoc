@@ -88,8 +88,10 @@
   200,
   {
    "id": "order",
-   "reset": [],
-   "state": "confirmed",
+   "reset": [
+    "名称或说明"
+   ],
+   "state": "checked",
    "warnings": []
   }
  ],
@@ -121,6 +123,7 @@
      "dataset_version": 1,
      "drafted": null,
      "evidence": null,
+     "held": null,
      "id": "order",
      "limited_by_rule": false,
      "meanings_blocking": [
@@ -255,7 +258,7 @@
      "change": "checked",
      "column": null,
      "element": "type",
-     "from": "confirmed",
+     "from": "checked",
      "reason": null,
      "record": null,
      "self_confirmed": false,
@@ -268,15 +271,15 @@
     {
      "at": "<time>",
      "caused_by": null,
-     "change": "edited",
+     "change": "checked",
      "column": null,
      "element": "type",
-     "from": null,
+     "from": "confirmed",
      "reason": null,
      "record": null,
      "self_confirmed": false,
-     "text": "订单",
-     "to": "confirmed",
+     "text": null,
+     "to": "checked",
      "visible_to": null,
      "who": "Ann",
      "with_token": null
@@ -451,6 +454,7 @@
    "description": "一张订单",
    "drafted": null,
    "evidence": "check_result:2,dataset:订单@v1",
+   "held": null,
    "id": "order",
    "key": [
     "订单号"
@@ -501,6 +505,7 @@
       "confirmers": [],
       "drafted": null,
       "evidence": "dataset:订单@v1",
+      "held": null,
       "limited_by_rule": false,
       "meanings_blocking": [],
       "model_draft": false,
@@ -639,6 +644,7 @@
    "description": "一张订单",
    "drafted": null,
    "evidence": "check_result:5,dataset:订单@v1",
+   "held": null,
    "id": "order",
    "key": [
     "订单号"
@@ -689,6 +695,7 @@
       "confirmers": [],
       "drafted": null,
       "evidence": "dataset:订单@v1",
+      "held": null,
       "limited_by_rule": false,
       "meanings_blocking": [],
       "model_draft": false,
@@ -825,6 +832,7 @@
    "description": "客户下的一张订单",
    "drafted": null,
    "evidence": null,
+   "held": null,
    "id": "order",
    "key": [
     "订单号"
@@ -878,6 +886,7 @@
       ],
       "drafted": null,
       "evidence": null,
+      "held": null,
       "limited_by_rule": false,
       "meanings_blocking": [],
       "model_draft": false,
@@ -1004,6 +1013,7 @@
    "description": "客户下的一张订单",
    "drafted": null,
    "evidence": null,
+   "held": null,
    "id": "order",
    "key": [
     "订单号"
@@ -1057,6 +1067,7 @@
       ],
       "drafted": null,
       "evidence": null,
+      "held": null,
       "limited_by_rule": false,
       "meanings_blocking": [],
       "model_draft": false,
@@ -1185,6 +1196,7 @@
    "description": "一张订单",
    "drafted": null,
    "evidence": "check_result:5,dataset:订单@v1",
+   "held": null,
    "id": "order",
    "key": [
     "订单号"
@@ -1237,6 +1249,7 @@
       "confirmers": [],
       "drafted": null,
       "evidence": "dataset:订单@v1",
+      "held": null,
       "limited_by_rule": false,
       "meanings_blocking": [],
       "model_draft": false,
@@ -1396,6 +1409,7 @@
    "description": "客户下的一张订单",
    "drafted": null,
    "evidence": "check_result:2,dataset:订单@v1",
+   "held": null,
    "id": "order",
    "key": [
     "订单号"
@@ -1446,6 +1460,7 @@
       "confirmers": [],
       "drafted": null,
       "evidence": "dataset:订单@v1",
+      "held": null,
       "limited_by_rule": false,
       "meanings_blocking": [],
       "model_draft": false,
@@ -1549,6 +1564,7 @@
      "element": "enum:order:状态码",
      "evidence": "dataset:订单@v1",
      "group": "订单@3",
+     "held": null,
      "id": "order",
      "kind": "meaning",
      "limited_by_rule": false,
@@ -1605,6 +1621,7 @@
      "element": "objtype:order",
      "evidence": "check_result:5,dataset:订单@v1",
      "group": "订单@3",
+     "held": null,
      "id": "order",
      "kind": "type",
      "limited_by_rule": false,
@@ -1666,6 +1683,7 @@
      "drafted": null,
      "element": "enum:order:状态码",
      "evidence": null,
+     "held": null,
      "id": "order",
      "kind": "meaning",
      "limited_by_rule": false,
@@ -1715,6 +1733,7 @@
      "drafted": null,
      "element": "objtype:order",
      "evidence": null,
+     "held": null,
      "id": "order",
      "kind": "type",
      "limited_by_rule": false,
@@ -1954,6 +1973,7 @@
    {
     "anchors_json": "{\"counts\": {\"0\": 96, \"1\": 48, \"2\": 16}, \"dataset\": \"订单\", \"version\": 1}",
     "cause": "data",
+    "changed_json": "{\"by\": [], \"of\": \"b33e3bb952223b25\"}",
     "confirmed_at": "<time>",
     "confirmed_by": "Bob",
     "confirmed_by_user_id": 3,
@@ -1970,6 +1990,7 @@
    {
     "anchors_json": "{\"dataset\": \"订单\", \"version\": 1}",
     "cause": "data",
+    "changed_json": "{\"by\": [], \"of\": \"aea423bfec7e75f2\"}",
     "confirmed_at": "<time>",
     "confirmed_by": "Bob",
     "confirmed_by_user_id": 3,
@@ -2206,9 +2227,9 @@
     "who": "Bob"
    },
    {
-    "after_json": "{\"name\": \"订单\", \"description\": \"一张订单\", \"state\": \"confirmed\"}",
-    "before_json": "{\"name\": \"订单\", \"description\": \"客户下的一张订单\"}",
-    "change": "edited",
+    "after_json": "{\"state\": \"checked\", \"evidence_ref\": \"check_result:3,dataset:订单@v1\", \"confirmed_by\": \"Ann\", \"confirmed_at\": \"<time>\", \"version\": 3, \"content_json\": \"{\\\"dataset\\\": \\\"订单\\\", \\\"description\\\": \\\"一张订单\\\", \\\"english_name\\\": \\\"order\\\", \\\"key\\\": [\\\"订单号\\\"], \\\"name\\\": \\\"订单\\\", \\\"properties\\\": [{\\\"column\\\": \\\"订单号\\\", \\\"enum\\\": false, \\\"name\\\": \\\"订单号\\\", \\\"type\\\": \\\"text\\\"}, {\\\"column\\\": \\\"金额\\\", \\\"enum\\\": false, \\\"name\\\": \\\"金额\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"状态码\\\", \\\"enum\\\": true, \\\"name\\\": \\\"状态码\\\", \\\"type\\\": \\\"integer\\\"}]}\", \"anchors_json\": \"48 bytes, sha256 dc2eed7becf8\"}",
+    "before_json": "{\"state\": \"confirmed\", \"evidence_ref\": \"check_result:2,dataset:订单@v1\", \"confirmed_by\": \"Bob\", \"confirmed_at\": \"<time>\", \"version\": 2, \"content_json\": \"{\\\"dataset\\\": \\\"订单\\\", \\\"description\\\": \\\"客户下的一张订单\\\", \\\"english_name\\\": \\\"order\\\", \\\"key\\\": [\\\"订单号\\\"], \\\"name\\\": \\\"订单\\\", \\\"properties\\\": [{\\\"column\\\": \\\"订单号\\\", \\\"enum\\\": false, \\\"name\\\": \\\"订单号\\\", \\\"type\\\": \\\"text\\\"}, {\\\"column\\\": \\\"金额\\\", \\\"enum\\\": false, \\\"name\\\": \\\"金额\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"状态码\\\", \\\"enum\\\": true, \\\"name\\\": \\\"状态码\\\", \\\"type\\\": \\\"integer\\\"}]}\", \"anchors_json\": \"31 bytes, sha256 481abea085d4\"}",
+    "change": "checked",
     "element_id": "objtype:order",
     "time": "<time>",
     "user_id": 2,
@@ -2217,7 +2238,7 @@
    },
    {
     "after_json": "{\"state\": \"checked\", \"evidence_ref\": \"check_result:4,dataset:订单@v1\", \"confirmed_by\": \"Ann\", \"confirmed_at\": \"<time>\", \"version\": 4, \"content_json\": \"{\\\"dataset\\\": \\\"订单\\\", \\\"description\\\": \\\"一张订单\\\", \\\"english_name\\\": \\\"order\\\", \\\"key\\\": [\\\"订单号\\\"], \\\"name\\\": \\\"订单\\\", \\\"properties\\\": [{\\\"column\\\": \\\"订单号\\\", \\\"enum\\\": false, \\\"name\\\": \\\"订单号\\\", \\\"type\\\": \\\"text\\\"}, {\\\"column\\\": \\\"金额\\\", \\\"enum\\\": false, \\\"name\\\": \\\"金额\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"状态码\\\", \\\"enum\\\": true, \\\"name\\\": \\\"状态码\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"数量\\\", \\\"enum\\\": false, \\\"name\\\": \\\"数量\\\", \\\"type\\\": \\\"integer\\\"}]}\", \"anchors_json\": \"48 bytes, sha256 dc2eed7becf8\"}",
-    "before_json": "{\"state\": \"confirmed\", \"evidence_ref\": \"check_result:2,dataset:订单@v1\", \"confirmed_by\": \"Bob\", \"confirmed_at\": \"<time>\", \"version\": 3, \"content_json\": \"{\\\"dataset\\\": \\\"订单\\\", \\\"description\\\": \\\"一张订单\\\", \\\"english_name\\\": \\\"order\\\", \\\"key\\\": [\\\"订单号\\\"], \\\"name\\\": \\\"订单\\\", \\\"properties\\\": [{\\\"column\\\": \\\"订单号\\\", \\\"enum\\\": false, \\\"name\\\": \\\"订单号\\\", \\\"type\\\": \\\"text\\\"}, {\\\"column\\\": \\\"金额\\\", \\\"enum\\\": false, \\\"name\\\": \\\"金额\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"状态码\\\", \\\"enum\\\": true, \\\"name\\\": \\\"状态码\\\", \\\"type\\\": \\\"integer\\\"}]}\", \"anchors_json\": \"31 bytes, sha256 481abea085d4\"}",
+    "before_json": "{\"state\": \"checked\", \"evidence_ref\": \"check_result:3,dataset:订单@v1\", \"confirmed_by\": \"Ann\", \"confirmed_at\": \"<time>\", \"version\": 3, \"content_json\": \"{\\\"dataset\\\": \\\"订单\\\", \\\"description\\\": \\\"一张订单\\\", \\\"english_name\\\": \\\"order\\\", \\\"key\\\": [\\\"订单号\\\"], \\\"name\\\": \\\"订单\\\", \\\"properties\\\": [{\\\"column\\\": \\\"订单号\\\", \\\"enum\\\": false, \\\"name\\\": \\\"订单号\\\", \\\"type\\\": \\\"text\\\"}, {\\\"column\\\": \\\"金额\\\", \\\"enum\\\": false, \\\"name\\\": \\\"金额\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"状态码\\\", \\\"enum\\\": true, \\\"name\\\": \\\"状态码\\\", \\\"type\\\": \\\"integer\\\"}]}\", \"anchors_json\": \"48 bytes, sha256 dc2eed7becf8\"}",
     "change": "checked",
     "element_id": "objtype:order",
     "time": "<time>",

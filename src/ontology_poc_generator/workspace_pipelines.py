@@ -26,9 +26,8 @@ from ontology_poc_generator.assistant_checks import drafted_mark
 from ontology_poc_generator.draft_receipts import spend as spend_receipt
 from ontology_poc_generator.actor import actor_id_for
 from ontology_poc_generator.object_types import (
-    token_edit,
-    MAX_DESCRIPTION, MAX_NAME, PIPELINE_PREFIX, stale_note, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _content, _edit_names, _flag, _flag_readers, _state_view, _text, dataset_columns,
-    element_row, log_entries, one_telling, recheck_after_write, unconfirmed_producers, write_confirmation)
+    MAX_DESCRIPTION, MAX_NAME, PIPELINE_PREFIX, stale_note, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _content, _flag, _flag_readers, _state_view, _text, dataset_columns,
+    element_row, held_note, keep_unsaid, log_entries, one_telling, recheck_after_write, unconfirmed_producers, write_confirmation)
 from ontology_poc_generator.pipeline_expr import COLUMN_TYPE, FUNCTION_DOCS, compile_expression, error_condition
 from ontology_poc_generator.pipeline_funcs import guess_formats, number_text, register
 from ontology_poc_generator.pipeline_llm import LlmRun, LlmService, cache_counts, contract_of, effective
@@ -39,7 +38,7 @@ from ontology_poc_generator.pipelines import (
 from ontology_poc_generator.row_rules import has_rules
 from ontology_poc_generator.type_access import dataset_hidden, view_input_hidden
 from ontology_poc_generator.workspace_store import (
-    SelfConfirmation, StaleElement, apply_upload, current_dataset, element_state_writes, log_line, now_text, plan_upload)
+    SelfConfirmation, StaleElement, apply_upload, current_dataset, element_state_writes, log_line, now_text, pipeline_editors, plan_upload)
 from ontology_poc_generator.object_views import view_summary, view_visible
 from ontology_poc_generator.lang import tr
 
@@ -312,27 +311,27 @@ def create_pipeline(conn, payload: dict, who: str | None, user: dict | None, eng
 def update_pipeline(conn, payload: dict, who: str | None, user: dict | None, engine=None) -> dict:
     """{id, version, description?, spec?}: save a changed definition. A changed spec is a new definition version: the pipeline is put forward again as this person's,
     and what read it (the datasets it writes, the types on them, their views, saved answers) goes to needs_look, cause 定义改了. A pipeline that was sent back, or a
-    model's draft, is put forward again by saving it. A change of the description alone keeps the state (made by a person signed in; made with a token, a confirmed one is put forward again: object_types.token_edit). 409 when the version has moved. The name is the id."""
+    model's draft, is put forward again by saving it. A new description is a change of the pipeline exactly as a changed step is (the Leader's ruling, 2026-11-23: a
+    pipeline is a definition, and no words stand beside a confirmation nobody gave them): a new definition version, saved by this person, who may not confirm it
+    (_editors), with what reads it sent back the same way; words put back are another change, as steps put back are. 409 when the version has moved. The name is the id."""
     engine = engine or conn
     row = _pipeline_row(conn, payload.get('id'), user)
     if payload.get('version') != row['version']:
         raise TypeRefused(tr('这条管道在你打开之后被改了，请刷新后再改', 'This pipeline was changed after you opened it. Refresh and edit again'), 409)
     old = _content(row)
-    found = check_definition(conn, engine, {**payload, 'spec': payload.get('spec', old['spec'])}, user, old['name'], row['element_id'])
+    found = check_definition(conn, engine, keep_unsaid({**payload, 'spec': payload.get('spec', old['spec'])}, old), user, old['name'], row['element_id'])   # what is not sent stays
     try:
         new, element_id = found['content'], row['element_id']
         if mark := drafted_mark(conn, payload, who, user, 'pipeline', _saved_steps(payload), old.get('drafted'), old['name']):   # saved from the assistant's draft: who, when (an ordinary save keeps it)
             new = {**new, 'drafted': mark}
-        changed = _canonical(new['spec']) != _canonical(old['spec'])
-        if changed or row['state'] in ('proposed', 'rejected') or token_edit(row, user, new['description'] != old['description']):
+        changed = _canonical(new['spec']) != _canonical(old['spec']) or new['description'] != old['description']   # its words are part of it, as its steps are
+        if changed or row['state'] in ('proposed', 'rejected'):
             version = old['definition_version'] + (1 if changed else 0)
             after = (lambda c: _flag_readers(c, element_id, tr(f'管道“{old["name"]}”的定义改了（第 {version} 版）', f'The definition of the pipeline "{old["name"]}" changed (version {version})'), [], 'definition')) if changed else None
             _write(conn, _change(new, version, found['versions'], who), found['reads'], found['outputs'], _version_row(element_id, version, new, who) if changed else None,
                    {element_id: row['version']}, after)
             spend_receipt(conn, payload, user)
             return {'id': old['name'], 'state': 'checked', 'definition_version': version, 'changed': changed}
-        if new['description'] != old['description']:
-            _edit_names(conn, row, {'name': old['name'], 'description': new['description']}, who)
         return {'id': old['name'], 'state': row['state'], 'definition_version': old['definition_version'], 'changed': False}
     finally:
         drop_temporary(engine, found['resolved'])
@@ -736,10 +735,9 @@ def _write_outputs(conn, content: dict, row: dict, run_id: int, versions: dict, 
 # --- confirming ---------------------------------------------------------------------------------------------------------------------------------------
 
 def _editors(conn, element_id: str) -> set[int]:
-    """The accounts that saved a definition version since the last confirmation (all of them when it was never confirmed): the one who confirms must not be among them."""
-    last = _last_confirmation(conn, element_id)
-    since = last['content']['definition_version'] if last else 0
-    return {u for (u,) in conn.execute('SELECT saved_by_user_id FROM pipeline_version WHERE pipeline_id = ? AND version > ? AND saved_by_user_id IS NOT NULL', (element_id, since))}
+    """The accounts that saved a definition version since the last confirmation (all of them when it was never confirmed): the one who confirms must not be among them.
+    The same set every other kind's rule reads (workspace_store.changers, may_confirm), so the sentence a held person reads is the same too (held_note)."""
+    return pipeline_editors(conn, element_id)
 
 
 def waiting_on(conn, content: dict) -> list[dict]:
@@ -782,7 +780,7 @@ def confirm_pipeline(conn, payload: dict, who: str | None, user: dict | None, en
         raise TypeRefused(tr('已经被退回了：要先按退回的理由改，再重新提出', 'It was sent back: change it as the reason says, then propose it again'), 409)
     content, element_id = _content(row), row['element_id']
     if two_person(conn)['active'] and user is not None and user.get('id') in _editors(conn, element_id):
-        raise SelfConfirmation(tr('这条管道的定义你改过，要另一位来确认', 'You changed the definition of this pipeline, so someone else has to confirm it'))
+        raise SelfConfirmation(held_note(conn, row) or tr('这条管道的定义你改过，要另一位来确认', 'You changed the definition of this pipeline, so someone else has to confirm it'))
     waiting = waiting_on(conn, content)
     if waiting:
         names = tr('、', ', ').join(f'“{w["name"]}”' for w in waiting)

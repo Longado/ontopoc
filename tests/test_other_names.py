@@ -127,13 +127,18 @@ class WithoutOtherNamesTests(unittest.TestCase, DemoAsker):
         self.assertEqual((status, body['answer']['measure']['value']), (200, VALID_AMOUNT))
         view = next(v for v in admin.call('GET', '/api/workspace/types/order/views')[1]['views'] if v['name'] == 'Valid orders')
         status, body = admin.call('POST', '/api/workspace/types/views/update', {'id': 'Valid orders', 'version': view['version'], 'type': 'order', 'filters': view['filters'], 'other_names': ['有效订单']})
-        self.assertEqual((status, body.get('state')), (200, 'confirmed'), body)   # a person's edit of the other names keeps it confirmed, as an edit of its description does
         try:
+            self.assertEqual((status, body.get('state')), (200, 'checked'), body)   # a person's edit of the other names waits for a second person, as any change does
+            view = next(v for v in builder.call('GET', '/api/workspace/types/order/views')[1]['views'] if v['name'] == 'Valid orders')
+            self.assertEqual(builder.call('POST', '/api/workspace/types/views/confirm', {'id': 'Valid orders', 'version': view['version'], 'seen': view['seen']})[0], 200)
             status, body, _, _ = self.ask(self.demo, self.guest, '有效订单的总金额是多少？', item())
             self.assertEqual((status, body['status']), (200, 'definition_unmet'), body)
-        finally:
+        finally:   # the seed as it was, confirmed by the builder: what the other tests of this class read
             view = next(v for v in builder.call('GET', '/api/workspace/types/order/views')[1]['views'] if v['name'] == 'Valid orders')
             self.assertEqual(admin.call('POST', '/api/workspace/types/views/update', {'id': 'Valid orders', 'version': view['version'], 'type': 'order', 'filters': view['filters'], 'other_names': []})[0], 200)
+            view = next(v for v in builder.call('GET', '/api/workspace/types/order/views')[1]['views'] if v['name'] == 'Valid orders')
+            if view['state'] != 'confirmed':
+                self.assertEqual(builder.call('POST', '/api/workspace/types/views/confirm', {'id': 'Valid orders', 'version': view['version'], 'seen': view['seen']})[0], 200)
 
 
 class PilotWithoutOtherNamesTests(pilot.PilotFoundation):
@@ -388,9 +393,8 @@ class ClashTests(Planted):
 
 
 class EditTests(World):
-    """Adding, changing or removing other names behaves as changing the name of that kind does: a signed-in person's edit keeps a confirmed type, property, view or
-    derived property confirmed (logged); a new other name of a meaning puts the meanings forward again, as a new label does; any edit made with a token puts a
-    confirmed definition forward again."""
+    """Adding, changing or removing other names behaves as changing the name of that kind does: any edit, signed in or with a token, puts a confirmed type,
+    property, view, derived property or meaning forward again for a second person (tests/test_changed_since_confirm.py)."""
 
     def states_after(self, by_token):
         out = {}
@@ -412,11 +416,11 @@ class EditTests(World):
                 self.assertEqual(status, 200, (kind, body))
                 out[kind] = self.states_now()['meanings' if kind == 'meanings' else 'type' if kind == 'property' else kind]
                 if kind == 'type' and not by_token:
-                    self.assertEqual(ann.get('/api/workspace/types/customer/log')[1]['log'][0]['change'], 'edited')
+                    self.assertIn('checked', [e['change'] for e in ann.get('/api/workspace/types/customer/log')[1]['log'][:3]])
         return out
 
-    def test_a_persons_edit_keeps_it_confirmed_except_a_meaning_which_goes_back_as_a_new_label_does(self):
-        self.assertEqual(self.states_after(by_token=False), {'type': 'confirmed', 'property': 'confirmed', 'view': 'confirmed', 'derived': 'confirmed', 'meanings': 'checked'})
+    def test_a_persons_edit_puts_each_back_as_a_tokens_does(self):
+        self.assertEqual(self.states_after(by_token=False), {'type': 'checked', 'property': 'checked', 'view': 'checked', 'derived': 'checked', 'meanings': 'checked'})
 
     def test_an_edit_with_a_token_puts_each_back(self):
         self.assertEqual(self.states_after(by_token=True), {'type': 'checked', 'property': 'checked', 'view': 'checked', 'derived': 'checked', 'meanings': 'checked'})

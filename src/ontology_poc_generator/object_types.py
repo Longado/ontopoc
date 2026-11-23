@@ -30,7 +30,10 @@ from ontology_poc_generator import other_names
 from ontology_poc_generator.row_rules import keeps, positions, restriction
 from ontology_poc_generator.type_access import can_access, column_allowed, dataset_hidden, hidden_columns, hidden_values, reads_hidden, visible_to
 from ontology_poc_generator.value_rules import EXAMPLES, REASON_EXAMPLES, RuleRefused, broken_text, columns_of, note as rules_note, read_rules, run as run_rules, says as rule_says
-from ontology_poc_generator.workspace_store import fan_note, StaleElement, _canonical, _key_of, _quote, check_key, current_dataset, dataset_records, element_state_writes, fan_marks, log_line, now_text, record_result
+from ontology_poc_generator.actor import actor_id_for
+from ontology_poc_generator.workspace_store import (
+    SelfConfirmation, barred, fan_note, StaleElement, _canonical, _key_of, _quote, check_key, current_dataset, dataset_records, element_state_writes, fan_marks, log_line,
+    may_confirm, next_record, now_text, record_result, restore_if_back, tracked)
 
 TYPE_PREFIX = 'objtype:'
 ENUM_PREFIX = 'enum:'
@@ -296,6 +299,8 @@ def _meanings(kept: list[dict], column: str, col: dict, posted) -> list[dict]:
     except ValueError as exc:
         raise TypeRefused(str(exc)) from None
     was = {e['value']: other_names.of(e) for e in kept}
+    said = {e['value']: e.get('description', '') for e in kept}   # an entry that does not send its description keeps the one on file
+    entries = [{**e, 'description': said.get(e['value'], '')} if isinstance(raw, dict) and 'description' not in raw else e for e, raw in zip(entries, posted)]
     entries = [other_names.put(e, other_names.clean(raw.get('other_names'), tr(f'含义“{e["label"]}”', f'the meaning "{e["label"]}"')) if 'other_names' in raw else was.get(e['value']))
                for e, raw in zip(entries, posted)]
     merged = merge_enum(kept, entries)
@@ -400,12 +405,33 @@ def token_edit(row: dict, user: dict | None, edited: bool, others: bool = False)
     return []
 
 
+def edit_sends_back(row: dict, user: dict | None, edited: bool, others: bool = False) -> list[str]:
+    """[the reason] when an edit changes what a confirmed definition says without touching what its reset list names (its name, its description, its other names, a
+    property's display name): it is put forward again by the path a token's edit takes (token_edit), whoever makes it, signed in or with a token, its last confirmer
+    included, so a second person confirms the new words. [] for nothing edited, or for one that is not confirmed. (Pipelines keep token_edit: their rule is their own.)"""
+    if not (edited or others) or row['state'] != 'confirmed':
+        return []
+    if user is not None and user.get('token_id') is not None:
+        return token_edit(row, user, edited, others)
+    return [tr('名称或说明', 'its name or description') if edited else tr('另称', 'its other names')]
+
+
+def keep_unsaid(payload: dict, old: dict) -> dict:
+    """An edit that does not send the description keeps the one on file: only a value actually sent (an empty one too) is a change. Every kind's update reads its
+    payload through this, so a save that leaves the field out sends nothing back and puts nobody among those who changed it."""
+    return payload if 'description' in payload else {**payload, 'description': old.get('description') or ''}
+
+
 def keep_other_names(payload: dict, old: dict) -> dict:
-    """An edit that does not say the other names keeps the ones on file: the type's own, and each property's that it lists without them."""
-    out = {**payload, 'other_names': payload['other_names'] if 'other_names' in payload else other_names.of(old)}
+    """An edit that does not say the other names keeps the ones on file: the type's own, and each property's that it lists without them; nor the description
+    (keep_unsaid), nor a property's display name for a property it lists without one."""
+    out = keep_unsaid({**payload, 'other_names': payload['other_names'] if 'other_names' in payload else other_names.of(old)}, old)
     if isinstance(payload.get('properties'), list):
         was = {p['column']: other_names.of(p) for p in old.get('properties', [])}
+        shown = {p['column']: p['name'] for p in old.get('properties', [])}
         out['properties'] = [{**p, 'other_names': was.get(p.get('column'), [])} if isinstance(p, dict) and 'other_names' not in p else p for p in payload['properties']]
+        out['properties'] = [{**p, 'name': shown[p['column']]} if isinstance(p, dict) and 'name' not in p and isinstance(p.get('column'), str) and p['column'] in shown else p
+                             for p in out['properties']]
     return out
 
 
@@ -447,7 +473,7 @@ def _meaning_reset_flags(conn, columns: list[str], english_name: str) -> None:
 def update_type(conn, payload: dict, who: str | None, user: dict | None = None) -> dict:
     """Save a changed definition ({id, version, ...the fields of create}). `version` is the one the person was looking at: 409 when it has moved. A change
     on the reset list (reset_reasons) makes it checked again with this person as its proposer, and so does saving a model's draft; a change to the names or
-    the description keeps its state and only goes to the log (made by a person signed in; made with a token, a confirmed one is put forward again: object_types.token_edit). Meanings in the payload are put forward like propose_meanings does; the meanings of a column
+    the description, the other names or a property's display name keeps the state of one that waits and goes to the log; a confirmed one is put forward again by any change of what it says, whoever makes it (edit_sends_back). Meanings in the payload are put forward like propose_meanings does; the meanings of a column
     that is no longer a code column, or of a dataset the type no longer reads, are taken away (post them again to keep them). Everything is written in one
     transaction, with what a confirmed element that stopped being confirmed moves. Returns {'id', 'state', 'reset', 'warnings'}."""
     row = whole_type_row(conn, payload.get('id'), user)
@@ -459,8 +485,8 @@ def update_type(conn, payload: dict, who: str | None, user: dict | None = None) 
     check_names_free(conn, content)
     dataset = current_dataset(conn, content['dataset'])
     cols = dataset_columns(conn, dataset['id'])
-    renamed, others = (old['name'], old['description']) != (content['name'], content['description']), others_changed(old, content)
-    reset = reset_reasons(old, content) or token_edit(row, user, renamed, others)
+    renamed, others = _type_words(old) != _type_words(content), others_changed(old, content)
+    reset = reset_reasons(old, content) or edit_sends_back(row, user, renamed, others)
     if mark := drafted_mark(conn, payload, who, user, 'type', content, old.get('drafted'), old['english_name']):   # applied from the assistant's draft: who, when (a later ordinary edit keeps it)
         content = {**content, 'drafted': mark}
     english = old['english_name']
@@ -501,23 +527,39 @@ def update_type(conn, payload: dict, who: str | None, user: dict | None = None) 
     return {'id': english, 'state': element_row(conn, row['element_id'])['state'], 'reset': reset, 'warnings': [*warnings, *broken], **shown}
 
 
+def _type_words(content: dict) -> tuple:
+    """What a type says that is not on its reset list: its name, its description and each property's display name."""
+    return content['name'], content['description'], {p['column']: p['name'] for p in content['properties']}
+
+
 def _edit_names(conn, row: dict, content: dict, who: str | None) -> None:
-    """A change to the display name, the description or the other names (a type's own and its properties'): the state stays, the log says who."""
+    """A change to the display name, the description or the other names (a type's own and its properties', and its properties' display names) of a definition that
+    waits (one that is confirmed is put forward again instead: edit_sends_back): the state stays, the log says who, and the writer joins those who changed it since it
+    was last confirmed (workspace_store.next_record); when that puts it back exactly as it was last confirmed, and an edit is what sent it back, it is confirmed
+    again as it was (restore_if_back)."""
     old = _content(row)
     new = other_names.put({**old, 'name': content['name'], 'description': content['description']}, other_names.of(content))
     typed = row['element_id'].startswith(TYPE_PREFIX)   # only a type's properties are named by their column (an action's are something else)
     named = lambda c: {p['column']: other_names.of(p) for p in c.get('properties', []) if other_names.of(p)} if typed else {}
-    if typed and 'properties' in content:   # a property's other names, by its column; the rest of the property as it is on file
-        theirs = {p['column']: other_names.of(p) for p in content['properties']}
-        new['properties'] = [other_names.put(p, theirs.get(p['column'], other_names.of(p))) for p in old['properties']]
+    if typed and 'properties' in content:   # a property's display name and other names, by its column; the rest of the property as it is on file
+        theirs = {p['column']: p for p in content['properties']}
+        new['properties'] = [other_names.put({**p, 'name': theirs[p['column']]['name'] if p['column'] in theirs else p['name']}, other_names.of(theirs[p['column']]) if p['column'] in theirs else other_names.of(p))
+                             for p in old['properties']]
     said = lambda c: {**({'other_names': other_names.of(c)} if other_names.of(old) or other_names.of(new) else {}),
                       **({'property_other_names': named(c)} if named(old) != named(new) else {})}   # said only when there are some: a log line as before other names existed otherwise
+    shown = lambda c: {p['column']: p['name'] for p in c['properties']} if typed else {}
+    names = {'property_names': shown(new)} if shown(old) != shown(new) else {}
+    text = json.dumps(new, ensure_ascii=False, sort_keys=True)
     conn.execute('BEGIN IMMEDIATE')
     try:
-        conn.execute('UPDATE element_state SET content_json = ?, version = version + 1 WHERE element_id = ?',
-                     (json.dumps(new, ensure_ascii=False, sort_keys=True), row['element_id']))
-        log_line(conn, who or tr('未署名', 'unsigned'), row['element_id'], 'edited', before={'name': old['name'], 'description': old['description'], **said(old)},
-                 after={'name': content['name'], 'description': content['description'], **said(new), 'state': row['state']})
+        held = conn.execute('SELECT * FROM element_state WHERE element_id = ?', (row['element_id'],))
+        before = dict(zip([c[0] for c in held.description], held.fetchone()))
+        record, was = next_record(conn, row['element_id'], before, text, before['state'], actor_id_for(who))
+        conn.execute('UPDATE element_state SET content_json = ?, changed_json = ?, version = version + 1 WHERE element_id = ?', (text, record, row['element_id']))
+        log_line(conn, who or tr('未署名', 'unsigned'), row['element_id'], 'edited', before={'name': old['name'], 'description': old['description'], **said(old), **({'property_names': shown(old)} if names else {})},
+                 after={'name': content['name'], 'description': content['description'], **said(new), **names, 'state': row['state']})
+        if was is not None:
+            restore_if_back(conn, row['element_id'], was)
         conn.execute('COMMIT')
     except BaseException:
         conn.execute('ROLLBACK')
@@ -1169,7 +1211,14 @@ def write_confirmation(conn, element_id: str, content: dict, evidence: str | Non
                        version: int | None = None, reads: list[str] | None = None, snapshot: dict | None = None) -> None:
     """The element becomes confirmed by this person and the snapshot of what they confirmed (definition, evidence, dataset versions) is kept with it;
     all or nothing. SelfConfirmation when it is their own proposal while two-person confirmation is active. `version`: the one the person read, 409 when the
-    row has moved since; `reads`: what the element reads now, written with it; `snapshot`: more evidence kept with the confirmation (a pipeline's statistics)."""
+    row has moved since; `reads`: what the element reads now, written with it; `snapshot`: more evidence kept with the confirmation (a pipeline's statistics).
+    For the definitions the changed-since rule covers (workspace_store.tracked), nobody who changed it since it was last confirmed confirms it either (may_confirm):
+    refused with who did and the ways out (held_note); with two-person confirmation off it is allowed and marked a self-confirmation."""
+    row = element_row(conn, element_id)
+    person = actor_id_for(who)
+    if row is not None and tracked(element_id) and not may_confirm(conn, row, person):
+        raise SelfConfirmation(held_note(conn, row) or tr('这一条是你自己提的，要另一位来确认', 'You put this forward yourself, so someone else must confirm it'))
+    own = row is not None and tracked(element_id) and person is not None and person in barred(conn, row)   # with two-person off: theirs, said so
     try:
         with element_state_writes(conn, [(element_id, 'confirmed', evidence, who, content, anchors, None)], None if version is None else {element_id: version}) as rows:
             kept = rows[element_id]
@@ -1177,7 +1226,7 @@ def write_confirmation(conn, element_id: str, content: dict, evidence: str | Non
                          ' VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                          (element_id, kept['confirmed_by'], kept['confirmed_by_user_id'], kept['proposed_by'], kept['confirmed_at'], kept['content_json'], kept['evidence_ref'],
                           json.dumps(dataset_versions, ensure_ascii=False),
-                          int(kept['confirmed_by_user_id'] is not None and kept['confirmed_by_user_id'] == kept['proposed_by_user_id']),
+                          int(own or (kept['confirmed_by_user_id'] is not None and kept['confirmed_by_user_id'] == kept['proposed_by_user_id'])),
                           None if snapshot is None else json.dumps(snapshot, ensure_ascii=False)))
             if reads is not None:
                 _set_deps(conn, element_id, reads)
@@ -1244,23 +1293,57 @@ def refuse_if_limited(conn, row: dict, user: dict | None) -> None:
         raise TypeRefused(tr('你受行规则或列的限制，看不到全部数据：确认要对着全部数据看过才行，请让不受限制的建设者来确认', 'A row rule or a column limit keeps you from seeing all the data. Confirming needs a look at all of it, so ask a builder without the limit'), 403)
 
 
-def confirmer_people(conn, row: dict) -> list[tuple[int, str]]:
-    """(id, name) of the builders who may confirm it: not the one who put it forward while two-person is active, and only people who may see what it is about,
-    and all of its data."""
-    excluded = row['proposed_by_user_id'] if two_person(conn)['active'] else None
+def _who_may_see(conn, row: dict) -> list[tuple[int, str]]:
+    """(id, name) of the builders who may see what it is about and all of its data: who could confirm it, were none of them kept out by who they are."""
     types = _types_read(row)
-    return [(person, name) for person, name, role in conn.execute(
-        "SELECT id, display_name, role FROM user WHERE disabled = 0 AND role IN ('builder', 'admin') AND (? IS NULL OR id != ?) ORDER BY display_name", (excluded, excluded))
-        if all(can_access(conn, t, {'id': person, 'role': role}) for t in types) and not limited_on(conn, row, {'id': person, 'role': role})]
+    return [(person, name) for person, name, role in conn.execute("SELECT id, display_name, role FROM user WHERE disabled = 0 AND role IN ('builder', 'admin') ORDER BY display_name")
+            if all(can_access(conn, t, {'id': person, 'role': role}) for t in types) and not limited_on(conn, row, {'id': person, 'role': role})]
+
+
+def confirmer_people(conn, row: dict) -> list[tuple[int, str]]:
+    """(id, name) of the builders who may confirm it: while two-person is active, nobody who put it forward or changed it since it was last confirmed
+    (workspace_store.may_confirm), and only people who may see what it is about, and all of its data."""
+    return [(person, name) for person, name in _who_may_see(conn, row) if may_confirm(conn, row, person)]
 
 
 def _confirmers(conn, row: dict, user: dict | None) -> tuple[bool, list[str]]:
-    """(whether this person may confirm it now, the builders who may). A viewer never; the one who put it forward not while two-person is active."""
-    excluded = row['proposed_by_user_id'] if two_person(conn)['active'] else None
+    """(whether this person may confirm it now, the builders who may). A viewer never; while two-person is active, nobody who put it forward or changed it since it was
+    last confirmed (workspace_store.may_confirm)."""
     others = [name for _, name in confirmer_people(conn, row)]
     if user is not None and user['role'] == 'viewer':
         return False, others
-    return not (excluded is not None and user is not None and user['id'] == excluded), others
+    return user is None or may_confirm(conn, row, user.get('id')), others
+
+
+def held_note(conn, row: dict, free: list[str] | None = None) -> str | None:
+    """The sentence a person who may not confirm it reads (refused, or shown no button): who changed it since it was last confirmed (or wrote it, when it never
+    was) and the ways out: someone who did not change it confirms it (named, or said to be missing), or what it says is put back to the version last confirmed.
+    None when two-person confirmation is not active, when it is not waiting, or when nobody but the one who put it forward is kept out of it (they read, as
+    before, that they put it forward themselves and someone else confirms it)."""
+    if row['state'] in ('confirmed', 'rejected') or not two_person(conn)['active']:
+        return None
+    held = barred(conn, row)
+    if not held - {row.get('proposed_by_user_id')}:
+        return None
+    names = dict(conn.execute('SELECT id, display_name FROM user'))
+    who = [names.get(p, str(p)) for p in sorted(held, key=lambda p: names.get(p, str(p)))]
+    free = [name for _, name in confirmer_people(conn, row)] if free is None else free
+    confirmed = conn.execute('SELECT 1 FROM confirmation WHERE element_id = ?', (row['element_id'],)).fetchone() is not None
+    listed = tr('、', ', ').join(who)
+    one = len(who) == 1
+    if confirmed:
+        said = tr(f'{listed} 在上次确认之后改过它（或提出了它），{"不能" if one else "都不能"}确认它', f'{listed} changed it since it was last confirmed (or put it forward), so they cannot confirm it')
+    else:
+        said = tr(f'{listed} 写过或改过它，还没有别人确认过，{"不能" if one else "都不能"}确认它', f'{listed} wrote or changed it and nobody else has confirmed it, so they cannot confirm it')
+    other = tr('另一位' if one else '第三位', 'someone else' if one else 'a third person')
+    if free:
+        out = tr(f'请没有改过它的{other}来确认（可以确认的人：{tr("、", ", ").join(free)}）', f'ask {other} who did not change it to confirm it (who can: {", ".join(free)})')
+    else:
+        out = tr(f'请没有改过它的{other}来确认（现在没有这样的建设者，管理员可以把另一个人设为建设者）', f'ask {other} who did not change it to confirm it (there is no such builder now; an admin can give another person the builder role)')
+    if confirmed and not row['element_id'].startswith(PIPELINE_PREFIX):   # a pipeline has no undo: words or steps put back are another change
+        out += tr('，或把它改回上次确认的版本', ', or put back the version that was last confirmed')
+    two = confirmed and not row['element_id'].startswith(PIPELINE_PREFIX)
+    return tr(f'{said}。出路：{out}。', f'{said}. {"Ways out" if two else "The way out"}: {out}.')
 
 
 def _state_view(conn, row: dict, user: dict | None, ahead: dict | None = None, saved_only: bool = False) -> dict:
@@ -1289,7 +1372,8 @@ def _state_view(conn, row: dict, user: dict | None, ahead: dict | None = None, s
             'confirmers': others if waiting and not blocked else [],
             'meanings_blocking': [c for c in meanings if c not in kept] if meanings and (kept := hidden_columns(conn, row['element_id'], user)) else meanings,   # a column kept from them is not named
             'confirmed_by': last[0] if last else None, 'confirmed_at': last[1] if last else None,
-            'confirmed_on': json.loads(last[2]) if last else None, 'evidence': last[3] if last else None, 'written_at': row['confirmed_at'], **({'rules_unchecked': True} if unchecked else {})}
+            'confirmed_on': json.loads(last[2]) if last else None, 'evidence': last[3] if last else None, 'written_at': row['confirmed_at'], **({'rules_unchecked': True} if unchecked else {}),
+            'held': held_note(conn, row, others) if waiting else None}   # who changed it since it was last confirmed and the ways out, for a person who may not confirm it
 
 
 def _visible(conn, row: dict, user: dict | None) -> bool:
