@@ -150,7 +150,8 @@ class WhichOnes(Sample):
             self.assertEqual([v['name'] for v in body['evidence']['views']], ['高风险加急订单'])   # the line under it names the view that chose the rows
             self.assertIn('列出', body['path'])
             self.assertEqual(body['query_text'].splitlines()[0], 'SELECT LIST o')
-            self.assertNotIn('beside', body)
+            counted = self.ask(team['ann'], model, '高风险加急订单有多少？', item({'start': 'order', 'where': []}, VIEW_USED))
+            self.assertEqual(body['beside'], counted['beside'])   # what is beside the count is beside the list of what it counts
             # the same question written as a query by the model, and by a person: the same orders
             text = self.ask(team['ann'], model, '哪些加急订单是高风险的？', {'text': 'SELECT LIST o FROM (o:订单)', 'views': ['高风险加急订单']}, writes='query')
             self.assertEqual((text['status'], keys(text)), ('answered', URGENT_HIGH), text)
@@ -297,6 +298,54 @@ class WhichOnes(Sample):
             second = ann.get(f'/api/workspace/ask/{saved["id"]}?page=2')[1]
             self.assertEqual((second['answer']['objects']['page'], keys(second)), (2, sorted(r['订单号'] for r in ORDER_ROWS)[10:20]))
             self.assertEqual(ann.get(f'/api/workspace/ask/{saved["id"]}?page=x')[0], 400)
+
+
+class ListBesideANumber(Sample):
+    """A list never takes away what main answers. A reply that, without its list or lookup, is a sum, an average, a share, a grouping, a ranking or a walk is
+    answered exactly as that reply (the list or lookup is let be); a plain count with a list keeps its count as the headline, with what is beside it, and the
+    rows come with it."""
+
+    def without(self, body):
+        return without_moments({k: v for k, v in body.items() if k != 'query'})
+
+    def test_a_list_or_lookup_beside_a_sum_a_share_a_grouping_or_a_ranking_is_let_be(self):
+        urgent = [{'field': '紧急程度', 'equals': '加急'}]
+        plain = {'start': 'order', 'where': [], 'via': [], 'group_by': None, 'share': None, 'measure': None}
+        replies = [({**plain, 'measure': {'field': '金额', 'op': 'sum'}}, VIEW_USED), ({**plain, 'measure': {'field': '金额', 'op': 'average'}, 'where': urgent}, [{'id': 'orders.紧急程度=加急', 'direction': 'include', 'basis': '加急'}]),
+                   ({**plain, 'share': {'field': '紧急程度', 'equals': '加急'}}, [{'id': 'orders.紧急程度=加急', 'direction': 'mention', 'basis': '加急'}]),
+                   ({**plain, 'group_by': ['紧急程度']}, [{'id': f'orders.紧急程度={l}', 'direction': 'mention', 'basis': '紧急程度'} for l in ('普通', '加急')]),
+                   ({**plain, 'group_by': ['客户编号'], 'measure': {'field': '金额', 'op': 'sum'}, 'top': 2, 'order': 'largest'}, [])]
+        model = Scripted(item(LIST_VIEW))
+        with self.service(gateway=model) as (base, out):
+            team = self.setup(base)
+            for who in ('ann', 'vera'):
+                for query, used in replies:
+                    asked = '高风险加急订单的金额？' if used == VIEW_USED else '订单的金额？'
+                    plain_answer = self.ask(team[who], model, asked, item(query, used))
+                    self.assertEqual(plain_answer['status'], 'answered', plain_answer)
+                    for extra in ({'list': {}}, {'list': {'properties': ['金额']}}, {'list': True}, {'lookup': {'订单号': 'DD20260003'}}, {'list': {'limit': 99}}):
+                        with self.subTest(who=who, query=query, extra=extra):
+                            got = self.ask(team[who], model, asked, item({**query, **extra}, used))
+                            self.assertEqual(self.without(got), self.without(plain_answer))
+                            self.assertEqual(got['query'], {**query, **extra})   # what the model wrote is kept as it wrote it
+
+    def test_a_count_with_a_list_keeps_its_count_and_what_is_beside_it_and_the_rows_come_with_it(self):
+        model = Scripted(item(LIST_VIEW))
+        with self.service(gateway=model) as (base, out):
+            team = self.setup(base)
+            for who in ('ann', 'vera'):
+                for used, total in ((VIEW_USED, len(URGENT_HIGH)), ([], len(ORDER_ROWS))):
+                    counted = self.ask(team[who], model, '高风险加急订单有多少？', item({'start': 'order', 'where': []}, used))
+                    listed = self.ask(team[who], model, '高风险加急订单有多少？', item({'start': 'order', 'where': [], 'list': {'properties': ['金额']}}, used))
+                    self.assertEqual((listed['status'], listed['answer']['total']), ('answered', total), listed)
+                    self.assertEqual({k: v for k, v in listed['answer'].items() if k != 'objects'}, counted['answer'])
+                    self.assertEqual(listed['beside'], counted['beside'])
+                    self.assertEqual(len(keys(listed)), min(total, 50))
+                    from ontology_poc_generator.checked_numbers import answer_number
+                    self.assertEqual(answer_number(listed), total)   # held against a number, a list is its count
+            lookup = self.ask(team['ann'], model, 'DD20260003？', item({'start': 'order', 'lookup': {'订单号': 'DD20260003'}}))
+            from ontology_poc_generator.checked_numbers import answer_number
+            self.assertIsNone(answer_number(lookup))   # one object is no number
 
 
 class Privacy(Sample):
@@ -529,7 +578,7 @@ class WithOtherNames(Sample):
                 self.assertEqual((refused['status'], refused['refusal']['kind']), ('refused', 'unsettled'))
             self.assertEqual(len(model.requests), asked)
 
-    def test_a_list_given_to_a_question_we_need_that_expects_a_number_differs(self):
+    def test_a_list_given_to_a_question_we_need_that_expects_a_number_is_held_by_its_count(self):
         model = Scripted(item(LIST_VIEW, VIEW_USED))
         with self.service(gateway=model) as (base, out):
             team = self.setup(base)
@@ -546,4 +595,4 @@ class WithOtherNames(Sample):
                 time.sleep(0.02)
                 body = admin.get('/api/workspace/needed')[1]
             result = next(q for q in body['questions'] if q['question'] == '高风险加急订单有多少？')['result']
-            self.assertEqual((result['outcome'], result['distinct']), ('differs', [{'number': None, 'status': 'answered', 'times': 1}]), result)   # an answer, but not the number expected (as for groups): its total is not taken for one   # a list is not the number expected, though its total is
+            self.assertEqual((result['outcome'], result['distinct']), ('passes', [{'number': len(URGENT_HIGH), 'status': 'answered', 'times': 1}]), result)   # the count stays the headline of a list
