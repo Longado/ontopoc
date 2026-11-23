@@ -685,13 +685,14 @@ def _engine(sc: dict, parts: dict, relations: list[dict], conn=None):
         if instead is None:
             ran[0] = query
         if ROW_ANSWERS and isinstance(query, dict):
-            if _counts_more(query):   # a sum, a share, a grouping, a ranking or a walk: answered as it always was, a list or a lookup beside it let be
-                query = _without_objects(query)
+            more = _counts_more(query)
+            if more:   # a sum, a share, a grouping, a ranking or a walk: worked out as it always was. A list beside it is let be; a lookup is a condition, never
+                query = _without_list(query)   # dropped: left in, the number is refused as it always was (a shape the query format cannot express)
             if instead is None:
-                ran[0] = _as_run(query)
+                ran[0] = query if more else _as_run(query)
             if today_word:   # a written query whose today is quoted or given reads none (today_word False): its 'today' is text, as it always was
                 query, today = _with_today(sc, query)
-            kind = _rows_kind(query)
+            kind = None if more else _rows_kind(query)
             if kind == 'lookup':
                 return _said_today(looked_up(query, asked, used, told, page), today)
             if kind == 'list':
@@ -756,9 +757,9 @@ def _counts_more(query) -> bool:
     return isinstance(query, dict) and any(query.get(k) not in (None, '', [], {}) for k in NUMBER_PARTS)
 
 
-def _without_objects(query: dict) -> dict:
-    """The query without its list and lookup: the number it works out."""
-    return {k: v for k, v in query.items() if k not in ('list', 'lookup')}
+def _without_list(query: dict) -> dict:
+    """The query without its list: the number it works out. Its lookup, if any, stays: a lookup is a condition and is never dropped."""
+    return {k: v for k, v in query.items() if k != 'list'}
 
 
 def _as_run(query: dict) -> dict:
@@ -768,8 +769,8 @@ def _as_run(query: dict) -> dict:
     if kind == 'lookup':
         return {'start': query.get('start'), 'lookup': query['lookup']}
     if kind == 'list':
-        return {**_without_objects(query), 'list': {} if query['list'] is True else query['list']}
-    return _without_objects(query) if 'list' in query or 'lookup' in query else query
+        return {**{k: v for k, v in query.items() if k not in ('list', 'lookup')}, 'list': {} if query['list'] is True else query['list']}   # a lookup beside it is empty
+    return {k: v for k, v in query.items() if k not in ('list', 'lookup')} if 'list' in query or 'lookup' in query else query   # both empty: a number
 
 
 def _rows_kind(query) -> str | None:
@@ -1009,10 +1010,10 @@ def _beside(sc: dict, parts: dict, answer, item: dict, asked: str, applied: list
     query = item.get('query')
     if item.get('status') not in ('answered', 'no_data') or not isinstance(query, dict) or query.get('start') not in sc['types']:
         return None
-    if ROW_ANSWERS and _rows_kind(query) is not None:   # one object by its key: nothing beside it; a list: what is beside the count it lists
-        if _rows_kind(query) == 'lookup' and not _counts_more(query):
+    if ROW_ANSWERS and _rows_kind(query) is not None:   # a lookup (one object, or a refusal): nothing beside it; a list: what is beside the count it lists
+        if _rows_kind(query) == 'lookup':
             return None
-        query = _without_objects(query)
+        query = _without_list(query)
     if query.get('where') or query.get('group_by') or query.get('top') or query.get('via') or query.get('graph') is not None or any(f in parts['derived'] for f in fields):
         return None
     on = sorted((n for n, v in sc['views'].items() if v['content']['type'] == query['start']), key=str.casefold)
