@@ -429,7 +429,8 @@ class LookupIsACondition(Sample):
                   {'where': [{'field': '紧急程度', 'equals': '加急'}]}, {'list': {}}, {'list': True}, {'where': [{'field': '承诺日期', 'less_than': 'today'}]}]
         lookups = [{'订单号': 'DD20260003'}, {'订单号': 'DD20269999'}, {'客户编号': 'KH001'}, {'订单号': 'DD20260003', '金额': '1'}, 'DD20260003', ['DD20260003']]
         model = Scripted('not json')
-        with self.service(gateway=model) as (base, out):
+        from ontology_poc_generator import ask_budget
+        with self.service(gateway=model) as (base, out), mock.patch.object(ask_budget, 'PERSON_LIMIT', 10000):   # many asks here: the hourly cap is not what this is about
             team = self.setup(base)
             for who in ('ann', 'vera'):
                 for shape in shapes:
