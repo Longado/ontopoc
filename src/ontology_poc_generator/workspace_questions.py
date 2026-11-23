@@ -685,6 +685,8 @@ def _engine(sc: dict, parts: dict, relations: list[dict], conn=None):
             query, today, problem = _with_today(sc, query)
             if problem is not None:
                 return problem
+            if _counts_more(query):   # a sum, a share, a grouping, a ranking or a walk: answered as it always was, a list or a lookup beside it let be
+                query = _without_objects(query)
             kind = _rows_kind(query)
             if kind == 'lookup':
                 applied[:] = []
@@ -726,6 +728,20 @@ def _engine(sc: dict, parts: dict, relations: list[dict], conn=None):
 
 
 # --- objects: a list, one object by its key, and today --------------------------------------------------------------------------------------------------
+
+NUMBER_PARTS = ('via', 'group_by', 'share', 'measure', 'top', 'order')   # what makes a query more than a count of the start objects
+
+
+def _counts_more(query) -> bool:
+    """Does the structured query work out more than a count of its start objects (a sum or average, a share, groups, a ranking, a walk)? Then it is answered as
+    it always was, and a list or a lookup beside it is let be: a list never takes away what a number answers."""
+    return isinstance(query, dict) and any(query.get(k) not in (None, '', [], {}) for k in NUMBER_PARTS)
+
+
+def _without_objects(query: dict) -> dict:
+    """The query without its list and lookup: the number it works out."""
+    return {k: v for k, v in query.items() if k not in ('list', 'lookup')}
+
 
 def _rows_kind(query) -> str | None:
     """'list' or 'lookup' when the structured query asks for objects, else None (a number, as before)."""
@@ -779,14 +795,13 @@ def _said_today(result: dict, today: dict | None) -> dict:
 
 def _list_problem(sc: dict, query: dict) -> dict | None:
     """Why a list cannot be worked out as written (a query_limit or ontology_gap answer), or None. A list is the objects of one type under conditions on them:
-    no walk, grouping, share, sum or ranking; the properties it names are the type's own as this person may see them; a page has at most PAGE_SIZE objects."""
+    a query with a walk, grouping, share, sum or ranking is answered as that number before it gets here (_counts_more); the properties it names are the
+    type's own as this person may see them; a page has at most PAGE_SIZE objects."""
     listing = query['list']
     if listing is True:
         listing = {}
     if not isinstance(listing, dict) or set(listing) - {'properties', 'limit'}:
         return {'status': 'query_limit', 'reason': tr('列出对象要写成 "list": {"properties": [属性…]}（不写属性就是主键和前几个属性）', 'A list is written "list": {"properties": [property, ...]} (with no properties: the key and the first few)')}
-    if any(query.get(k) not in (None, '', [], {}) for k in ('via', 'group_by', 'share', 'measure', 'top', 'order')):
-        return {'status': 'query_limit', 'reason': tr('列出的是一个对象类型自己的对象，按它自己的条件挑：不沿关系走、不分组、不算占比或合计、不排名次；要算数就不写 list', 'A list is of the objects of one type, chosen by conditions on them: it does not follow relations, group, take a share or a sum, or rank; to calculate, leave list out')}
     limit = listing.get('limit')
     if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= PAGE_SIZE):
         return {'status': 'query_limit', 'reason': tr(f'一页最多列 {PAGE_SIZE} 个对象，limit 写 1 到 {PAGE_SIZE}；后面的对象翻页看，总数在 total 里', f'A page lists at most {PAGE_SIZE} objects: write limit 1 to {PAGE_SIZE}. See the rest on the next pages; the total is in total')}
@@ -934,8 +949,8 @@ def _finish(conn, user: dict | None, sc: dict, parts: dict, item: dict, applied:
     `beside`: (the engine, the question) to add the other readings beside it (_beside)."""
     query = item.get('query') if isinstance(item.get('query'), dict) and item['query'].get('start') in sc['types'] else None
     read, walked, fields = _reads(sc, parts, query, item.get('definitions_used') or [], spec) if item['status'] in ('answered', 'no_data') else ([], [], set())
-    fields |= _shown_fields(sc, parts, query, item) if query and item['status'] in ('answered', 'no_data') else set()   # a code column a list shows by its meanings stands on them
-    lines, types, datasets = _used_definitions(conn, sc, parts, read, walked, fields, applied if item['status'] in ('answered', 'no_data') else [])
+    shown = _shown_fields(sc, parts, query, item) if query and item['status'] in ('answered', 'no_data') else set()   # a code column a list shows by its meanings stands on them
+    lines, types, datasets = _used_definitions(conn, sc, parts, read, walked, fields | shown, applied if item['status'] in ('answered', 'no_data') else [])
     result = {key: item[key] for key in ('status', 'answer', 'path', 'reason', 'reasoning', 'query', 'evidence', 'understood', 'unmet', 'definitions_used', 'today') if key in item}
     if item['status'] in ('ontology_gap', 'query_limit') and not item.get('from_relation_check'):
         result['refusal'] = {'kind': 'not_in_scope', 'in_scope': [t['content']['name'] for t in sc['types'].values()], 'left_out': [*_unsettled(conn, user), *_unwalkable(sc)]}
@@ -959,8 +974,10 @@ def _beside(sc: dict, parts: dict, answer, item: dict, asked: str, applied: list
     query = item.get('query')
     if item.get('status') not in ('answered', 'no_data') or not isinstance(query, dict) or query.get('start') not in sc['types']:
         return None
-    if ROW_ANSWERS and _rows_kind(query) is not None:   # objects, not a number: nothing beside them
-        return None
+    if ROW_ANSWERS and _rows_kind(query) is not None:   # one object by its key: nothing beside it; a list: what is beside the count it lists
+        if _rows_kind(query) == 'lookup' and not _counts_more(query):
+            return None
+        query = _without_objects(query)
     if query.get('where') or query.get('group_by') or query.get('top') or query.get('via') or query.get('graph') is not None or any(f in parts['derived'] for f in fields):
         return None
     on = sorted((n for n, v in sc['views'].items() if v['content']['type'] == query['start']), key=str.casefold)
