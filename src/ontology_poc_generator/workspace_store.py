@@ -486,9 +486,9 @@ def fan_pipelines(conn, dataset_id: int) -> dict[str, str]:
 def fan_refusal(column: str, pipeline: str, fn: str) -> str:
     """Why a sum or an average (fn 'sum', 'avg' or 'average') of a column in fan_marks is not worked out, and where to work it out instead. Refused, never corrected:
     which copies of the figure are the same one is the pipeline's to say, not the question's."""
-    zh, en = ('加起来', 'adding it up') if fn == 'sum' else ('求平均', 'averaging it')
-    return tr(f'“{column}”是管道“{pipeline}”关联后写出的数：关联把一行变成了几行，这个数重复了，{zh}会把同一笔算好几次，所以不算。请到每件事只有一行的类型上去算（例如每个订单一行的那个类型）',
-              f'"{column}" was written by the pipeline "{pipeline}" after a join turned one row into several: the figure repeats, and {en} would count the same amount several times, '
+    how = tr('加起来', 'adding it up') if fn == 'sum' else tr('求平均', 'averaging it')
+    return tr(f'“{column}”是管道“{pipeline}”关联后写出的数：关联把一行变成了几行，这个数重复了，{how}会把同一笔算好几次，所以不算。请到每件事只有一行的类型上去算（例如每个订单一行的那个类型）',
+              f'"{column}" was written by the pipeline "{pipeline}" after a join turned one row into several: the figure repeats, and {how} would count the same amount several times, '
               f'so it is not worked out. Work it out on the type that has one row per thing (for example the one with one row per order)')
 
 
