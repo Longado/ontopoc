@@ -9,6 +9,8 @@ on that side, with max, min or count distinct takes it off. It is read on the ve
 distort is refused (sum, average, median, percentiles, a histogram, a statistics table); a count of objects, a count distinct, a min and a max are not. Only a
 person who may open pipelines is told which pipeline; the refusal says nothing of rows or columns the asker may not see."""
 import json
+import sqlite3
+import time
 import unittest
 
 from tests.test_fan_sum import FAN_NOTE, LINES, ORDERS, PIPELINES, FanSumTests, asks
@@ -198,6 +200,118 @@ class MarkingTests(FanSumTests):
             said = self.refused(team['ann'], 'SELECT sum(l.amount) FROM (l:订单行)', headers={'Accept-Language': 'en'})
             self.assertIn('one row per order', said)
             self.assertNotIn('订单', said.replace(P1, ''))
+
+    def test_a_dedupe_or_grouping_on_more_than_the_join_key_keeps_the_mark(self):
+        # one row per (order, line) or per (order, product) is not one row per order: O1 is still on two rows, and the sum would be 280
+        for keys in (['order_id', 'line_id'], ['order_id', 'product']):
+            with self.service() as (base, out):
+                ann = self.world(base, spec(transform({'op': 'dedupe', 'keys': keys, 'order_by': 'line_id'}), last='t'), line_type('amount'))['ann']
+                self.assertEqual(self.marks(ann)['amount'], FAN_NOTE, keys)
+                self.refused(ann, 'SELECT sum(l.amount) FROM (l:订单行)')
+                status, body = self.chart(ann, 'order_line', {'kind': 'number', 'measure': 'amount', 'fn': 'avg'})
+                self.assertEqual(status, 400, body)
+        wider = {'steps': [*spec()['steps'][:3], transform({'op': 'aggregate', 'group_by': ['order_id', 'product'], 'aggregations': [{'fn': 'max', 'column': 'amount', 'as': 'amount'}]}),
+                           {'id': 'out', 'type': 'output', 'from': 't', 'name': 'per_pair', 'key': {'columns': ['order_id', 'product'], 'as': 'pair'}}]}
+        with self.service() as (base, out):
+            ann = self.world(base, wider, {'english_name': 'pair', 'name': '订单产品', 'dataset': 'per_pair', 'key': ['pair'], 'properties': [{'column': 'pair'}, {'column': 'amount'}]})['ann']
+            self.assertEqual(self.marks(ann, 'per_pair')['amount'], FAN_NOTE)
+            self.refused(ann, 'SELECT sum(p.amount) FROM (p:订单产品)')
+        # grouped by exactly the order key with max, but the order key is not unique among the orders: proved nothing, the mark stays
+        twice = [*ORDERS, {'order_id': 'O1', 'customer': 'C1', 'amount': '100'}]
+        per_order = {'steps': [*spec()['steps'][:3], transform({'op': 'aggregate', 'group_by': ['order_id'], 'aggregations': [{'fn': 'max', 'column': 'amount', 'as': 'amount'}]}),
+                               {'id': 'out', 'type': 'output', 'from': 't', 'name': 'per_order', 'key': {'columns': ['order_id']}}]}
+        with self.service() as (base, out):
+            ann = self.world(base, per_order, {'english_name': 'per_order', 'name': '每单', 'dataset': 'per_order', 'key': ['order_id'],
+                                               'properties': [{'column': 'order_id'}, {'column': 'amount'}]}, orders=twice)['ann']
+            self.assertEqual(self.marks(ann, 'per_order')['amount'], FAN_NOTE)
+
+    def test_a_copied_amount_stored_as_text_is_marked_and_refused_while_names_and_codes_show_no_note(self):
+        texts = [{**ORDERS[0], 'amount': '1,000'}, *ORDERS[1:]]   # read as text: 1,000 + 50 + 30 = 1,080; once per line 2,080
+        model = AskModel(asks('order_line', 'amount'))
+        with self.service(gateway=model) as (base, out):
+            team = self.world(base, spec(), line_type('amount'), texts)
+            ann = team['ann']
+            self.refused(ann, 'SELECT sum(l.amount) FROM (l:订单行)')
+            self.refused(ann, 'SELECT avg(l.amount) FROM (l:订单行)')
+            asked = ann.post('/api/workspace/ask', {'question': '订单金额合计？'})[1]
+            self.assertEqual(asked['status'], 'query_limit', asked)
+            self.assertIn(P1, asked['reason'])
+            # the note on the page stays with columns a person adds up: the copied customer (a name) carries the mark but no note
+            self.assertEqual(self.marks(ann)['customer'], None)
+            conn = sqlite3.connect(out / 'workspace.sqlite')
+            marked = {c for (c,) in conn.execute("SELECT f.column_name FROM column_fan f JOIN dataset d ON d.id = f.dataset_id WHERE d.name = 'line_amounts'")}
+            conn.close()
+            self.assertEqual(marked, {'customer', 'amount'})   # the orders' side; the lines' own columns (line_id, order_id, product) are not copied
+
+    def test_an_ai_column_written_from_a_copied_column_carries_its_mark(self):
+        from ontology_poc_generator.pipeline_llm import check_llm_step
+        step = {'id': 'm', 'type': 'llm', 'from': 'j', 'model': 'test-model', 'name': '估计', 'template': 'empty', 'prompt': '估一个数：$amount', 'output': 'text'}
+        columns = [{'name': 'line_id', 'type': 'text', 'rep': ['__l_j']}, {'name': 'amount', 'type': 'integer', 'rep': ['__r_j']}]
+        added = check_llm_step(step, 'm', columns)[-2:]
+        self.assertEqual([c.get('rep') for c in added], [['__r_j'], ['__r_j']])
+
+    def test_a_workspace_written_before_marking_refuses_aggregates_until_its_pipeline_runs_again(self):
+        lines = [{**l, 'qty': str(q)} for l, q in zip(LINES, (2, 1, 5, 3))]   # a figure of the line itself: 11, which nothing copies
+        model = AskModel(asks('order_line', 'amount'))
+        with self.service(gateway=model) as (base, out):
+            team = self.world(base, spec(), line_type('amount', 'qty'), lines=lines, people=('ann', 'bob', 'vera'), roles={'vera': 'viewer'})
+            ann, bob, vera = team['ann'], team['bob'], team['vera']
+            # a pipeline without a join, over an upload: untouched by what follows
+            self.pipeline(team, 'P0副本', {'steps': [{'id': 'i', 'type': 'input', 'dataset': 'orders'}, {'id': 'out', 'type': 'output', 'from': 'i', 'name': 'order_copy', 'key': {'columns': ['order_id']}}]})
+            self.typed(team, {'english_name': 'order_copy', 'name': '订单副本', 'dataset': 'order_copy', 'key': ['order_id'], 'properties': [{'column': 'order_id'}, {'column': 'amount'}]})
+            db = out / 'workspace.sqlite'
+
+            def as_main_left_it(forget_measured):
+                conn = sqlite3.connect(db)
+                conn.execute('DELETE FROM column_fan')   # main measured no copies here: 280 was its answer
+                if forget_measured:
+                    conn.execute('DELETE FROM column_fan_measured')
+                conn.commit()
+                conn.close()
+            as_main_left_it(False)
+            self.answered(ann, 'SELECT sum(l.amount) FROM (l:订单行)', 280)   # what main answered
+            spec_board = {'components': [{'id': 'amount', 'title': '订单金额', 'query': {'type': 'order_line'}, 'chart': {'kind': 'number', 'measure': 'amount', 'fn': 'sum'}},
+                                         {'id': 'card', 'title': '金额（查询）', 'text': 'SELECT sum(l.amount) FROM (l:订单行)', 'chart': {'kind': 'query'}}], 'filters': []}
+            board = ann.post('/api/workspace/dashboards', {'name': '看板', 'spec': spec_board, 'scope': 'everyone'})[1]['id']
+            for component in ('amount', 'card'):
+                self.assertEqual(bob.post('/api/workspace/checked', {'board': board, 'component': component, 'note': '报表'})[1]['status'], 'same')
+            question = '订单金额合计是多少？'
+            self.assertEqual(ann.post('/api/workspace/needed', {'question': question, 'expect': {'kind': 'number', 'value': 280}})[0], 200)
+            found = next(q for q in bob.get('/api/workspace/needed')[1]['questions'] if q['question'] == question)
+            self.assertEqual(bob.post('/api/workspace/needed/confirm', {'id': found['id'], 'version': found['version']})[0], 200)
+            self.assertEqual(self.needed(bob, question)['outcome'], 'passes')
+            # the file as an upgrade from main finds it: no record that the version was measured
+            as_main_left_it(True)
+            said = self.refused(ann, 'SELECT sum(l.amount) FROM (l:订单行)')
+            self.assertIn('重新运行一次', said)
+            self.refused(ann, 'SELECT sum(l.qty) FROM (l:订单行)')   # any column of that version: it was never measured
+            self.assertIn('run again once', self.refused(ann, 'SELECT avg(l.qty) FROM (l:订单行)', headers={'Accept-Language': 'en'}))
+            viewer = self.refused(vera, 'SELECT sum(l.qty) FROM (l:订单行)', pipeline=None)
+            self.assertNotIn(P1, viewer)
+            self.assertEqual(self.query(ann, 'SELECT count(l) FROM (l:订单行)')[1]['answer']['total'], len(LINES))   # a count still answers
+            status, body = self.chart(ann, 'order_line', {'kind': 'number', 'measure': 'qty', 'fn': 'max'})
+            self.assertEqual((status, body.get('value')), (200, 5))
+            self.assertEqual(self.chart(ann, 'order_line', {'kind': 'number', 'measure': 'qty', 'fn': 'sum'})[0], 400)
+            self.answered(ann, 'SELECT sum(c.amount) FROM (c:订单副本)', 180)   # the pipeline without a join is not touched
+            shown = {c['id']: c for c in ann.post('/api/workspace/dashboards/data', {'id': board})[1]['components']}
+            for component in ('amount', 'card'):
+                self.assertEqual((shown[component]['status'], shown[component]['check']['status']), ('unavailable', 'refused'), shown[component])
+                self.assertIn('重新运行一次', shown[component]['message'])
+            result = self.needed(bob, question)
+            self.assertEqual(result['outcome'], 'needs_look', result)
+            # once the pipeline runs again, the version is measured: the amount is refused as repeated, the line's own quantity answers
+            self.assertEqual(ann.post(f'{PIPELINES}/run', {'id': P1})[1]['status'], 'success')
+            self.assertNotIn('重新运行一次', self.refused(ann, 'SELECT sum(l.amount) FROM (l:订单行)'))
+            self.answered(ann, 'SELECT sum(l.qty) FROM (l:订单行)', 11)
+
+    def needed(self, bob, question):
+        body = bob.post('/api/workspace/needed/run', {'repeats': 1})[1]
+        for _ in range(500):
+            if body.get('running') is None:
+                break
+            time.sleep(0.02)
+            body = bob.get('/api/workspace/needed')[1]
+        return next(q for q in body['questions'] if q['question'] == question)['result']
 
 
 if __name__ == '__main__':
