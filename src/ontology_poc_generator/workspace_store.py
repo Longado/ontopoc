@@ -537,10 +537,13 @@ def not_measured(conn, dataset_id: int, seen: frozenset = frozenset()) -> str | 
 
 def not_measured_refusal(dataset: str, pipeline: str | None) -> str:
     """Why every aggregate but a count, a count distinct, a min and a max is refused on a version not measured, and what to do. Nothing is said of rows."""
-    who = tr(f'管道“{pipeline}”', f'the pipeline "{pipeline}"') if pipeline else tr('写它的管道', 'the pipeline that writes it')
-    return tr(f'“{dataset}”这一版是在检查重复之前写出的：没有量过关联有没有把一行变成几行，所以现在不拿它的数来统计（计数、去重计数、最大、最小照常）。请把{who}重新运行一次',
+    if not pipeline:   # a person who may not open pipelines: neither what is behind the type nor a step they cannot take
+        return tr('这些数据是在检查重复之前由管道写出的：没有量过关联有没有把一行变成几行，所以现在不拿它的数来统计（计数、去重计数、最大、最小照常）。请建设者把写它的管道重新运行一次',
+                  'This data was written by a pipeline before repeats were measured: nobody measured whether a join turned one row into several, so its figures are not '
+                  'worked out now (a count, a distinct count, a max and a min still are). Ask a builder to run the pipeline that writes it again once')
+    return tr(f'“{dataset}”这一版是在检查重复之前写出的：没有量过关联有没有把一行变成几行，所以现在不拿它的数来统计（计数、去重计数、最大、最小照常）。请把管道“{pipeline}”重新运行一次',
               f'This version of "{dataset}" was written before repeats were measured: nobody measured whether a join turned one row into several, so its figures are not '
-              f'worked out now (a count, a distinct count, a max and a min still are). Have {who} run again once')
+              f'worked out now (a count, a distinct count, a max and a min still are). Have the pipeline "{pipeline}" run again once')
 
 
 REPEAT_SAFE = ('count', 'count_distinct', 'min', 'max')   # what copies of a value do not change: every other aggregate of a column in fan_marks is refused
