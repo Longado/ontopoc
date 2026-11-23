@@ -210,7 +210,10 @@ class PipelineWordsTests(Team):
             self.assertEqual(status, 200, body)
             shown = self.pipeline(team['bob'])
             total = self.db("SELECT state, cause FROM element_state WHERE element_id = 'objtype:customer_total'")[0]
-            return {'state': shown['state'], 'definition_version': shown['definition_version'], 'proposed_by': shown['proposed_by'], 'editors': shown['editors'],
+            from ontology_poc_generator.workspace_schedules import runnable
+            held = self.db("SELECT state, cause, via FROM element_state WHERE element_id = 'pipeline:客户合计'")[0]
+            schedule_runs = runnable(dict(zip(('state', 'cause', 'via'), held)))
+            return {'schedule_runs': schedule_runs, 'state': shown['state'], 'definition_version': shown['definition_version'], 'proposed_by': shown['proposed_by'], 'editors': shown['editors'],
                     'cat_may_confirm': self.pipeline(team['cat'])['can_confirm'], 'total_type': total}
 
     def test_a_new_description_does_to_a_confirmed_pipeline_exactly_what_a_new_step_does(self):
@@ -218,7 +221,7 @@ class PipelineWordsTests(Team):
         by_step = self.after({'spec': {**SPEC, 'steps': [{**s, 'how': 'inner'} if s['id'] == JOIN['id'] else s for s in SPEC['steps']]}})
         self.assertEqual(by_words, by_step)
         self.assertEqual((by_words['state'], by_words['definition_version'], by_words['editors'], by_words['cat_may_confirm']), ('checked', 2, ['Cat'], False))
-        self.assertEqual(by_words['total_type'][0], 'needs_look')
+        self.assertEqual((by_words['total_type'][0], by_words['schedule_runs']), ('needs_look', False))   # questions on 客户合计 are refused; a schedule skips the pipeline
 
     def test_the_acceptance_sequence_cat_cannot_confirm_her_own_words_after_ann_changes_a_step(self):
         with self.service() as (base, out):
