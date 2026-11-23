@@ -39,7 +39,7 @@ from ontology_poc_generator.pipelines import (
 from ontology_poc_generator.row_rules import has_rules
 from ontology_poc_generator.type_access import dataset_hidden, view_input_hidden
 from ontology_poc_generator.workspace_store import (
-    SelfConfirmation, StaleElement, apply_upload, current_dataset, element_state_writes, fan_origins, log_line, now_text, plan_upload)
+    SelfConfirmation, StaleElement, apply_upload, current_dataset, element_state_writes, fan_origins, input_versions, log_line, not_measured, now_text, plan_upload)
 from ontology_poc_generator.object_views import view_summary, view_visible
 from ontology_poc_generator.lang import tr
 
@@ -680,7 +680,7 @@ def run_now(conn, engine, payload: dict, who: str | None, user: dict | None, llm
         problems = _output_problems(conn, result['nodes'], content['spec'])
         if problems:
             raise PipelineRunError('；'.join(problems))
-        written = _write_outputs(conn, content, row, run_id, resolved['versions'], result['nodes'], outputs, who)
+        written = _write_outputs(conn, content, row, run_id, resolved['versions'], result['nodes'], outputs, who, result.get('repeated') or {})
     except (TypeRefused, ValueError) as exc:   # PipelineRunError is a ValueError
         _record(conn, run_id, status='failed', error=str(exc), finished_at=now_text(), duration_ms=round((time.monotonic() - started) * 1000))
         log_line(conn, who or '未署名', element_id, 'run_failed', after={'run': run_id, 'error': str(exc)})
@@ -698,20 +698,21 @@ def run_now(conn, engine, payload: dict, who: str | None, user: dict | None, llm
     return run_detail(conn, content['name'], run_id, user)
 
 
-def _write_outputs(conn, content: dict, row: dict, run_id: int, versions: dict, nodes: list[dict], outputs: dict, who: str | None) -> list[dict]:
+def _write_outputs(conn, content: dict, row: dict, run_id: int, versions: dict, nodes: list[dict], outputs: dict, who: str | None, marks: dict | None = None) -> list[dict]:
     """Every output as a new dataset or a new version, carrying the run, the definition version and the input versions: all of them in one transaction, so a second
     output that cannot be written takes the first back. When the pipeline is not confirmed, what is confirmed on its outputs goes to needs_look (_flag_takeover). After
     the write, what reads each output is checked again. What the run sends back is told once for the whole run (one_telling)."""
     with one_telling(conn):   # one run, one notice per person
         signer = who or '未署名'
         written = []
+        measured_inputs = not any(not_measured(conn, d) for d in input_versions(conn, versions))   # an input written before marking leaves this unmeasured too
         conn.execute('BEGIN IMMEDIATE')   # apply_upload joins a transaction its caller holds
         try:
             for step in content['spec']['steps']:
                 if step['type'] != 'output' or step['id'] not in outputs:
                     continue
-                written_out = next(n for n in nodes if n['id'] == step['id'])['output']
-                columns, repeated = written_out['columns'], written_out.get('repeated') or {}   # {column: None (this pipeline's join copied it) or the pipeline upstream that did}
+                columns = next(n for n in nodes if n['id'] == step['id'])['output']['columns']
+                repeated = (marks or {}).get(step['id']) or {}   # {column: None (this pipeline's join copied it) or the pipeline upstream that did}
                 records = [dict(zip([c['name'] for c in columns], r)) for r in outputs[step['id']]]
                 existing = current_dataset(conn, step['name'])
                 plan = plan_upload(conn, step['name'], records, mode='overwrite' if existing else None, rows_in=len(records))
@@ -721,6 +722,8 @@ def _write_outputs(conn, content: dict, row: dict, run_id: int, versions: dict, 
                                  [(done['dataset']['id'], c['name'], mark) for c in columns for mark in ('unsent', 'ai') if c.get(mark)])
                 conn.executemany('INSERT OR IGNORE INTO column_fan(dataset_id, column_name, origin) VALUES (?, ?, ?)',
                                  [(done['dataset']['id'], name, origin or content['name']) for name, origin in repeated.items()])
+                if measured_inputs:   # this version's copies were measured: only then is it read as measured (workspace_store.not_measured)
+                    conn.execute('INSERT OR IGNORE INTO column_fan_measured(dataset_id) VALUES (?)', (done['dataset']['id'],))
                 if done['created'] and row['state'] != 'confirmed':
                     _flag_takeover(conn, content['name'], [step['name']])
                 written.append({'dataset': step['name'], 'version': done['dataset']['version'], 'rows': len(records), 'created_version': done['created'], 'mode': plan['mode'],

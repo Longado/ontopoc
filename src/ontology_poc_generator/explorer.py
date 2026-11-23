@@ -30,7 +30,7 @@ from ontology_poc_generator.pipeline_funcs import register
 from ontology_poc_generator.pipeline_ops import AGGREGATIONS, _aggregate_sql, aggregation_options
 from ontology_poc_generator.row_rules import keeps, restriction
 from ontology_poc_generator.type_access import hidden_columns
-from ontology_poc_generator.workspace_store import REPEAT_SAFE, fan_note, _canonical, current_dataset, dataset_records, fan_marks, fan_pipelines, fan_refusal
+from ontology_poc_generator.workspace_store import REPEAT_SAFE, fan_note, _canonical, current_dataset, dataset_records, fan_marks, fan_pipelines, fan_refusal, not_measured, not_measured_refusal, shown_pipeline
 
 FILTER_OPS = TrMap({'eq': ('等于', 'equals'), 'ne': ('不等于', 'does not equal'), 'contains': ('包含', 'contains'), 'name_is': ('名称或别名等于', 'matches a name or alias'), 'gt': ('大于', 'is greater than'), 'ge': ('不小于', 'is at least'), 'lt': ('小于', 'is less than'), 'le': ('不大于', 'is at most'), 'empty': ('为空', 'is empty'), 'filled': ('有值', 'has a value')})
 NO_VALUE = ('empty', 'filled')
@@ -544,6 +544,9 @@ def explore_chart(conn, user: dict | None, raw_query, raw_chart) -> dict:
         meaning = group['meaning']['state'] == 'confirmed'
     kind = chart['kind']
     distorted = kind in ('table', 'histogram') or (kind in ('number', 'bar', 'pie') and chart['fn'] not in REPEAT_SAFE)   # a statistics table carries a sum; a histogram counts the copies
+    unmeasured = not_measured(conn, table['dataset']['id']) if distorted and measure is not None else None
+    if unmeasured:   # a version whose copies were never measured: any column of it
+        raise TypeRefused(not_measured_refusal(table['dataset']['name'], shown_pipeline(conn, unmeasured, user)))
     fanned, pipeline = _fan_of(conn, user, table, measure) if distorted and measure is not None else (False, None)
     if fanned:
         raise TypeRefused(fan_refusal(measure['name'], pipeline, chart['fn'] if kind in ('number', 'bar', 'pie') else 'table'))

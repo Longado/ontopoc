@@ -33,7 +33,7 @@ from ontology_poc_generator.recognition import model_failure_text
 from ontology_poc_generator.relation_checks import unmatched_answer, with_relation_gaps
 from ontology_poc_generator.row_rules import describe as describe_limit, limit_as_list, positions as row_positions, restriction
 from ontology_poc_generator.type_access import hidden_columns, hidden_values, reads_hidden, visible_type_ids
-from ontology_poc_generator.workspace_store import current_dataset, dataset_records, fan_pipelines
+from ontology_poc_generator.workspace_store import current_dataset, dataset_records, fan_pipelines, not_measured, shown_pipeline
 from ontology_poc_generator.lang import english, tr
 
 MAX_QUESTION = 300
@@ -425,10 +425,22 @@ def _inputs(conn, sc: dict, asked: str = '') -> dict:
                           'source': alias[sc['types'][c[many]]['dataset']['name']], f'{one}_identity': {one_key[0]: c[f'{many}_column']}})
     sources = {source: {'records': [r for _, r in kept], 'requests': []} for source, kept in rows.items()}
     meanings = {f'{alias[sc["types"][k]["dataset"]["name"]]}.{column}': {'labels': m['labels']} for k, cols in sc['meanings'].items() for column, m in cols.items()}
-    fan = _fanned(conn, sc, alias)
+    fan, unmeasured = _fanned(conn, sc, alias), _unmeasured(conn, sc, alias)
     return {'ontology': {'object_types': object_types, 'relations': relations, 'ignored_fields': [], 'open_questions': []}, 'alias': alias, 'unusable': unusable, 'derived': derived_attrs,
-            'bundle': {'decision': '', 'sources': sources, 'meanings': meanings, **({'fan': fan} if fan else {})}, 'views': _engine_views(conn, sc, alias, sources),
+            'bundle': {'decision': '', 'sources': sources, 'meanings': meanings, **({'fan': fan} if fan else {}), **({'unmeasured': unmeasured} if unmeasured else {})},
+            'views': _engine_views(conn, sc, alias, sources),
             'also': _also(sc, alias, _muted(conn, sc['user'], asked))}
+
+
+def _unmeasured(conn, sc: dict, alias: dict) -> dict:
+    """{table: {'dataset', 'version', 'pipeline'}} for the dataset versions the types read that a pipeline wrote before copies were measured
+    (workspace_store.not_measured); 'pipeline' is the one to run again, None when this person may not open it."""
+    out = {}
+    for t in sc['types'].values():
+        d = t['dataset']
+        if alias[d['name']] not in out and (pipeline := not_measured(conn, d['id'])):
+            out[alias[d['name']]] = {'dataset': d['name'], 'version': d['version'], 'pipeline': shown_pipeline(conn, pipeline, sc['user'])}
+    return out
 
 
 def _fanned(conn, sc: dict, alias: dict) -> dict:
@@ -722,7 +734,9 @@ def _finish(conn, user: dict | None, sc: dict, parts: dict, item: dict, applied:
     read, walked, fields = _reads(sc, parts, query, item.get('definitions_used') or [], spec) if item['status'] in ('answered', 'no_data') else ([], [], set())
     lines, types, datasets = _used_definitions(conn, sc, parts, read, walked, fields, applied if item['status'] in ('answered', 'no_data') else [])
     result = {key: item[key] for key in ('status', 'answer', 'path', 'reason', 'reasoning', 'query', 'evidence', 'understood', 'unmet', 'definitions_used') if key in item}
-    if item['status'] in ('ontology_gap', 'query_limit') and not item.get('from_relation_check'):
+    if item.get('fan'):   # a figure a join copied, or a version whose copies were never measured: its own kind of refusal
+        result['refusal'] = {'kind': item['fan'], **(item.get('fan_detail') or {})}
+    elif item['status'] in ('ontology_gap', 'query_limit') and not item.get('from_relation_check'):
         result['refusal'] = {'kind': 'not_in_scope', 'in_scope': [t['content']['name'] for t in sc['types'].values()], 'left_out': [*_unsettled(conn, user), *_unwalkable(sc)]}
     elif item['status'] == 'definition_unmet':
         result['refusal'] = {'kind': 'definition_unmet', 'definitions': item.get('unmet') or []}
