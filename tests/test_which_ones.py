@@ -361,7 +361,7 @@ class QueryText(Sample):
             ('订单有哪些？', {**plain, 'list': {}}, []), ('订单有哪些？', {**plain, 'list': True}, []), ('加急订单有哪些？', {**plain, 'where': [urgent], 'list': {'properties': ['orders.金额']}}, urgent_used),
             ('订单有哪些？', {'start': 'order', 'where': [], 'list': {'limit': 5}}, []), ('订单的金额合计？', {**plain, 'measure': {'field': '金额', 'op': 'sum'}, 'list': {}}, []),
             ('订单的金额合计？', {**plain, 'measure': {'field': '金额', 'op': 'sum'}, 'list': True}, []),
-            ('各紧急程度的订单？', {**plain, 'group_by': ['紧急程度'], 'list': {'properties': ['金额']}}, by_urgency),
+            ('各紧急程度的订单？', {**plain, 'group_by': [{'via': [], 'field': '紧急程度'}], 'list': {'properties': ['金额']}}, by_urgency),
             ('订单的金额合计？', {**plain, 'measure': {'field': '金额', 'op': 'sum'}, 'lookup': {'订单号': 'DD20260003'}}, []),
             ('订单 DD20260003？', {'start': 'order', 'lookup': {'订单号': 'DD20260003'}}, []), ('订单 DD20260003？', {**plain, 'lookup': {'订单号': 'DD20260003'}}, []),
             ('承诺日期早于今天的订单有哪些？', {**plain, 'where': [{'field': '承诺日期', 'less_than': 'today'}], 'list': True}, []),
