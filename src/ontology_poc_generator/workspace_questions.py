@@ -693,14 +693,27 @@ def _engine(sc: dict, parts: dict, relations: list[dict], conn=None):
                 query, today = _with_today(sc, query)
             kind = _rows_kind(query)
             if kind == 'lookup':
-                applied[:] = []
-                return _said_today(_lookup(conn, sc, parts, query, used, page), today)
+                return _said_today(looked_up(query, asked, used, told, page), today)
             if kind == 'list':
                 problem = _list_problem(sc, query)
                 if problem is not None:
                     return problem
                 listing, query = query['list'], {k: v for k, v in query.items() if k != 'list'}   # the conditions are checked and run as those of a count, which they are
         return _said_today(worked_out(query, asked, used, told, instead, listing, page), today)
+
+    def looked_up(query, asked, used, told, page):
+        """One object by its key, in the views the question names: checked as a count of its type would be on the views alone (a view the question names and
+        the model did not read is refused, one it reads is applied); a meaning is no condition a lookup applies (_lookup refuses it)."""
+        named = {v['name'] for v in parts['views']}
+        counted = {'start': query.get('start'), 'where': [], 'via': [], 'group_by': None, 'share': None, 'measure': None}
+        checked = definition_check(asked, counted, ontology, parts['views'], {}, [u for u in clean_used(used) if u['id'] in named], told, derived=parts['derived'], also=parts['also'])
+        applied[:] = []
+        if checked['unmet']:
+            return {**refusal(checked['unmet']), 'understood': checked['understood']}
+        found = _lookup(conn, sc, parts, query, used, page, checked['apply'])
+        if found['status'] in ('answered', 'no_data'):
+            applied[:] = checked['apply']
+        return {**found, 'understood': checked['understood']} if checked['understood'] else found
 
     def worked_out(query, asked, used, told, instead, listing, page):
         checked = definition_check(asked, query, ontology, parts['views'], bundle['meanings'], used, told, values=held, derived=parts['derived'],
@@ -888,10 +901,11 @@ def _objects_page(sc: dict, parts: dict, reading: dict, graph: dict, start: str,
             'page': page, 'pages': pages, 'page_size': size, 'order_by': list(t['content']['key'])}
 
 
-def _lookup(conn, sc: dict, parts: dict, query: dict, used, page) -> dict:
+def _lookup(conn, sc: dict, parts: dict, query: dict, used, page, views: list | tuple = ()) -> dict:
     """One object by its whole key: its confirmed properties as this person may see them (a column kept from them is not there), code columns with their
     confirmed meanings, and its confirmed per-row formulas. The key is a bound value, compared as stored (a number in its plain form); only the rows that have
-    it are read. An object outside the asker's row rule is answered exactly as a key nobody has."""
+    it are read. An object outside the asker's row rule, or outside the confirmed `views` the question names (as _engine_views gives them, checked), is
+    answered exactly as a key nobody has, and the line under it names those views whether or not the object is there."""
     start = query.get('start')
     if start not in sc['types']:
         return {'status': 'ontology_gap', 'reason': tr(f'本体里没有对象类型 {start}', f'There is no object type {start} in the ontology')}
@@ -902,8 +916,12 @@ def _lookup(conn, sc: dict, parts: dict, query: dict, used, page) -> dict:
         return {'status': 'query_limit', 'reason': tr(f'按主键找一个{name}，要写出它的主键：{"、".join(key)}，每列一个值', f'To find one {name} by its key, give its key: {", ".join(key)}, one value each')}
     if any(query.get(k) not in (None, '', [], {}) for k in ('where', 'via', 'group_by', 'share', 'measure', 'top', 'order', 'list')):
         return {'status': 'query_limit', 'reason': tr('按主键找一个对象时只写主键，不写别的条件；要按条件列出对象，用列表', 'A lookup by key gives only the key and no other condition; to list the objects that meet conditions, ask for a list')}
-    if any(u['direction'] in ('include', 'exclude') for u in clean_used(used)):   # a view or a meaning the question selects rows by: a lookup cannot apply it, and does not drop it either
+    in_views = {v['name'] for v in views}
+    if any(u['direction'] in ('include', 'exclude') and u['id'] not in in_views for u in clean_used(used)):   # a meaning (or a view not applied) the question selects rows by: a lookup cannot apply it, and does not drop it either
         return {'status': 'query_limit', 'reason': tr('按主键找的是一个对象，不按视图或含义挑行；要按它们挑，就列出符合的对象', 'A lookup by key finds one object and does not choose rows by a view or a meaning; to choose by them, list the objects that meet them')}
+    source = parts['alias'][t['dataset']['name']]
+    if any(v['source'] != source for v in views):
+        return {'status': 'query_limit', 'reason': tr('按主键找的对象只能在它自己那张表上的视图里找', 'A lookup by key can only look in views on its own table')}
     given = {c: str(wanted[c]).strip() for c in key}
     q = lambda n: '"' + n.replace('"', '""') + '"'
     params = [v for c in key for v in (given[c], _canonical(given[c]) or given[c])]
@@ -911,10 +929,16 @@ def _lookup(conn, sc: dict, parts: dict, query: dict, used, page) -> dict:
     names = [d[0] for d in cursor.description]
     found = [(r[0], dict(zip(names[1:], r[1:]))) for r in cursor.fetchall()]
     found = [(i, r) for i, r in found if all(_canonical(r.get(c)) == _canonical(given[c]) for c in key) and keeps(r, t['limit'])]
+    if views and found:   # only the rows every view keeps, of the rows this person may read (the positions the views give are of those rows)
+        readable = [i for i, _ in _readable_rows(conn, sc, t['dataset']['name'], t['dataset'])]
+        kept = set.intersection(*({readable[p - 1] for p in v['positions']} for v in views))
+        rowids = [r for (r,) in conn.execute(f'SELECT rowid FROM {q(t["dataset"]["table_name"])} ORDER BY rowid')]   # a position in the dataset is its place in rowid order
+        found = [(i, r) for i, r in found if rowids.index(i) + 1 in kept]
     said = tr('，'.join(f'{c} = {given[c]}' for c in key), ', '.join(f'{c} = {given[c]}' for c in key))
-    path = tr(f'按主键找{name}：{said}', f'{name} by its key: {said}')
+    within = tr('、', ', ').join(v['name'] for v in views)
+    path = tr(f'按主键找{name}：{said}' + (f'（只在视图「{within}」里找）' if views else ''), f'{name} by its key: {said}' + (f' (only in the view "{within}")' if views else ''))
     if not found:
-        return {'status': 'no_data', 'path': path, 'reason': tr(f'没有{said}的{name}', f'No {name} has {said}')}
+        return {'status': 'no_data', 'path': path, 'reason': tr(f'没有{said}的{name}' + (f'在视图「{within}」里' if views else ''), f'No {name} has {said}' + (f' in the view "{within}"' if views else ''))}
     formulas = [d['content'] for d in sc['derived'].values() if d['content']['type'] == start and d['content']['kind'] == 'function']
     values = {d['name']: row_values(conn, d, [i for i, _ in found]) for d in formulas}
     rows = [{**{c: v for c, v in r.items() if c not in t['hidden']}, **{n: v.get(i) for n, v in values.items()}} for i, r in found]
@@ -1150,10 +1174,9 @@ def _run_compiled(conn, user: dict | None, sc: dict, query: dict, asked: str = '
         reason = tr('；', '; ').join(tr(f'关系「{sc["relations"][k]["content"]["name"]}」现在不能走：{why}', f'The relation "{sc["relations"][k]["content"]["name"]}" cannot be followed now: {why}') for k, why in stuck)
         return {'status': 'refused', 'reason': tr(f'没有计算：{reason}', f'Not calculated: {reason}'), 'query': query, 'refusal': {'kind': 'unwalkable', 'definitions': [d for d in _unwalkable(sc) if d['id'] in {relation_id(k) for k, _ in stuck}]},
                 'definitions': [], 'types': [], 'datasets': {}, 'steps': [{'name': tr('找关系', 'Find relations'), 'text': reason, 'failed': True}]}
-    if ROW_ANSWERS and _rows_kind(query) == 'lookup':
+    if ROW_ANSWERS and _rows_kind(query) == 'lookup' and not views and not asked:   # a written lookup with no question and no view reads only the rows with its key
         parts = _skeleton(sc)
-        used = [{'id': v, 'direction': 'include', 'basis': tr('模型说问题要这个视图', 'The model said the question needs this view')} for v in views]
-        item = {**_lookup(conn, sc, parts, query, used, page), 'query': query, 'definitions_used': used}
+        item = {**_lookup(conn, sc, parts, query, [], page), 'query': query, 'definitions_used': []}
         if item['status'] == 'query_limit':
             return {'status': 'query_limit', 'reason': item['reason'], 'query': query, 'definitions': [], 'types': [], 'datasets': {}, 'steps': [{'name': tr('结果', 'Result'), 'text': item['reason'], 'failed': True}]}
         return _finish(conn, user, sc, parts, item, [])
@@ -1454,7 +1477,7 @@ def _again(conn, user: dict | None, record: dict, question: str, page) -> dict:
     query, used = record.get('query'), record.get('definitions_used') or []
     if not isinstance(query, dict) or query.get('start') not in sc['types']:
         return {'status': 'refused', 'reason': tr('这条回答用到的对象类型你现在不能用了，所以不再显示它。', 'You can no longer use the object type this answer used, so it is no longer shown.')}
-    if _rows_kind(query) == 'lookup':
+    if _rows_kind(query) == 'lookup' and not any(u['id'] in sc['views'] for u in clean_used(used)):   # no view: only the rows with its key are read
         parts = _skeleton(sc)
         item = {**_lookup(conn, sc, parts, query, used, page), 'query': query, 'definitions_used': used}
         return _finish(conn, user, sc, parts, item, [])
