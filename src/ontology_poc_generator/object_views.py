@@ -25,6 +25,7 @@ from ontology_poc_generator import other_names
 from ontology_poc_generator.named_views import NUMERIC, orderable
 from ontology_poc_generator.object_types import (
     edit_sends_back,
+    keep_unsaid,
     limited_note, MAX_DESCRIPTION, MAX_NAME, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _content, _edit_names, _label, _state_view, _text, _type_row, _visible,
     dataset_columns, element_row, enum_id, log_entries, refuse_if_limited, type_id, waiting_for_viewer, was_confirmed, whole_type_row, write_confirmation, write_elements)
 from ontology_poc_generator.public_ontology import normalize_value
@@ -293,7 +294,7 @@ def update_view(conn, payload: dict, who: str | None, user: dict | None) -> dict
     if payload.get('version') != row['version']:
         raise TypeRefused(tr('这个视图在你打开之后被改了，请刷新后再改', 'This view was changed after you opened it. Refresh and edit again'), 409)
     old = _content(row)
-    content = check_definition(conn, payload, user, old['name'])
+    content = check_definition(conn, keep_unsaid(payload, old), user, old['name'])
     if 'other_names' not in payload:   # an edit that does not say them keeps the other names on file
         content = other_names.put(content, other_names.of(old))
     others = other_names.of(old) != other_names.of(content)

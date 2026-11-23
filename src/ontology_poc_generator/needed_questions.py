@@ -168,7 +168,7 @@ def _held(conn, row: dict) -> str | None:
             else tr(f'{listed} 写过或改过它，还没有别人确认过，{"不能" if one else "都不能"}确认它', f'{listed} wrote or changed it and nobody else has confirmed it, so they cannot confirm it'))
     other = tr('另一位' if one else '第三位', 'someone else' if one else 'a third person')
     out = (tr(f'请没有改过它的{other}来确认（可以确认的人：{tr("、", ", ").join(free)}）', f'ask {other} who did not change it to confirm it (who can: {", ".join(free)})') if free
-           else tr(f'请没有改过它的{other}来确认（现在没有这样的建设者，管理员可以加一位）', f'ask {other} who did not change it to confirm it (there is no such builder now; an admin can add one)'))
+           else tr(f'请没有改过它的{other}来确认（现在没有这样的建设者，管理员可以把另一个人设为建设者）', f'ask {other} who did not change it to confirm it (there is no such builder now; an admin can give another person the builder role)'))
     if confirmed:
         out += tr('，或把它改回上次确认的样子', ', or put back what was last confirmed')
     return tr(f'{said}。出路：{out}。', f'{said}. {"Ways out" if confirmed else "The way out"}: {out}.')

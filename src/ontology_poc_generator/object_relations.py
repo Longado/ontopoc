@@ -22,6 +22,7 @@ import re
 
 from ontology_poc_generator.object_types import (
     edit_sends_back,
+    keep_unsaid,
     RELATION_PREFIX, TYPE_PREFIX, TypeRefused, _content, _edit_names, _flag_readers, _state_view, _text, _visible, dataset_columns, element_row, log_entries, refuse_if_limited, type_id,
     write_confirmation, write_elements, MAX_DESCRIPTION, MAX_NAME, ENGLISH_NAME, kept_columns)
 from ontology_poc_generator.relation_checks import _side_numbers
@@ -312,7 +313,7 @@ def update_relation(conn, payload: dict, who: str | None, user: dict | None) -> 
     if payload.get('version') != row['version']:
         raise TypeRefused(tr('这个关系在你打开之后被改了，请刷新后再改', 'This relation was changed after you opened it. Refresh and edit again'), 409)
     old = _content(row)
-    content = check_definition(conn, payload, user, old['english_name'])
+    content = check_definition(conn, keep_unsaid(payload, old), user, old['english_name'])
     check_names_free(conn, content)
     reset = reset_reasons(old, content) or edit_sends_back(row, user, (old['name'], old['description']) != (content['name'], content['description']))
     if reset or row['state'] in ('proposed', 'rejected'):

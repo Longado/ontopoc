@@ -27,7 +27,7 @@ from ontology_poc_generator.draft_receipts import spend as spend_receipt
 from ontology_poc_generator.actor import actor_id_for
 from ontology_poc_generator.object_types import (
     MAX_DESCRIPTION, MAX_NAME, PIPELINE_PREFIX, stale_note, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _content, _flag, _flag_readers, _state_view, _text, dataset_columns,
-    element_row, log_entries, one_telling, recheck_after_write, unconfirmed_producers, write_confirmation)
+    element_row, held_note, keep_unsaid, log_entries, one_telling, recheck_after_write, unconfirmed_producers, write_confirmation)
 from ontology_poc_generator.pipeline_expr import COLUMN_TYPE, FUNCTION_DOCS, compile_expression, error_condition
 from ontology_poc_generator.pipeline_funcs import guess_formats, number_text, register
 from ontology_poc_generator.pipeline_llm import LlmRun, LlmService, cache_counts, contract_of, effective
@@ -38,7 +38,7 @@ from ontology_poc_generator.pipelines import (
 from ontology_poc_generator.row_rules import has_rules
 from ontology_poc_generator.type_access import dataset_hidden, view_input_hidden
 from ontology_poc_generator.workspace_store import (
-    SelfConfirmation, StaleElement, apply_upload, current_dataset, element_state_writes, log_line, now_text, plan_upload)
+    SelfConfirmation, StaleElement, apply_upload, current_dataset, element_state_writes, log_line, now_text, pipeline_editors, plan_upload)
 from ontology_poc_generator.object_views import view_summary, view_visible
 from ontology_poc_generator.lang import tr
 
@@ -319,7 +319,7 @@ def update_pipeline(conn, payload: dict, who: str | None, user: dict | None, eng
     if payload.get('version') != row['version']:
         raise TypeRefused(tr('这条管道在你打开之后被改了，请刷新后再改', 'This pipeline was changed after you opened it. Refresh and edit again'), 409)
     old = _content(row)
-    found = check_definition(conn, engine, {**payload, 'spec': payload.get('spec', old['spec'])}, user, old['name'], row['element_id'])
+    found = check_definition(conn, engine, keep_unsaid({**payload, 'spec': payload.get('spec', old['spec'])}, old), user, old['name'], row['element_id'])   # what is not sent stays
     try:
         new, element_id = found['content'], row['element_id']
         if mark := drafted_mark(conn, payload, who, user, 'pipeline', _saved_steps(payload), old.get('drafted'), old['name']):   # saved from the assistant's draft: who, when (an ordinary save keeps it)
@@ -735,10 +735,9 @@ def _write_outputs(conn, content: dict, row: dict, run_id: int, versions: dict, 
 # --- confirming ---------------------------------------------------------------------------------------------------------------------------------------
 
 def _editors(conn, element_id: str) -> set[int]:
-    """The accounts that saved a definition version since the last confirmation (all of them when it was never confirmed): the one who confirms must not be among them."""
-    last = _last_confirmation(conn, element_id)
-    since = last['content']['definition_version'] if last else 0
-    return {u for (u,) in conn.execute('SELECT saved_by_user_id FROM pipeline_version WHERE pipeline_id = ? AND version > ? AND saved_by_user_id IS NOT NULL', (element_id, since))}
+    """The accounts that saved a definition version since the last confirmation (all of them when it was never confirmed): the one who confirms must not be among them.
+    The same set every other kind's rule reads (workspace_store.changers, may_confirm), so the sentence a held person reads is the same too (held_note)."""
+    return pipeline_editors(conn, element_id)
 
 
 def waiting_on(conn, content: dict) -> list[dict]:
@@ -781,7 +780,7 @@ def confirm_pipeline(conn, payload: dict, who: str | None, user: dict | None, en
         raise TypeRefused(tr('已经被退回了：要先按退回的理由改，再重新提出', 'It was sent back: change it as the reason says, then propose it again'), 409)
     content, element_id = _content(row), row['element_id']
     if two_person(conn)['active'] and user is not None and user.get('id') in _editors(conn, element_id):
-        raise SelfConfirmation(tr('这条管道的定义你改过，要另一位来确认', 'You changed the definition of this pipeline, so someone else has to confirm it'))
+        raise SelfConfirmation(held_note(conn, row) or tr('这条管道的定义你改过，要另一位来确认', 'You changed the definition of this pipeline, so someone else has to confirm it'))
     waiting = waiting_on(conn, content)
     if waiting:
         names = tr('、', ', ').join(f'“{w["name"]}”' for w in waiting)

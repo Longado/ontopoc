@@ -299,6 +299,8 @@ def _meanings(kept: list[dict], column: str, col: dict, posted) -> list[dict]:
     except ValueError as exc:
         raise TypeRefused(str(exc)) from None
     was = {e['value']: other_names.of(e) for e in kept}
+    said = {e['value']: e.get('description', '') for e in kept}   # an entry that does not send its description keeps the one on file
+    entries = [{**e, 'description': said.get(e['value'], '')} if isinstance(raw, dict) and 'description' not in raw else e for e, raw in zip(entries, posted)]
     entries = [other_names.put(e, other_names.clean(raw.get('other_names'), tr(f'含义“{e["label"]}”', f'the meaning "{e["label"]}"')) if 'other_names' in raw else was.get(e['value']))
                for e, raw in zip(entries, posted)]
     merged = merge_enum(kept, entries)
@@ -414,12 +416,22 @@ def edit_sends_back(row: dict, user: dict | None, edited: bool, others: bool = F
     return [tr('名称或说明', 'its name or description') if edited else tr('另称', 'its other names')]
 
 
+def keep_unsaid(payload: dict, old: dict) -> dict:
+    """An edit that does not send the description keeps the one on file: only a value actually sent (an empty one too) is a change. Every kind's update reads its
+    payload through this, so a save that leaves the field out sends nothing back and puts nobody among those who changed it."""
+    return payload if 'description' in payload else {**payload, 'description': old.get('description') or ''}
+
+
 def keep_other_names(payload: dict, old: dict) -> dict:
-    """An edit that does not say the other names keeps the ones on file: the type's own, and each property's that it lists without them."""
-    out = {**payload, 'other_names': payload['other_names'] if 'other_names' in payload else other_names.of(old)}
+    """An edit that does not say the other names keeps the ones on file: the type's own, and each property's that it lists without them; nor the description
+    (keep_unsaid), nor a property's display name for a property it lists without one."""
+    out = keep_unsaid({**payload, 'other_names': payload['other_names'] if 'other_names' in payload else other_names.of(old)}, old)
     if isinstance(payload.get('properties'), list):
         was = {p['column']: other_names.of(p) for p in old.get('properties', [])}
+        shown = {p['column']: p['name'] for p in old.get('properties', [])}
         out['properties'] = [{**p, 'other_names': was.get(p.get('column'), [])} if isinstance(p, dict) and 'other_names' not in p else p for p in payload['properties']]
+        out['properties'] = [{**p, 'name': shown[p['column']]} if isinstance(p, dict) and 'name' not in p and isinstance(p.get('column'), str) and p['column'] in shown else p
+                             for p in out['properties']]
     return out
 
 
@@ -1327,10 +1339,11 @@ def held_note(conn, row: dict, free: list[str] | None = None) -> str | None:
     if free:
         out = tr(f'请没有改过它的{other}来确认（可以确认的人：{tr("、", ", ").join(free)}）', f'ask {other} who did not change it to confirm it (who can: {", ".join(free)})')
     else:
-        out = tr(f'请没有改过它的{other}来确认（现在没有这样的建设者，管理员可以加一位）', f'ask {other} who did not change it to confirm it (there is no such builder now; an admin can add one)')
-    if confirmed:
+        out = tr(f'请没有改过它的{other}来确认（现在没有这样的建设者，管理员可以把另一个人设为建设者）', f'ask {other} who did not change it to confirm it (there is no such builder now; an admin can give another person the builder role)')
+    if confirmed and not row['element_id'].startswith(PIPELINE_PREFIX):   # a pipeline has no undo: words or steps put back are another change
         out += tr('，或把它改回上次确认的版本', ', or put back the version that was last confirmed')
-    return tr(f'{said}。出路：{out}。', f'{said}. {"Ways out" if confirmed else "The way out"}: {out}.')
+    two = confirmed and not row['element_id'].startswith(PIPELINE_PREFIX)
+    return tr(f'{said}。出路：{out}。', f'{said}. {"Ways out" if two else "The way out"}: {out}.')
 
 
 def _state_view(conn, row: dict, user: dict | None, ahead: dict | None = None, saved_only: bool = False) -> dict:

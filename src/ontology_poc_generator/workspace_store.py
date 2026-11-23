@@ -520,6 +520,8 @@ def changers(conn, row: dict) -> set[int]:
     """The accounts that changed what this definition says since it was last confirmed (or since it was put forward). Without a record that describes the content
     as it stands, everyone the log names as having written it since, and whoever the record names: when in doubt, more people are kept from confirming, not
     fewer. Empty for what this rule does not cover (a pipeline, the early screen's definitions)."""
+    if row['element_id'].startswith('pipeline:'):
+        return pipeline_editors(conn, row['element_id'])
     if not tracked(row['element_id']):
         return set()
     kept = _kept_record(row)
@@ -527,6 +529,18 @@ def changers(conn, row: dict) -> set[int]:
         return set(kept.get('by') or [])
     stale = parse_record(row.get('changed_json')) or {}
     return set(stale.get('by') or []) | writers_in_log(conn, row['element_id'])
+
+
+def pipeline_editors(conn, element_id: str) -> set[int]:
+    """A pipeline's own rule, its changers: the accounts that saved a definition version (its steps or its description) since its last confirmation (all of them when
+    it was never confirmed). Read from its saved versions, so there is no record of its own to keep."""
+    last = conn.execute('SELECT content_json FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1', (element_id,)).fetchone()
+    try:
+        since = json.loads(last[0]).get('definition_version', 0) if last and last[0] else 0
+    except (ValueError, AttributeError):
+        since = 0
+    since = since if isinstance(since, int) and not isinstance(since, bool) else 0
+    return {u for (u,) in conn.execute('SELECT saved_by_user_id FROM pipeline_version WHERE pipeline_id = ? AND version > ? AND saved_by_user_id IS NOT NULL', (element_id, since))}
 
 
 def barred(conn, row: dict) -> set[int]:

@@ -34,6 +34,7 @@ import json
 from ontology_poc_generator.accounts import list_users, two_person
 from ontology_poc_generator.object_types import (
     edit_sends_back,
+    keep_unsaid,
     ACTION_PREFIX, MAX_DESCRIPTION, MAX_NAME, TYPE_NAME, TypeRefused, _content, _edit_names, _state_view, _text, _type_row, _visible,
     element_row, enum_id, log_entries, recheck_after_write, type_id, whole_type_row, write_confirmation, write_elements)
 from ontology_poc_generator.object_views import meaning_labels
@@ -362,7 +363,7 @@ def update_action(conn, payload: dict, who: str | None, user: dict | None) -> di
     if payload.get('version') != row['version']:
         raise TypeRefused(tr('这个行为在你打开之后被改了，请刷新后再改', 'This action was changed after you opened it. Refresh and edit again'), 409)
     old = _content(row)
-    content = check_definition(conn, payload, user, old['name'])
+    content = check_definition(conn, keep_unsaid(payload, old), user, old['name'])
     reset = _reset_reasons(old, content) or edit_sends_back(row, user, old['description'] != content['description'])
     if reset or row['state'] in ('proposed', 'rejected'):
         anchors = _anchors(conn, content)

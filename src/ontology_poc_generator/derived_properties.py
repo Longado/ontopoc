@@ -40,6 +40,7 @@ from ontology_poc_generator.named_views import ORDERED_TEXT, orderable
 from ontology_poc_generator.object_relations import _relation_visible, relation_id
 from ontology_poc_generator.object_types import (
     edit_sends_back,
+    keep_unsaid,
     DERIVED_PREFIX, ENGLISH_NAME, limited_note, MAX_DESCRIPTION, MAX_NAME, TypeRefused, _content, _edit_names, _state_view, _text, _type_row, _visible,
     dataset_columns, element_row, enum_id, log_entries, refuse_if_limited, type_id, whole_type_row, write_confirmation, write_elements)
 from ontology_poc_generator.object_views import _by_code, _choices, meaning_labels, new_value_words
@@ -753,7 +754,7 @@ def update_derived(conn, payload: dict, who: str | None, user: dict | None) -> d
     if payload.get('version') != row['version']:
         raise TypeRefused(tr('这个派生属性在你打开之后被改了，请刷新后再改', 'This derived property was changed after you opened it. Refresh and edit again'), 409)
     old = _content(row)
-    content = check_definition(conn, {**payload, 'type': old['type'], 'other_names': payload['other_names'] if 'other_names' in payload else other_names.of(old)}, user, old['english_name'])
+    content = check_definition(conn, {**keep_unsaid(payload, old), 'type': old['type'], 'other_names': payload['other_names'] if 'other_names' in payload else other_names.of(old)}, user, old['english_name'])
     check_names_free(conn, content)
     others = other_names.of(old) != other_names.of(content)
     reset = reset_reasons(old, content) or edit_sends_back(row, user, (old['name'], old['description']) != (content['name'], content['description']), others)
