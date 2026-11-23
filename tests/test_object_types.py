@@ -329,11 +329,11 @@ class ObjectTypeTests(SigningTestCase):
             self.confirm_all(ann, bob)
             version = self.detail(bob)['version']
             status, body = bob.post('/api/workspace/types/update', {**ORDER, 'id': 'order', 'version': version, 'name': '客户订单', 'description': '改了说明'})
-            self.assertEqual((status, body['state'], body['reset']), (200, 'confirmed', []))   # a name and a description are not what was confirmed
+            self.assertEqual((status, body['state'], body['reset']), (200, 'checked', ['名称或说明']))   # a new name or description waits for a second person, its confirmer's too
             detail = self.detail(bob)
-            self.assertEqual((detail['name'], detail['description'], detail['state'], detail['confirmed_by']), ('客户订单', '改了说明', 'confirmed', 'Bob'))
+            self.assertEqual((detail['name'], detail['description'], detail['state'], detail['confirmed_by']), ('客户订单', '改了说明', 'checked', 'Bob'))
             log = bob.get('/api/workspace/types/order/log')[1]['log']
-            self.assertTrue(any(e['change'] == 'edited' and e['who'] == 'Bob' for e in log))
+            self.assertTrue(any(e['change'] == 'checked' and e['who'] == 'Bob' for e in log))
             properties = [{'column': '订单号'}, {'column': '金额', 'type': 'text'}, {'column': '状态码', 'enum': True}]   # the amount is text now
             status, body = bob.post('/api/workspace/types/update', {**ORDER, 'id': 'order', 'version': detail['version'], 'properties': properties})
             self.assertEqual((status, body['state'], body['reset']), (200, 'checked', ['属性的类型']))

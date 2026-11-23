@@ -4,7 +4,7 @@ import { typeLabel } from "./format.js";
 import { t } from "./i18n/index.js";
 import { Select } from "./Select.jsx";
 import { hrefFor, parseRoute } from "./routeModel.js";
-import { TYPE_CHOICES, keyProblem, suggestEnglish, typePayload } from "./typeModel.js";
+import { RULE_CHECKS, TYPE_CHOICES, dateMates, keyProblem, otherNamesText, ruleChecks, ruleReady, rulesOfType, suggestEnglish, typePayload } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
 
 const ENUM_TYPES = ["integer", "text"];
@@ -14,9 +14,10 @@ function columnRows(dataset, was) {
   return dataset.columns.map((c) => {
     const saved = was?.properties.find((p) => p.column === c.name);
     const meanings = Object.fromEntries((saved?.meanings?.values ?? []).map((v) => [v.value, v.label]));
+    const meaningOthers = Object.fromEntries((saved?.meanings?.values ?? []).map((v) => [v.value, otherNamesText(v.other_names)]));
     return {
-      name: c.name, type: c.type, include: Boolean(saved), label: saved?.name ?? "", declared: saved?.type ?? c.type, values: c.values,
-      candidate: ENUM_TYPES.includes(c.type) && c.values != null, enum: Boolean(saved?.enum), meanings,
+      name: c.name, type: c.type, include: Boolean(saved), label: saved?.name ?? "", otherNames: otherNamesText(saved?.other_names), declared: saved?.type ?? c.type, values: c.values,
+      candidate: ENUM_TYPES.includes(c.type) && c.values != null, enum: Boolean(saved?.enum), meanings, meaningOthers,
     };
   });
 }
@@ -45,6 +46,63 @@ function KeyResult({ result }) {
   );
 }
 
+const MAX_RULES = 20;
+const BOUNDED = ["gt", "ge", "lt", "le"];
+
+/** The value rules of the type being written: one row per rule (the property, the kind its declared type allows, and the numbers or the other date it needs). */
+function RuleRows({ form, setRules }) {
+  const chosen = form.columns.filter((c) => c.include || form.key.includes(c.name));
+  const change = (i, patch) => setRules(form.rules.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const pickColumn = (i, name) => {
+    const column = chosen.find((c) => c.name === name);
+    const allowed = ruleChecks(column, chosen);
+    change(i, { column: name, check: allowed.includes(form.rules[i].check) ? form.rules[i].check : allowed[0], other: "" });
+  };
+  return (
+    <section aria-label={t("types.rules.title")}>
+      <h2 className="section">{t("types.rules.title")}</h2>
+      <p className="hint">{t("types.rules.formHint")}</p>
+      {form.rules.map((r, i) => {
+        const column = chosen.find((c) => c.name === r.column);
+        const allowed = column ? ruleChecks(column, chosen) : RULE_CHECKS.slice(0, 1);
+        const n = i + 1;
+        return (
+          <div className="inline" key={i}>
+            <Select label={t("types.rules.columnAria", { n })} value={r.column} onChange={(v) => pickColumn(i, v)}>
+              <option value="">{t("types.rules.pickColumn")}</option>
+              {chosen.map((c) => <option key={c.name} value={c.name}>{c.label.trim() || c.name}</option>)}
+            </Select>
+            <Select label={t("types.rules.checkAria", { n })} value={r.check} disabled={!column} onChange={(v) => change(i, { check: v })}>
+              {allowed.map((c) => <option key={c} value={c}>{t(`types.rules.check.${c}`)}</option>)}
+            </Select>
+            {BOUNDED.includes(r.check) && <input type="text" inputMode="decimal" aria-label={t("types.rules.valueAria", { n })} value={r.value} onChange={(e) => change(i, { value: e.target.value })} />}
+            {r.check === "between" && (
+              <>
+                <input type="text" inputMode="decimal" aria-label={t("types.rules.lowAria", { n })} value={r.low} onChange={(e) => change(i, { low: e.target.value })} />
+                <span>{t("types.rules.and")}</span>
+                <input type="text" inputMode="decimal" aria-label={t("types.rules.highAria", { n })} value={r.high} onChange={(e) => change(i, { high: e.target.value })} />
+              </>
+            )}
+            {r.check === "not_before" && (
+              <Select label={t("types.rules.otherAria", { n })} value={r.other} onChange={(v) => change(i, { other: v })}>
+                <option value="">{t("types.rules.pickColumn")}</option>
+                {dateMates(chosen, column).map((c) => <option key={c.name} value={c.name}>{c.label.trim() || c.name}</option>)}
+              </Select>
+            )}
+            <button className="plain" aria-label={t("types.rules.removeAria", { n })} onClick={() => setRules(form.rules.filter((_, j) => j !== i))}>{t("types.rules.remove")}</button>
+          </div>
+        );
+      })}
+      <div className="inline">
+        <button className="secondary" disabled={form.rules.length >= MAX_RULES || chosen.length === 0} onClick={() => setRules([...form.rules, { column: "", check: "not_empty", value: "", low: "", high: "", other: "" }])}>{t("types.rules.add")}</button>
+      </div>
+      <p className="muted small">{t("types.rules.note")}</p>
+      <p className="muted small">{t("types.rules.limits")}</p>
+      {form.rules.some((r) => !ruleReady(r)) && <p className="warn">{t("types.rules.incomplete")}</p>}
+    </section>
+  );
+}
+
 /** One page for both making a type and changing one: the dataset's columns with the key, the properties, the code columns and their meanings. */
 export function TypeForm({ id }) {
   const editing = id != null;
@@ -61,14 +119,14 @@ export function TypeForm({ id }) {
   useEffect(() => {
     if (ready && editing && !form) {
       const ty = saved.data;
-      getDataset(ty.dataset).then((d) => setForm({ english: ty.id, name: ty.name, description: ty.description, dataset: ty.dataset, key: ty.key, columns: columnRows(d, ty) }),
+      getDataset(ty.dataset).then((d) => setForm({ english: ty.id, name: ty.name, otherNames: otherNamesText(ty.other_names), description: ty.description, dataset: ty.dataset, key: ty.key, columns: columnRows(d, ty), rules: rulesOfType(ty) }),
         (e) => setError({ message: e.message }));
     } else if (ready && !editing && !form) {
       const list = datasets.data;
       const wanted = parseRoute(window.location.hash).dataset;   // 用它建对象类型 arrives with the dataset
       const start = list.find((d) => d.name === wanted)?.name ?? (list.length === 1 ? list[0].name : "");   // the only dataset is the one to use
       const name = start;
-      setForm({ english: suggestEnglish(name), name, description: "", dataset: "", key: [], columns: [] });
+      setForm({ english: suggestEnglish(name), name, otherNames: "", description: "", dataset: "", key: [], columns: [], rules: [] });
       if (start) getDataset(start).then((d) => setForm((f) => ({ ...f, dataset: start, columns: columnRows(d, null) })), (e) => setError({ message: e.message }));
     }
   }, [ready]);
@@ -80,9 +138,9 @@ export function TypeForm({ id }) {
   const pickDataset = async (name) => {
     setKeyResult(null);
     setError(null);
-    if (!name) return setForm({ ...form, dataset: "", key: [], columns: [] });
+    if (!name) return setForm({ ...form, dataset: "", key: [], columns: [], rules: [] });
     try {
-      setForm({ ...form, dataset: name, key: [], columns: columnRows(await getDataset(name), null) });
+      setForm({ ...form, dataset: name, key: [], columns: columnRows(await getDataset(name), null), rules: [] });
     } catch (e) {
       setError({ message: e.message });
     }
@@ -113,7 +171,7 @@ export function TypeForm({ id }) {
   };
 
   const problems = form ? form.key.map((k) => keyProblem(form.columns.find((c) => c.name === k))).filter(Boolean) : [];
-  const complete = form && form.name.trim() && (editing || form.english.trim()) && form.dataset && form.key.length > 0 && problems.length === 0;
+  const complete = form && form.name.trim() && (editing || form.english.trim()) && form.dataset && form.key.length > 0 && problems.length === 0 && form.rules.every(ruleReady);
   return (
     <main className="page">
       <a className="back" href={editing ? hrefFor({ page: "type", id, tab: "props" }) : hrefFor({ page: "types" })}>
@@ -135,6 +193,11 @@ export function TypeForm({ id }) {
               ? <span className="muted small">{t("types.form.englishAuto", { english: form.english })}</span>
               : <span className="muted small">{form.name.trim() ? t("types.form.englishUnknown") : t("types.form.englishWait")}</span>)}
           </label>
+          <label className="field">
+            <span className="caption">{t("types.otherNames")}</span>
+            <input type="text" value={form.otherNames} placeholder={t("types.otherNamesPlaceholder")} onChange={(e) => setForm({ ...form, otherNames: e.target.value })} />
+            <span className="muted small">{t("types.otherNamesHint")}</span>
+          </label>
           <details className="fold" open={Boolean(form.description)}>
             <summary>{t("types.form.description")}</summary>
             <input type="text" aria-label={t("types.form.descriptionAria")} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
@@ -154,7 +217,7 @@ export function TypeForm({ id }) {
               <div className="table-wrap">
                 <table className="props">
                   <thead>
-                    <tr><th>{t("types.form.col.key")}</th><th>{t("types.form.col.column")}</th><th>{t("types.form.col.use")}</th><th>{t("types.form.col.label")}</th>{advanced && <th>{t("types.form.col.type")}</th>}{advanced && <th>{t("types.form.col.code")}</th>}</tr>
+                    <tr><th>{t("types.form.col.key")}</th><th>{t("types.form.col.column")}</th><th>{t("types.form.col.use")}</th><th>{t("types.form.col.label")}</th><th>{t("types.form.col.other")}</th>{advanced && <th>{t("types.form.col.type")}</th>}{advanced && <th>{t("types.form.col.code")}</th>}</tr>
                   </thead>
                   <tbody>
                     {form.columns.map((c) => {
@@ -165,6 +228,7 @@ export function TypeForm({ id }) {
                           <td>{c.name} <span className="muted small">{typeLabel(c.type)}</span></td>
                           <td><input type="checkbox" aria-label={t("types.form.useAria", { name: c.name })} checked={c.include || isKey} disabled={isKey} onChange={(e) => setColumn(c.name, { include: e.target.checked })} /></td>
                           <td><input type="text" aria-label={t("types.form.labelAria", { name: c.name })} value={c.label} placeholder={c.name} disabled={!(c.include || isKey)} onChange={(e) => setColumn(c.name, { label: e.target.value })} /></td>
+                          <td><input type="text" aria-label={t("types.form.otherAria", { name: c.name })} value={c.otherNames ?? ""} disabled={!(c.include || isKey)} onChange={(e) => setColumn(c.name, { otherNames: e.target.value })} /></td>
                           {advanced && <td>
                             <Select label={t("types.form.typeAria", { name: c.name })} value={c.declared} disabled={!(c.include || isKey) || c.enum} onChange={(v) => setColumn(c.name, { declared: v })}>
                               {TYPE_CHOICES[c.type].map((choice) => <option key={choice} value={choice}>{typeLabel(choice)}</option>)}
@@ -195,7 +259,7 @@ export function TypeForm({ id }) {
                   <h2 className="section">{t("types.form.meaningsOf", { name: c.name })}</h2>
                   <div className="table-wrap">
                     <table>
-                      <thead><tr><th>{t("types.form.value")}</th><th className="num">{t("types.form.rows")}</th><th>{t("types.form.meaning")}</th></tr></thead>
+                      <thead><tr><th>{t("types.form.value")}</th><th className="num">{t("types.form.rows")}</th><th>{t("types.form.meaning")}</th><th>{t("types.form.meaningOthers")}</th></tr></thead>
                       <tbody>
                         {Object.entries(c.values).map(([value, rows]) => (
                           <tr key={value}>
@@ -203,6 +267,8 @@ export function TypeForm({ id }) {
                             <td className="num">{rows}</td>
                             <td><input type="text" aria-label={t("types.meanings.inputAria", { column: c.name, value })} value={c.meanings[value] ?? ""} placeholder={t("types.meanings.placeholder")}
                               onChange={(e) => setColumn(c.name, { meanings: { ...c.meanings, [value]: e.target.value } })} /></td>
+                            <td><input type="text" aria-label={t("types.form.meaningOthersAria", { column: c.name, value })} value={c.meaningOthers?.[value] ?? ""} placeholder={t("types.otherNamesPlaceholder")}
+                              onChange={(e) => setColumn(c.name, { meaningOthers: { ...(c.meaningOthers ?? {}), [value]: e.target.value } })} /></td>
                           </tr>
                         ))}
                       </tbody>
@@ -211,6 +277,7 @@ export function TypeForm({ id }) {
                   <p className="hint">{t("types.form.meaningsHint")}</p>
                 </section>
               ))}
+              <RuleRows form={form} setRules={(rules) => setForm({ ...form, rules })} />
             </>
           )}
 

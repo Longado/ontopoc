@@ -22,6 +22,13 @@ test("the proposer is told another builder must confirm; another builder is told
   assert.equal(confirmersText(mine), "");
 });
 
+test("a person kept from confirming because they changed it since it was last confirmed reads who did and the ways out, as the service says it", () => {
+  const held = "Ann、Cat 在上次确认之后改过它（或提出了它），都不能确认它。出路：请没有改过它的第三位来确认（可以确认的人：Bob），或把它改回上次确认的版本。";
+  const waiting = { state: "checked", proposed_by: "Cat", can_confirm: false, confirmers: ["Bob"], held };
+  assert.equal(confirmersText(waiting), held);
+  assert.equal(confirmersText({ ...waiting, can_confirm: true }), "");   // Bob, who may confirm it, is not told why others may not
+});
+
 test("a confirmation names who, when and on which dataset version; a type that needs another look still names who had confirmed it", () => {
   const confirmed = { state: "confirmed", confirmed_by: "Bob", confirmed_at: "2026-11-14T08:30:00+00:00", confirmed_on: { 订单: 1 } };
   assert.match(stateLine(confirmed, "x"), /^Bob 于 .+ 确认，依据 订单 第 1 版$/);

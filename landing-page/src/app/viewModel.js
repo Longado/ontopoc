@@ -1,6 +1,6 @@
 // The words and the payload of the Views section of a type page, as plain functions of what the service sends, so they can be tested without a browser.
 import { t } from "./i18n/index.js";
-import { joinList } from "./typeModel.js";
+import { joinList, otherNamesFrom } from "./typeModel.js";
 
 /** {is: "is", is_not: "is not"} in the current language (read it when rendering). */
 export const OP_LABEL = {};
@@ -10,7 +10,7 @@ for (const k of ["is", "is_not"]) Object.defineProperty(OP_LABEL, k, { get: () =
 export function viewPayload(type, form) {
   const filters = form.filters.filter((f) => f.column && f.label).map(({ column, op, label }) => ({ column, op, label }));
   return {
-    name: form.name.trim(), type, description: form.description.trim(), filters,
+    name: form.name.trim(), ...(form.otherNames === undefined ? {} : { other_names: otherNamesFrom(form.otherNames) }), type, description: form.description.trim(), filters,
     latest: form.latest.on ? { key: form.latest.key, order: form.latest.order } : null,
   };
 }

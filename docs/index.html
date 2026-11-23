@@ -75,7 +75,7 @@
         <h1 id="h1">A confirmation gate between your data and your AI.</h1>
         <p class="lede">Agents answer only from definitions a named person confirmed against the current data. Otherwise they <strong>refuse, and say who can confirm</strong>. OntoPoc is an open-source <strong>ontology tool</strong> for data teams and for Claude over MCP: a model may draft what your tables mean, code checks every definition against all of the data, a second person confirms it, and when the data changes it goes back for another look.</p>
         <div class="cta">
-          <!-- DEMO_URL: the only link to the live demo on this page. Temporary host name: change it here when a domain is chosen. -->
+          <!-- DEMO_URL: the only link to the live demo on this page. Temporary host name: when a domain is chosen, change it here, in docs/zh/index.html and in README.md / README.en.md. -->
           <a class="btn btn-primary" id="demo" href="https://35-229-236-140.sslip.io/">Try the live demo — no sign-up
             <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 10h11m-4-4 4 4-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
           <a class="btn btn-ghost" href="https://github.com/Longado/ontopoc">
@@ -168,7 +168,7 @@
           <div>
             <span class="no">Step 2</span>
             <h3>A second person confirms it, never the one who proposed it</h3>
-            <p>Another builder reads the checks and the row count for each value, then confirms. Whoever proposed a definition cannot confirm it. With only one builder the rule opens up, and the log says so.</p>
+            <p>Another builder reads the checks and the row count for each value, then confirms. Whoever proposed a definition, or changed it since it was last confirmed, cannot confirm it; any change to a confirmed definition, its name included, sends it back. With only one builder the rule opens up, and the log says so.</p>
             <p>The confirmation keeps who confirmed and on which data version. Q&amp;A, boards and agents use confirmed definitions only.</p>
           </div>
           <figure class="shot">

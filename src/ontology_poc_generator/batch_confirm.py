@@ -16,7 +16,7 @@ import json
 
 from ontology_poc_generator.object_types import (
     ACTION_PREFIX, DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, TypeRefused,
-    _by_value, _confirmers, _content, _label, dataset_columns, element_row, limited_on, unconfirmed_producers)
+    _by_value, _confirmers, _content, held_note, _label, _type_problems, counted_ahead, dataset_columns, element_row, keep_count, limited_on, unconfirmed_producers)
 from ontology_poc_generator.review_queue import IN_QUEUE, _item, confirm_item, queue
 from ontology_poc_generator.workspace_store import SelfConfirmation, current_dataset, log_line
 
@@ -66,8 +66,9 @@ def _why_not_theirs(conn, row: dict, user: dict | None) -> str | None:
         return tr('你受行规则或列的限制，看不到全部数据：要不受限制的建设者来确认', 'A row rule or a column limit keeps you from seeing all the data: a builder without the limit must confirm')
     if user is not None and user['role'] == 'viewer':
         return tr('你是只读成员，不能确认', 'You are a read-only member and cannot confirm')
-    if not _confirmers(conn, row, user)[0]:
-        return tr('这一项是你提的或你改过的，要另一位建设者确认', 'You put this forward or changed it, so another builder must confirm it')
+    can, others = _confirmers(conn, row, user)
+    if not can:   # who holds it and the ways out, as the item's own route says it
+        return held_note(conn, row, others) or tr('这一项是你提的或你改过的，要另一位建设者确认', 'You put this forward or changed it, so another builder must confirm it')
     return None
 
 
@@ -89,6 +90,8 @@ def _plan(conn, rows: list[dict], user: dict | None) -> list[dict]:
                 why = tr(f'要先确认{tr("、", ", ").join(_label(conn, d) for d in waiting)}', f'Confirm {", ".join(_label(conn, d) for d in waiting)} first')
             elif element_id.startswith(TYPE_PREFIX) and (producers := unconfirmed_producers(conn, content['dataset'])):
                 why = tr(f'要先确认管道{tr("、", ", ").join(f"“{n}”" for n in producers)}', f'Confirm the pipeline {", ".join(producers)} first')
+            elif element_id.startswith(TYPE_PREFIX) and (problems := _type_problems(conn, content, record=False)[0]):   # confirming it would be refused (confirm_element): not planned, and what stands on it waits
+                why = tr(f'按现在的数据过不了检查，确认不了：{tr("；", "; ").join(problems)}', f'It fails the checks on the current data and cannot be confirmed: {"; ".join(problems)}')
         if why is None:
             will.add(element_id)
         out.append({'row': row, 'mine': mine_why is None, 'ready': why is None, 'why_not': why})
@@ -153,7 +156,11 @@ def group_detail(conn, user: dict | None, dataset, version) -> dict:
     before it) and why not."""
     moved, rows, hidden = _members(conn, user, dataset, version)
     items = []
-    for place in _plan(conn, rows, user):
+    with counted_ahead(conn, [r['element_id'] for r in rows if not limited_on(conn, r, user)]) as counts:   # one count of each type's value rules, kept for the reads made on every page
+        for element_id, found in counts.items():
+            keep_count(conn, element_id, _content(element_row(conn, element_id)), found)
+        plan = _plan(conn, rows, user)
+    for place in plan:
         row = place['row']
         items.append({**_item(conn, row, user), 'mine': place['mine'], 'ready': place['ready'], 'why_not': place['why_not'],
                       **({'values': _meaning_values(conn, row, user)} if row['element_id'].startswith(ENUM_PREFIX) else {})})
@@ -180,6 +187,11 @@ def confirm_group(conn, payload: dict, who: str | None, user: dict | None) -> di
     title, why}], hidden}. A refusal of any item (409 when the data or a version moved, 403, 400 for what it asks for) keeps nothing and names the item."""
     moved, members, hidden = _members(conn, user, payload.get('dataset'), payload.get('version'))
     asked = _asked(payload, members)
+    with counted_ahead(conn, [r['element_id'] for r in members]):   # the value rules are counted here, before the write lock below; the checks under it use these counts
+        return _confirm_planned(conn, payload, who, user, members, asked, hidden)
+
+
+def _confirm_planned(conn, payload: dict, who: str | None, user: dict | None, members: list[dict], asked: dict, hidden: int) -> dict:
     plan = _plan(conn, members, user)
     ready = [p for p in plan if p['ready']]
     if not ready:

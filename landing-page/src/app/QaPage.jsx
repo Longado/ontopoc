@@ -11,7 +11,7 @@ import { MeaningsCard, NoModel, PlanCard, ProposalCard } from "./AssistantCards.
 import { filterByMode, filterModes, pastTurn, railItems, scopeOf } from "./assistantHistoryModel.js";
 import { PastTurn, modeLabel } from "./PastTurn.jsx";
 import { timeText } from "./format.js";
-import { answerView, criteriaLine, dataAsOf, definitionHref, historyView, namedLines, isAnswer, isThenAnswer, paramsIn, queryExample, queryParams, queryRecord, rangeNotes, readText, staleHeading, staleLines, standingText, timeWarning } from "./qaModel.js";
+import { answerView, besideView, criteriaLine, dataAsOf, definitionHref, historyView, namedLines, isAnswer, isThenAnswer, paramsIn, queryExample, queryParams, queryRecord, rangeNotes, readText, refusalBranch, staleHeading, staleLines, standingText, timeWarning } from "./qaModel.js";
 import { groupByDay, isThinking, newTurn, savedTurn, sendsOn, settle, suggestions, threadTitle } from "./chatModel.js";
 import { ObjectGraph } from "./ObjectGraph.jsx";
 import { State } from "./TypesPage.jsx";
@@ -45,6 +45,7 @@ function Named({ list, mayBuild }) {
 function Refusal({ record, mayBuild }) {
   const t = useT();
   const r = record.refusal;
+  const branch = refusalBranch(record);
   return (
     <div className="refusal-card">
       <h2 className="section"><Icon name="info" size={16} />{t("ask.refusal.title")}</h2>
@@ -75,7 +76,7 @@ function Refusal({ record, mayBuild }) {
           </ul>
         </>
       )}
-      {!r && <p>{record.reason}</p>}
+      {branch.kind === "reason" && <p>{branch.text}</p>}
     </div>
   );
 }
@@ -83,6 +84,7 @@ function Refusal({ record, mayBuild }) {
 export function Answer({ record }) {
   const t = useT();
   const view = answerView(record);
+  const beside = besideView(record);
   const notes = staleLines(record);
   const then = isThenAnswer(record);
   return (
@@ -90,6 +92,18 @@ export function Answer({ record }) {
       {then && <p className="warn">{staleHeading(record)}</p>}
       <div className="big">{then && <span className="small muted">{t("ask.answer.then")} </span>}{view.big}</div>
       {view.note && <p className="muted">{view.note}</p>}
+      {beside && (
+        <div className="beside">
+          <p className="small">{beside.title}</p>
+          <ul>
+            {beside.lines.map((l) => (
+              <li key={l.key}><strong>{l.name}</strong>{l.text && <> {l.text}</>}{l.of && <span className="muted"> ({l.of})</span>}{l.by && <span className="muted small"> · {l.by}</span>}</li>
+            ))}
+          </ul>
+          {beside.more && <p className="muted small">{beside.more}</p>}
+          {beside.hint && <p className="muted small">{beside.hint}</p>}
+        </div>
+      )}
       {view.graph && <ObjectGraph graph={view.graph} />}
       {view.table && (
         <div className="table-wrap">

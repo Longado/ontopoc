@@ -44,7 +44,7 @@ section[id] { scroll-margin-top: 78px; }
 
 /* The workbench palette. Scoped to the shell so the product home keeps its own look.
    One primary (the logo's indigo), cool neutrals, and three status colours that are never used as decoration.
-   Every text/ground pair here reaches WCAG AA; the numbers are in docs/archive/PRD_ITERATION_6.md. */
+   Every text/ground pair here reaches WCAG AA. */
 .app-shell {
   --primary: #4b4fd8; --primary-soft: #ebebfc; --primary-ink: #3a3eb8;
   --blue: var(--primary); --blue-soft: var(--primary-soft); --indigo: var(--primary); --indigo-soft: var(--primary-soft);

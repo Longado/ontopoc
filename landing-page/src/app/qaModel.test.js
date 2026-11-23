@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { answerView, definitionHref, isAnswer, namedLines, isThenAnswer, queryExample, queryParams, queryRecord, rangeNotes, readText, scopeText, standingText, staleHeading, staleLines } from "./qaModel.js";
+import { answerView, besideView, definitionHref, isAnswer, namedLines, isThenAnswer, queryExample, queryParams, queryRecord, rangeNotes, readText, scopeText, standingText, staleHeading, staleLines } from "./qaModel.js";
 
 const types = [{ id: "order", name: "订单" }];
 
@@ -129,6 +129,18 @@ test("the caliber line names the view an answer read and no query quoting", () =
   assert.equal(criteriaLine({ query_text: "SELECT count(o) AS 数量\nFROM (o:`Order`)\nWHERE o.`status code` = 'Delivered'", ...view }, ""), "按已确认的定义：视图「Valid orders」，Order.status code = Delivered");
 });
 
+test("a filter the model wrote is said as the model's reading of confirmed code meanings, never as a confirmed definition", () => {
+  const meanings = [{ kind: "type", name: "Order" }, { kind: "meaning", name: "Order.status_code" }];
+  const ownFilter = { model: "m", definitions: meanings, query_text: "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)\nWHERE o.status_code NOT IN ('Cancelled', 'Refunded')" };
+  assert.equal(criteriaLine(ownFilter, ""), "按已确认的定义：全部Order；模型按已确认的代码含义写的筛选（不是已确认的视图）：Order.status_code NOT IN (Cancelled, Refunded)");
+  const view = { evidence: { views: [{ name: "Valid orders", kind: "filter", rows: 95 }] } };
+  assert.equal(criteriaLine({ ...ownFilter, ...view, query_text: "SELECT count(o) AS 数量\nFROM (o:`Order`)\nWHERE o.status_code = 'Delivered'" }, ""),
+    "按已确认的定义：视图「Valid orders」；模型按已确认的代码含义写的筛选（不是已确认的视图）：Order.status_code = Delivered");   // the view chose the rows; the filter on top is still the model's
+  assert.equal(criteriaLine({ model: "m", definitions: [{ kind: "type", name: "客户" }], query_text: "SELECT count(c) FROM (c:客户)\nWHERE c.tier = 'A'" }, "11月20日 08:00"),
+    "按已确认的定义：全部客户；模型写的筛选：客户.tier = A，数据截至 11月20日 08:00");   // no code meaning in it: not said to be one
+  assert.equal(criteriaLine({ model: "m", definitions: meanings, query_text: "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)", ...view }, ""), "按已确认的定义：视图「Valid orders」");   // no filter of the model's
+});
+
 test("a grouped total has a header over each of its three columns", () => {
   const top = answerView({ answer: { groups: [["C001", 7140, 6], ["C013", 6205, 5]], total_groups: 39, without_value: 0, measure: { field: "amount", op: "sum", value: 119810, counted: 107, skipped: 0 } }, types });
   assert.deepEqual(top.table.head, ["分组", "amount合计", "订单数"]);
@@ -148,4 +160,17 @@ test("a viewer's refusal line that names nothing is shown as its text alone, not
   assert.equal(definitionHref(undefined), null);
   const named = namedLines([{ id: "objview:有效订单", type: "order", kind: "view", name: "有效订单", state: "needs_look" }, { kind: "type", state: "needs_look", waiting: true, text: "x" }]);
   assert.deepEqual(named.map((l) => [l.key, l.plain ?? false, l.href ?? null]), [["objview:有效订单", false, "#/types/order/views"], ["line-1", true, null]]);
+});
+
+test("an answer on every row shows each confirmed view's own number beside it, and an answer on one view shows every row", () => {
+  const measure = (value, counted) => ({ total: counted, measure: { field: "金额", op: "sum", value, counted, skipped: 0 } });
+  const all = besideView({ status: "answered", types, answer: measure(162960, 150), beside: { views: [{ id: "objview:有效订单", name: "有效订单", confirmed_by: "Bob", answer: measure(119810, 107) }], more: ["视图6", "视图7"] } });
+  assert.equal(all.title, "同一个问法，换成别的行来算：");
+  assert.deepEqual(all.lines.map((l) => [l.name, l.text, l.of, l.by]), [["有效订单", "金额合计 119,810", "150 个订单里的 107 个", "Bob 确认"]]);
+  assert.equal(all.hint, "上面的数算的是你能看到的全部行。");
+  assert.equal(all.more, "还有 2 个确认过的视图：视图6、视图7");
+  const one = besideView({ status: "answered", types, answer: measure(119810, 107), beside: { views: [{ all_rows: true, name: "订单", answer: measure(162960, 150) }], more: [] } });
+  assert.deepEqual(one.lines.map((l) => [l.name, l.text, l.of, l.by]), [["全部订单", "金额合计 162,960", "", ""]]);
+  assert.equal(one.hint, "上面的数只算了它读的那个视图的行。");
+  assert.equal(besideView({ status: "answered", types, answer: measure(1, 1) }), null);
 });

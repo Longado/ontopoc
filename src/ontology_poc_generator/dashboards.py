@@ -31,7 +31,7 @@ import json
 import re
 
 from ontology_poc_generator.explorer import _standing, explore_chart, explore_meta, explore_table, normalize_chart, normalize_query
-from ontology_poc_generator.object_types import TypeRefused, _confirmers, _content, _type_row, element_row, type_id, was_confirmed, waiting_for_viewer
+from ontology_poc_generator.object_types import VIEW_PREFIX, TypeRefused, _confirmers, _content, _type_row, element_row, presented_row, type_id, was_confirmed, waiting_for_viewer
 from ontology_poc_generator.object_views import view_id
 from ontology_poc_generator.ontopoc_query import QueryError, is_graph, param_names
 from ontology_poc_generator.type_access import can_access, hidden_columns
@@ -363,15 +363,21 @@ def _waiting_on(conn, user: dict | None, component: dict) -> list[str] | None:
     """The people who could confirm it again, when what a reader cannot read is a type (or a view of it) that was confirmed and needs another look, and not one that is
     closed to them: [] when nobody could. None when the component is unreadable for another reason."""
     query = component['query']
-    rows = [element_row(conn, type_id(query['type']))]
+    rows = [presented_row(conn, element_row(conn, type_id(query['type'])))]   # a type whose value rules are not known to hold waits, as the type list says
     if query['view']:
         rows.append(element_row(conn, view_id(query['view'])))
     if rows[0] is None or not can_access(conn, rows[0]['element_id'], user):
         return None
-    pending = [r for r in rows if r is not None and r['state'] == 'needs_look']
+    pending = [r for r in rows if r is not None and (r['state'] == 'needs_look' or (r['element_id'].startswith(VIEW_PREFIX) and r['state'] in ('proposed', 'checked')))]   # a view changed since it was confirmed waits too
     if not pending or not all(was_confirmed(conn, r['element_id']) for r in pending):   # one nobody ever confirmed is not waiting for a re-confirmation
         return None
     return list(dict.fromkeys(name for r in pending for name in _confirmers(conn, r, user)[1]))
+
+
+def _changed_view(conn, component: dict) -> bool:
+    """Whether the component's view waits because a person changed it (not because the data moved)."""
+    row = element_row(conn, view_id(component['query']['view'])) if component['query']['view'] else None
+    return row is not None and row['state'] in ('proposed', 'checked')
 
 
 def _kept_from(conn, user: dict | None, component: dict) -> set[str]:
@@ -388,7 +394,8 @@ def _failed(conn, user: dict | None, component: dict, exc: Exception) -> dict:
     waiting = _waiting_on(conn, user, component) if isinstance(exc, TypeRefused) else None
     if waiting is not None:
         who = tr('、', ', ').join(waiting) or tr('有权限确认的人', 'someone who may confirm')
-        return {**base, 'status': 'waiting', 'message': tr(f'数据更新了，正在等 {who} 再确认', f'The data was updated and is waiting for {who} to confirm again'), 'waiting_on': waiting}
+        message = tr(f'定义改了，正在等 {who} 再确认', f'The definition was changed and is waiting for {who} to confirm it again') if _changed_view(conn, component) else tr(f'数据更新了，正在等 {who} 再确认', f'The data was updated and is waiting for {who} to confirm again')
+        return {**base, 'status': 'waiting', 'message': message, 'waiting_on': waiting}
     status = getattr(exc, 'status', None)
     message = tr('你现在看不到这个对象类型：它还没有确认，或者没有开放给你', 'You cannot see this object type now: it is not confirmed yet, or it is not open to you') if isinstance(exc, TypeRefused) and status == 404 and str(exc) in ('没有这个对象类型', 'There is no such object type') else str(exc)
     return {**base, 'status': 'unavailable', 'message': message}
@@ -500,7 +507,7 @@ def _headline(components: list[dict]) -> dict:
     waiting = [c['title'] for c in components if c['status'] == 'waiting']
     unavailable = [c['title'] for c in components if c['status'] == 'unavailable']
     said = [*([tr(f'{len(grey)} 个组件用到了现在不是“已确认”的定义，灰色显示：{tr("、", ", ").join(grey)}', f'{len(grey)} components use definitions that are not confirmed now and are shown grey: {", ".join(grey)}')] if grey else []),
-            *([tr(f'{len(waiting)} 个组件的数据更新了，在等再确认：{tr("、", ", ").join(waiting)}', f'{len(waiting)} components had their data updated and are waiting to be confirmed again: {", ".join(waiting)}')] if waiting else []),
+            *([tr(f'{len(waiting)} 个组件在等再确认：{tr("、", ", ").join(waiting)}', f'{len(waiting)} components are waiting to be confirmed again: {", ".join(waiting)}')] if waiting else []),
             *([tr(f'{len(unavailable)} 个组件你现在看不到：{tr("、", ", ").join(unavailable)}', f'You cannot see {len(unavailable)} components now: {", ".join(unavailable)}')] if unavailable else [])]
     return {'components': len(components), 'unavailable': unavailable, 'waiting': waiting, 'grey': grey, 'text': tr('；'.join(said) or '全部按已确认的定义算出', '; '.join(said) or 'All computed from confirmed definitions')}
 

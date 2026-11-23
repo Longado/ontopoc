@@ -37,8 +37,9 @@ export function stateLine(item, noun) {
 /** What a viewer reads of an object type whose data moved after it was confirmed: it is there, it waits for a second look. */
 export const reconfirmText = (names) => t("types.line.reconfirm", { who: names?.length ? joinList(names) : t("types.line.reconfirmAnyone") });
 
-/** Who could confirm, when it is waiting for someone and the reader is not one of them. */
-export const confirmersText = (item) => (item.confirmers?.length && !item.can_confirm ? t("types.line.confirmers", { names: joinList(item.confirmers) }) : "");
+/** Who could confirm, when it is waiting for someone and the reader is not one of them. When people are kept from confirming it because they put it forward or
+ * changed it since it was last confirmed, the service's sentence (`held`, in the reader's language) says who and the ways out, and names who can confirm. */
+export const confirmersText = (item) => (item.can_confirm ? "" : item.held || (item.confirmers?.length ? t("types.line.confirmers", { names: joinList(item.confirmers) }) : ""));
 
 const DATASET_LINE = [
   [/^import v(\d+)/, (m) => t("types.dataset.import", { version: m[1] })],
@@ -108,13 +109,78 @@ export function keyProblem(column) {
   return "";
 }
 
-/** The payload that creates or changes a type, from the form. `form.columns`: {name, type, include, label, declared, enum, meanings: {value: label}} per dataset column. */
+/** Other names as one person types them in one box: split at commas (Latin or Chinese), the Chinese enumeration comma or semicolons, trimmed, each kept once. */
+export function otherNamesFrom(text) {
+  const names = String(text ?? "").split(/[,;\n\uff0c\u3001\uff1b]/).map((n) => n.trim()).filter(Boolean);
+  return names.filter((n, i) => names.findIndex((m) => m.toLowerCase() === n.toLowerCase()) === i);
+}
+
+/** Other names back in the box, joined as the language lists things. */
+export const otherNamesText = (names) => joinList(names ?? []);
+
+/** The line under a name that has other names: "Also called: …"; "" when it has none. */
+export const alsoCalled = (names) => (names?.length ? t("types.alsoCalled", { names: joinList(names) }) : "");
+
+const named = (text) => (text === undefined ? {} : { other_names: otherNamesFrom(text) });   // a form that has no box for them says nothing: the service keeps the ones on file
+
+/** The kinds of value rule, in the order the form offers them. */
+export const RULE_CHECKS = ["not_empty", "gt", "ge", "lt", "le", "between", "in_codes", "not_before"];
+const NUMBER_TYPES = ["integer", "decimal"];
+const BOUNDED = ["gt", "ge", "lt", "le"];
+const dayKind = (declared) => (declared === "month" ? "month" : ["date", "datetime"].includes(declared) ? "day" : null);
+
+/** The kinds of rule a form column can take, by what it is declared as: every property "not empty"; a number the comparisons; a code column its codes; a date or a
+ * month the order of two of them (when the type has another of the same kind). */
+export function ruleChecks(column, columns = []) {
+  const mates = dateMates(columns, column);
+  return RULE_CHECKS.filter((c) => c === "not_empty" || ([...BOUNDED, "between"].includes(c) && NUMBER_TYPES.includes(column?.declared))
+    || (c === "in_codes" && column?.enum) || (c === "not_before" && mates.length > 0));
+}
+
+/** The other properties a date rule on `column` can compare with: dates and date-times with each other, months with months. */
+export const dateMates = (columns, column) => (dayKind(column?.declared) ? columns.filter((c) => c.name !== column.name && dayKind(c.declared) === dayKind(column.declared)) : []);
+
+/** A form rule as the service takes it: only the fields its kind needs; numbers are sent as typed and the service reads them. */
+export function rulePayload(rule) {
+  const kept = { column: rule.column, check: rule.check };
+  if (BOUNDED.includes(rule.check)) kept.value = String(rule.value ?? "").trim();
+  if (rule.check === "between") Object.assign(kept, { low: String(rule.low ?? "").trim(), high: String(rule.high ?? "").trim() });
+  if (rule.check === "not_before") kept.other = rule.other;
+  return kept;
+}
+
+/** The rules of a saved type as form rows. */
+export const rulesOfType = (type) => (type?.rules ?? []).map((r) => ({ column: r.column, check: r.check, value: r.value ?? "", low: r.low ?? "", high: r.high ?? "", other: r.other ?? "" }));
+
+/** Whether a form rule has what its kind needs before it is sent. */
+export function ruleReady(rule) {
+  if (!rule.column || !RULE_CHECKS.includes(rule.check)) return false;
+  if (BOUNDED.includes(rule.check)) return String(rule.value ?? "").trim() !== "";
+  if (rule.check === "between") return String(rule.low ?? "").trim() !== "" && String(rule.high ?? "").trim() !== "";
+  if (rule.check === "not_before") return Boolean(rule.other);
+  return true;
+}
+
+/** How a rule stands on the rows now, in one line: how many rows break it (of the rows the reader may see, when a row rule limits them). */
+export function ruleStanding(rule, ownRows) {
+  if (rule.broken == null) return t("types.rules.unchecked");
+  if (!rule.broken) return t(ownRows ? "types.rules.noneOwn" : "types.rules.none");
+  return t(ownRows ? "types.rules.brokenOwn" : "types.rules.broken", { count: rule.broken });
+}
+
+/** The keys of the rows shown as examples of a broken rule, in one line. */
+export const ruleExamples = (rule) => (rule.examples ?? []).map((key) => key.join(" + ")).join(t("types.sep"));
+
+/** The payload that creates or changes a type, from the form. `form.columns`: {name, type, include, label, otherNames, declared, enum, meanings: {value: label},
+ * meaningOthers: {value: other names}} per dataset column; `form.otherNames` and each `otherNames` are the text of a box. */
 export function typePayload(form) {
   const columns = form.columns.filter((c) => c.include || form.key.includes(c.name));
-  const enums = Object.fromEntries(columns.filter((c) => c.enum).map((c) => [c.name, Object.entries(c.meanings ?? {}).filter(([, label]) => label.trim()).map(([value, label]) => ({ value, label: label.trim() }))]).filter(([, v]) => v.length));
+  const enums = Object.fromEntries(columns.filter((c) => c.enum).map((c) => [c.name, Object.entries(c.meanings ?? {}).filter(([, label]) => label.trim())
+    .map(([value, label]) => ({ value, label: label.trim(), ...named(c.meaningOthers?.[value] ?? (c.meaningOthers ? "" : undefined)) }))]).filter(([, v]) => v.length));
   return {
-    english_name: form.english.trim(), name: form.name.trim(), description: form.description.trim(), dataset: form.dataset, key: form.key,
-    properties: columns.map((c) => ({ column: c.name, name: c.label.trim() || c.name, type: c.declared, enum: c.enum })), enums,
+    english_name: form.english.trim(), name: form.name.trim(), ...named(form.otherNames), description: form.description.trim(), dataset: form.dataset, key: form.key,
+    properties: columns.map((c) => ({ column: c.name, name: c.label.trim() || c.name, ...named(c.otherNames), type: c.declared, enum: c.enum })), enums,
+    ...(form.rules ? { rules: form.rules.map(rulePayload) } : {}),
   };
 }
 

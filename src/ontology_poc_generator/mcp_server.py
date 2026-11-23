@@ -13,6 +13,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 from pathlib import Path
 import sys
 import time
@@ -498,8 +499,10 @@ AGENT_GROUPS = 50   # groups an agent is given in one answer; the count of all o
 
 
 def _property(p: dict) -> dict:
-    """A property as an agent needs it: its column and type, its name only when that differs from the column, `code` only when it is a code column."""
-    return {'column': p['column'], **({'name': p['name']} if p.get('name') != p['column'] else {}), 'type': p['type'], **({'code': True} if p.get('code') else {})}
+    """A property as an agent needs it: its column and type, its name only when that differs from the column, its other names when it has some, `code` only when it
+    is a code column."""
+    return {'column': p['column'], **({'name': p['name']} if p.get('name') != p['column'] else {}), **({'other_names': p['other_names']} if p.get('other_names') else {}),
+            'type': p['type'], **({'code': True} if p.get('code') else {})}
 
 
 def describe_definitions(s, a):
@@ -511,8 +514,8 @@ def describe_definitions(s, a):
     if isinstance(wanted, str):
         wanted = [wanted]
     if not isinstance(wanted, list) or not wanted or not all(isinstance(w, str) for w in wanted):   # [] is not "all": that is leaving types out
-        raise ToolError('types 要写成类型的英文名或中文名的列表，例如 ["order", "客户"]；要全部就不写 types')
-    named = {**{t['name']: t['id'] for t in d['types']}, **{t['id']: t['id'] for t in d['types']}}
+        raise ToolError('types 要写成类型的英文名、名字或另称的列表，例如 ["order", "客户"]；要全部就不写 types')
+    named = {**{n: t['id'] for t in d['types'] for n in t.get('other_names', [])}, **{t['name']: t['id'] for t in d['types']}, **{t['id']: t['id'] for t in d['types']}}   # a type by its English name, its name or an other name
     unknown = [w for w in wanted if w not in named]
     if unknown:
         raise ToolError(f'没有已确认的类型「{"、".join(unknown)}」。有的类型：' + '、'.join(f'{t["name"]}（{t["id"]}）' for t in d['types']))
@@ -528,6 +531,9 @@ def _lean(body: dict, keys: tuple, narrow: str = 'ORDER BY 那个数 DESC LIMIT 
     if isinstance(out.get('definitions'), list):
         out['definitions'] = [{k: d[k] for k in ('id', 'kind', 'name', 'state', 'version', 'confirmed_by', 'says') if k in d and not (k == 'state' and d[k] == 'confirmed')}
                               if isinstance(d, dict) else d for d in out['definitions']]
+    if isinstance(out.get('beside'), dict):   # the other readings beside the number: every row or a view, its name, who confirmed it and its own number (no id, no version)
+        out['beside'] = {'views': [{k: v[k] for k in ('all_rows', 'name', 'confirmed_by', 'answer', 'no_data') if k in v} for v in out['beside'].get('views', []) if isinstance(v, dict)],
+                         **({'more': out['beside']['more']} if out['beside'].get('more') else {})}
     answer = out.get('answer')
     if isinstance(answer, dict) and isinstance(answer.get('groups'), list) and len(answer['groups']) > AGENT_GROUPS:
         out['answer'] = {**answer, 'groups': answer['groups'][:AGENT_GROUPS],
@@ -537,8 +543,14 @@ def _lean(body: dict, keys: tuple, narrow: str = 'ORDER BY 那个数 DESC LIMIT 
 
 def ask(s, a):
     body = s.request('/api/workspace/ask', {'question': _text(a.get('question'), 'question')})
-    return _lean(body, ('id', 'question', 'status', 'answer', 'path', 'reason', 'refusal', 'query_text', 'definitions', 'datasets', 'limited_by_rule'),
-                 '把 query_text 加上 ORDER BY 那个数 DESC LIMIT n 或 WHERE，用 ontopoc_query 再跑（不调用模型）')
+    out = _lean(body, ('id', 'question', 'status', 'answer', 'beside', 'path', 'reason', 'refusal', 'query_text', 'definitions', 'datasets', 'limited_by_rule'),
+                '把 query_text 加上 ORDER BY 那个数 DESC LIMIT n 或 WHERE，用 ontopoc_query 再跑（不调用模型）')
+    if body.get('status') in ('answered', 'no_data') and re.search(r'\bWHERE\b', str(body.get('query_text') or ''), re.I):   # the number is the model's reading, not a confirmed view: say so, not "valid orders"
+        where = re.split(r'\bWHERE\b', str(body['query_text']), maxsplit=1, flags=re.I)[1]
+        coded = any(isinstance(d, dict) and d.get('kind') == 'meaning' and str(d.get('name')) in where for d in body.get('definitions') or [])   # as the page's caliber line tells them apart
+        out['filter_note'] = (f'query_text 里 WHERE 的筛选是模型{"按已确认的代码含义" if coded else ""}写的，不是已确认的视图；只有 definitions 里 kind 为 view 的才是已确认的视图。'
+                              '转述这个数时请说明它按的是这个筛选。')
+    return out
 
 
 def ontopoc_query(s, a):
@@ -546,7 +558,7 @@ def ontopoc_query(s, a):
     if a.get('params') is not None:
         body['params'] = a['params']
     body = s.request('/api/workspace/query', body)
-    return _lean(body, ('status', 'answer', 'reason', 'refusal', 'text', 'definitions', 'datasets', 'limited_by_rule'), '要前几名就加 ORDER BY 那个数 DESC LIMIT n，要某一部分就加 WHERE')   # text, not the compiled query: it compiles to it
+    return _lean(body, ('status', 'answer', 'beside', 'reason', 'refusal', 'text', 'definitions', 'datasets', 'limited_by_rule'), '要前几名就加 ORDER BY 那个数 DESC LIMIT n，要某一部分就加 WHERE')   # text, not the compiled query: it compiles to it
 
 
 def list_unconfirmed(s, a):
@@ -691,15 +703,15 @@ TOOLS = [
           {**RUN, 'name': {'type': 'string', 'description': '视图的名字，来自 list_proposed_views'},
            'version': {'type': 'integer', 'minimum': 1, 'description': '你看过的那一版，来自 list_proposed_views 里这条的 version'}}, ('saved_as', 'name', 'version')),
     _tool(find_name_variants, '找出同一类对象里可能是同一个东西的不同写法，只给建议、不合并。会调用模型。', RUN, ('saved_as',)),
-    _tool(describe_definitions, '团队已经确认的业务定义：对象类型（属性、主键、代码的含义）、关系、视图（取哪些行）、派生属性（怎么算），每条带谁确认、确认于哪个数据版本；还有拒答规则 rules。'
-          '属性只有 column 和 type；name 只在和列名不同时给，code 只在是代码列时给。定义多时给 types，只取这几个类型和连着它们的关系、视图、派生属性。只是读，可以重试。'
+    _tool(describe_definitions, '团队已经确认的业务定义：对象类型（属性、主键、代码的含义、每一行都满足的值规则 value_rules）、关系、视图（取哪些行）、派生属性（怎么算），每条带谁确认、确认于哪个数据版本；还有拒答规则 rules。'
+          '属性只有 column 和 type；name 只在和列名不同时给，other_names（另称，问题里用它和用名字一样）只在有时给，code 只在是代码列时给。定义多时给 types，只取这几个类型和连着它们的关系、视图、派生属性。只是读，可以重试。'
           '只有已确认的、令牌的主人看得到的；没有数据行，没有全部数据的行数。不在这里的东西没有定义：不要猜，照 rules 拒答。',
-          {'types': {'type': 'array', 'items': {'type': 'string'}, 'description': '只要这几个类型（英文名或中文名），不写就是全部'}}),
-    _tool(ask, '只在写不出 ontopoc_query 时用（问题里的说法对不上任何属性或关系，要模型来理解）：用已确认的定义回答一句话问的业务问题（模型把问题写成查询，代码在数据上算）。答得出来给 answer 和它用到的定义 definitions；用到的定义没确认、问题超出范围、取值没有含义时是拒绝：'
+          {'types': {'type': 'array', 'items': {'type': 'string'}, 'description': '只要这几个类型（英文名、名字或另称），不写就是全部'}}),
+    _tool(ask, '只在写不出 ontopoc_query 时用（问题里的说法对不上任何属性或关系，要模型来理解）：用已确认的定义回答一句话问的业务问题（模型把问题写成查询，代码在数据上算）。答得出来给 answer 和它用到的定义 definitions；beside 里是同一个问法换成别的行算出的数：answer 算的是全部能看的行时，是这个类型上每个已确认视图各自的数和确认人；answer 只算一个已确认视图时，第一条（all_rows）是全部行的数。转述时把它们一起说。用到的定义没确认、问题超出范围、取值没有含义时是拒绝：'
           'status 是 refused 或 ontology_gap / query_limit / definition_unmet，reason 说原因，refusal 说拒绝的种类和涉及的定义。拒绝就把原因原样转告人，不要换问法绕过，更不要自己猜一个答案。'
           'query_text 是这道题写成的本体查询，改条件、重跑都用 ontopoc_query，不再调用模型。会调用模型，慢且花钱；每问一次都记进问答历史、算一次提问，不要为了重试再问。',
           {'question': {'type': 'string', 'maxLength': 300, 'description': '要问的业务问题'}}, ('question',)),
-    _tool(ontopoc_query, '用本体查询（OntoPoc Query，像 SQL）直接算一个数：代码按令牌主人能看的行和已确认的定义算，不调用模型，快，结果和 ask 一样带 definitions 和 limited_by_rule。'
+    _tool(ontopoc_query, '用本体查询（OntoPoc Query，像 SQL）直接算一个数：代码按令牌主人能看的行和已确认的定义算，不调用模型，快，结果和 ask 一样带 definitions 和 limited_by_rule；没有条件时还带 beside（这个类型上每个已确认视图各自的数）。'
           '写法：SELECT 分组列, 一个数 FROM 路径 [WHERE 条件 AND …] [GROUP BY 分组列] [ORDER BY 那个数 DESC|ASC] [LIMIT n]。'
           '路径沿已确认的关系走，不写 JOIN：(o:订单)-[:订单买的产品]->(p:产品)，几条路径用逗号隔开，(o) 再次出现是同一个对象。'
           '一个数是 count(o)、sum(o.金额)、avg(o.金额) 或 share(o.状态码 = \'已取消\')（占比）；SELECT 里其余的列要写进 GROUP BY。'

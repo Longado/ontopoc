@@ -189,3 +189,28 @@ class DerivedNewValueTests(PilotFoundation):
             snapshot = json.loads(conn.execute('SELECT snapshot_json FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1', (DERIVED,)).fetchone()[0])
             conn.close()
             self.assertEqual(snapshot['new_values'], [{'column': 'status_code', 'value': '6', 'label': '暂停', 'rows': NEW_ROWS, 'choice': 'in'}])
+
+
+class ViewReasonOnceTests(PilotFoundation):
+    def test_a_view_with_several_conditions_on_one_column_asks_about_the_new_value_once(self):
+        with self.service() as (base, out):
+            team = self.foundation(base)
+            status, body = team['ann'].post('/api/workspace/datasets/upload', {'files': [part('orders_update.csv', target='orders', mode='update_by_key', key_columns=['order_id'])]})
+            self.assertEqual(status, 200, body)
+            view = self.view(team['bob'])
+            self.assertEqual(view['state'], 'needs_look')
+            self.assertEqual(view['reason'].count('出现了新值'), 1, view['reason'])   # three "is not" conditions on status_code: one question, not three
+
+    def test_a_column_with_an_is_condition_says_a_new_value_is_left_out(self):
+        with self.service() as (base, out):
+            team = self.foundation(base)
+            ann, bob = team['ann'], team['bob']
+            mixed = {'name': '发货未取消', 'type': 'order', 'filters': [{'column': 'status_code', 'op': 'is', 'label': '已发货'}, {'column': 'status_code', 'op': 'is_not', 'label': '已取消'}]}
+            self.assertEqual(ann.post('/api/workspace/types/views', mixed)[0], 200)
+            view = next(v for v in bob.get('/api/workspace/types/order/views')[1]['views'] if v['name'] == '发货未取消')
+            self.assertEqual(bob.post('/api/workspace/types/views/confirm', {'id': '发货未取消', 'version': view['version'], 'seen': view['seen']})[0], 200)
+            status, body = ann.post('/api/workspace/datasets/upload', {'files': [part('orders_update.csv', target='orders', mode='update_by_key', key_columns=['order_id'])]})
+            self.assertEqual(status, 200, body)
+            view = next(v for v in bob.get('/api/workspace/types/order/views')[1]['views'] if v['name'] == '发货未取消')
+            self.assertIn('不会算进来', view['reason'])   # 6 is not 已发货: the "is" keeps it out, whatever the "is not" says
+            self.assertNotIn('会算进来。', view['reason'].replace('不会算进来', ''))

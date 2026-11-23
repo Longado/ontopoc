@@ -37,6 +37,7 @@ ROUTES: list[tuple[str, str, str]] = [
     ('POST', r'/api/workspace/dashboards(/(update|delete|preview))?', 'builder'),
     ('GET', r'/api/workspace/agent/(definitions|unconfirmed)', 'viewer'),   # what an outside agent reads, as the token's person (agent_access)
     ('GET', r'/api/workspace/agent/standing', 'viewer'),   # whether each definition the person may see is confirmed, by whom, on which data; ?id= one, ?format=csv the confirmed ones (agent_access.standing)
+    ('GET', r'/api/workspace/agent/schema', 'viewer'),   # the same confirmed definitions as OWL and SHACL files, schema only; ?file=ontology or shapes for one (owl_export)
     ('GET', r'/api/workspace/agent/derived', 'viewer'),   # answered 405 with the way to ask: it is a POST now
     ('POST', r'/api/workspace/agent/derived', 'viewer'),   # a POST so that the key of the object read is not in an address a proxy logs; nothing is written
     ('GET', r'/api/workspace/agent(/skill)?', 'builder'),   # the page of what an agent can call, and the skill download
@@ -84,6 +85,8 @@ ROUTES: list[tuple[str, str, str]] = [
     ('POST', r'/api/workspace/receipt', 'builder'),   # what a confirmation changed: worked out on a copy, so not a GET a read-only token could make (workspace_receipt)
     ('POST', r'/api/workspace/checked', 'builder'),   # record the number the team trusts for a board card or one's own saved answer (checked_numbers); a viewer reads only the mark on a board
     ('GET', r'/api/workspace/checked/question/[0-9]+', 'builder'),   # the check of one's own saved answer, worked out again: nobody else's question
+    ('GET', r'/api/workspace/needed', 'builder'),   # the team's questions we need, with their expectations and the last run's results; refused to a builder a rule limits (needed_questions)
+    ('POST', r'/api/workspace/needed(/(update|delete|confirm|run))?', 'builder'),   # write, confirm and run them: a person signed in only (SIGNED_IN_POSTS, PERSON_ONLY_POSTS)
 ]
 _COMPILED = [(method, re.compile(pattern), role) for method, pattern, role in ROUTES]
 
@@ -121,12 +124,17 @@ PERSON_ONLY_POSTS = (
     '/api/workspace/queue/confirm',           # any of the above from the review queue
     '/api/workspace/queue/confirm-group',     # what one upload moved, confirmed together
     '/api/workspace/checked',                 # "checked by <person>" on a board card or a saved answer: the mark carries a person's name
+    '/api/workspace/needed/confirm',          # what a question on the list of questions we need should give, confirmed by a person
 )
+
+# What a token may not do either, though no one vouches by it: write a question we need with what it should give (it is proposed by a named person, like the
+# confirmation it waits for), and start a run of the list (one action that makes many model calls on its own budget line, started by a person at the page).
+SIGNED_IN_POSTS = ('/api/workspace/needed', '/api/workspace/needed/update', '/api/workspace/needed/delete', '/api/workspace/needed/run')
 
 
 def token_allows(method: str, path: str) -> bool:
-    """Whether a request that carries a token (of any scope) may call this route at all: everything but the acts in PERSON_ONLY_POSTS."""
-    return not (method == 'POST' and path in PERSON_ONLY_POSTS)
+    """Whether a request that carries a token (of any scope) may call this route at all: everything but the acts in PERSON_ONLY_POSTS and SIGNED_IN_POSTS."""
+    return not (method == 'POST' and (path in PERSON_ONLY_POSTS or path in SIGNED_IN_POSTS))
 
 
 def required_role(method: str, path: str) -> str:

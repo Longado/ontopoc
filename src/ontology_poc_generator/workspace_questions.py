@@ -16,15 +16,16 @@ from datetime import datetime, timedelta, timezone
 import json
 import re
 
-from ontology_poc_generator.answer_checks import _use, _uses, choose_rows, column_values, definition_catalog, definition_check, refusal
+from ontology_poc_generator import other_names
+from ontology_poc_generator.answer_checks import _use, _uses, choose_rows, column_values, definition_catalog, definition_check, meaning_id, picks_objects, refusal
 from ontology_poc_generator.derived_properties import derived_visible, describe as describe_derived, evaluate as evaluate_derived, text_of
 from ontology_poc_generator.named_views import name_views
 from ontology_poc_generator.object_relations import CARDINALITY, _relation_visible, cardinality_false, check_relation, relation_id
 from ontology_poc_generator.object_types import (
     CAUSE_WORDS, DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, _confirmers, _content, _visible, _waiting_line, dataset_columns, element_row, enum_id, reason_for,
-    stale_word, type_id, waiting_for_viewer)
+    _latest_counts, presented_row, rules_untrusted, settle_rules, stale_word, type_id, waiting_for_viewer)
 from ontology_poc_generator.ontopoc_query import QueryError, canonical as canonical_query, compile_query, is_graph, parse as parse_query, to_text
-from ontology_poc_generator.object_views import describe, kept_positions, view_visible
+from ontology_poc_generator.object_views import describe, kept_positions, view_id, view_visible, view_waiting_for_viewer
 from ontology_poc_generator.agent_harness import ask_model
 from ontology_poc_generator.ontology_questions import _catalog, _resolve_field, answer_query, ask_questions, graph_objects
 from ontology_poc_generator.public_ontology import build_graph, normalize_proposal
@@ -32,10 +33,12 @@ from ontology_poc_generator.recognition import model_failure_text
 from ontology_poc_generator.relation_checks import unmatched_answer, with_relation_gaps
 from ontology_poc_generator.row_rules import describe as describe_limit, limit_as_list, positions as row_positions, restriction
 from ontology_poc_generator.type_access import hidden_columns, hidden_values, reads_hidden, visible_type_ids
-from ontology_poc_generator.workspace_store import current_dataset, dataset_records
+from ontology_poc_generator.workspace_store import current_dataset, dataset_records, fan_pipelines, not_measured, shown_pipeline
 from ontology_poc_generator.lang import english, tr
 
 MAX_QUESTION = 300
+ADD_BESIDE = True   # whether an answer on every row, or on one confirmed view, also shows the other readings beside it (_beside); off, answers are worked out as before
+BESIDE_LIMIT = 5
 HISTORY_LIMIT = 100
 VIEWERS_TOLD_WHAT_WAITS = False   # whether a viewer's refusal names the definition that waits and whom it waits for (off: a viewer is told only that the answer waits; builders and admins get the name and who can confirm)
 ROW_KEYS = {'examples', 'without_value_examples', 'unreadable_examples', 'keys', 'samples'}   # the objects behind a count: a viewer reads the counts and not these
@@ -71,7 +74,12 @@ def scope(conn, user: dict | None) -> dict:
     properties whose types and relations are all among them and that read no column marked "don't send values".
     The ones that do read such a column are in 'derived_kept_back' (same shape): not for the model, but a person or an agent may still be told they exist."""
     types, meanings, relations, views, derived, kept_back = {}, {}, {}, {}, {}, {}
-    for name in visible_type_ids(conn, user, confirmed_only=True):
+    settle_rules(conn)   # a confirmed type whose value rules are not known to hold on its data is judged first (counted, and sent back if a rule is broken)
+    latest, untrusted = _latest_counts(conn), {}
+    for name in visible_type_ids(conn, user, confirmed_only=True, as_stored=True):   # as stored: the invariant is applied just below, and says why
+        if (verdict := rules_untrusted(conn, type_id(name), latest)) is not None:   # still not known to hold (inside the caller's transaction nothing is judged): not used
+            untrusted[name] = verdict
+            continue
         row = element_row(conn, type_id(name))
         content = _content(row)
         dataset = current_dataset(conn, content['dataset'])
@@ -104,7 +112,7 @@ def scope(conn, user: dict | None) -> dict:
         read += [(content['types'][-1], f['column']) for f in content['conditions']]   # what it says names the meaning of that column, as a view's conditions do
         if all(t in types for t in content['types']) and all(r in relations for r in content['path']) and derived_visible(conn, row, user):
             (kept_back if any(c in hidden_values(conn, type_id(t)) for t, c in read) else derived)[element_id] = {'row': row, 'content': content}
-    return {'types': types, 'meanings': meanings, 'relations': relations, 'views': views, 'derived': derived, 'derived_kept_back': kept_back, 'user': user}
+    return {'types': types, 'meanings': meanings, 'relations': relations, 'views': views, 'derived': derived, 'derived_kept_back': kept_back, 'user': user, 'untrusted': untrusted}
 
 
 def _unsettled(conn, user: dict | None) -> list[dict]:
@@ -112,7 +120,7 @@ def _unsettled(conn, user: dict | None) -> list[dict]:
     for a reason a builder can do something about. A viewer sees none (they see only confirmed ones)."""
     out = []
     for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objtype:%' OR element_id LIKE 'relation:%' OR element_id LIKE 'objview:%' OR element_id LIKE 'derived:%' ORDER BY element_id").fetchall():
-        row = element_row(conn, element_id)
+        row = presented_row(conn, element_row(conn, element_id))   # a type whose value rules are not known to hold is left out, and says why
         if row['state'] == 'confirmed':
             continue
         visible = (_visible(conn, row, user) if element_id.startswith(TYPE_PREFIX) else view_visible(conn, row, user) if element_id.startswith(VIEW_PREFIX)
@@ -208,23 +216,84 @@ def _named(question: str, text: str) -> bool:
     plural or singular ("customers" for the type "customer"); a name in words is a substring."""
     if text.isascii():
         return re.search(rf'(?<![A-Za-z0-9])(?:{"|".join(re.escape(f) for f in _number_forms(text))})(?![A-Za-z0-9])', question, re.I) is not None
-    return text in question
+    return text.casefold() in question.casefold()   # a name with Chinese in it (VIP大单) matches whatever the case of its Latin letters
+
+
+def _names(question: str, content: dict, key: tuple, muted: frozenset, *names: str) -> bool:
+    """Does the question say one of these names of a definition (`key`, as other_names.entries_of keys it), or one of its other names (other_names.heard, ignoring
+    case and width), somewhere it is not inside a longer name of another definition (`muted`, from _muted)?"""
+    folded = other_names.fold(question)
+    return (any(_named(question, n) and (key, n) not in muted for n in names)
+            or any(_named(folded, other_names.fold(n)) and (key, n) not in muted for n in other_names.heard(content)))
+
+
+def _seen_names(conn, user: dict | None) -> list[dict]:
+    """The names and heard other names of every definition this person may see (other_names.entries_of): types (also one that waits for them), the properties they
+    may read, meanings, views and derived properties. One nobody lets them see says nothing about what they asked."""
+    out = []
+    for element_id, content_json in conn.execute("SELECT element_id, content_json FROM element_state WHERE (element_id LIKE 'objtype:%' OR element_id LIKE 'objview:%' "
+                                                 "OR element_id LIKE 'derived:%' OR element_id LIKE 'enum:%') AND content_json IS NOT NULL ORDER BY element_id").fetchall():
+        row = element_row(conn, element_id)
+        if element_id.startswith(TYPE_PREFIX):
+            seen = _visible(conn, row, user) or waiting_for_viewer(conn, row, user)
+        elif element_id.startswith(VIEW_PREFIX):
+            seen = view_visible(conn, row, user) or view_waiting_for_viewer(conn, row, user)
+        elif element_id.startswith(DERIVED_PREFIX):
+            seen = derived_visible(conn, row, user)
+        else:
+            seen = _may_see(conn, user, element_id)
+        if not seen:
+            continue
+        hidden = hidden_columns(conn, element_id, user) if element_id.startswith(TYPE_PREFIX) else set()
+        out += [e for e in other_names.entries_of(element_id, json.loads(content_json)) if (other_names.HEARD or not e['other']) and not (e['kind'] == 'property' and e['key'][2] in hidden)]
+    return out
+
+
+def _places(folded: str, text: str) -> list[tuple[int, int]]:
+    """Where `_named` finds this name in the (folded) question, as (start, end)."""
+    t = other_names.fold(text)
+    if not t:
+        return []
+    if t.isascii():
+        return [m.span() for m in re.finditer(rf'(?<![A-Za-z0-9])(?:{"|".join(re.escape(f) for f in _number_forms(t))})(?![A-Za-z0-9])', folded, re.I)]
+    out, at = [], folded.find(t)
+    while at >= 0:
+        out.append((at, at + len(t)))
+        at = folded.find(t, at + 1)
+    return out
+
+
+def _muted(conn, user: dict | None, question: str | None) -> frozenset:
+    """{(definition key, other name)}: other names the question says only inside a longer name or other name of another definition this person may see, wholly
+    holding it at that place (names that only overlap mute nothing). A definition's own name is never muted, so everything heard through names is heard as it
+    always was: other names can only add hearing, and a longer name can only take away hearing an other name added (客户, Customer's other name on the demo, inside
+    the property's 客户号). Empty when nothing has an other name, or HEARD is off."""
+    if not question:
+        return frozenset()
+    names = _seen_names(conn, user)
+    if not any(e['other'] for e in names):
+        return frozenset()
+    folded = other_names.fold(question)
+    found = [(e['key'], e['text'], e['other'], s, t) for e in names for s, t in _places(folded, e['text'])]
+    inside = lambda a, b: a[2] and a[0] != b[0] and b[3] <= a[3] and a[4] <= b[4] and b[4] - b[3] > a[4] - a[3]   # a: an other name; b: anything longer holding it
+    heard = {(a[0], a[1]) for a in found if not any(inside(a, b) for b in found)}
+    return frozenset((a[0], a[1]) for a in found if (a[0], a[1]) not in heard)
 
 
 def _blockers(conn, user: dict | None, question: str) -> list[dict]:
-    """The unsettled definitions this person may see that the question names: a type by its name, a relation when both its types are named. A relation
-    or type nobody may see is not looked for, so nothing is said about it."""
-    out = []
+    """The unsettled definitions this person may see that the question names: a type by its name (or an other name), a relation when both its types are named. A
+    relation or type nobody may see is not looked for, so nothing is said about it."""
+    out, muted = [], _muted(conn, user, question)
     for line in _unsettled(conn, user):
         row = element_row(conn, line['id'])
         content = _content(row)
         if line['kind'] == 'type':
-            hit = _named(question, content['name']) or _named(question, content['english_name'])
+            hit = _names(question, content, ('type', content['english_name']), muted, content['name'], content['english_name'])
         elif line['kind'] in ('view', 'derived'):
-            hit = _named(question, content['name'])
+            hit = _names(question, content, (line['kind'], line['id']), muted, content['name'])
         else:
             ends = [element_row(conn, type_id(content[e])) for e in ('from', 'to')]
-            hit = all(r and (_named(question, _content(r)['name']) or _named(question, _content(r)['english_name'])) for r in ends)
+            hit = all(r and _names(question, _content(r), ('type', _content(r)['english_name']), muted, _content(r)['name'], _content(r)['english_name']) for r in ends)
         if hit:
             out.append({**line, 'because': _causes(conn, row, user)})
     if user is not None and user['role'] == 'viewer':
@@ -233,19 +302,36 @@ def _blockers(conn, user: dict | None, question: str) -> list[dict]:
 
 
 def _waiting_blockers(conn, user: dict, question: str) -> list[dict]:
-    """For a viewer: the types they may see that were confirmed and now wait for a second look (object_types.waiting_for_viewer), when the question names one.
-    The refusal tells a viewer only that the answer waits (VIEWERS_TOLD_WHAT_WAITS off); turned on, it says what the type list already tells them (its name and who
-    it waits for). Never a reason, a cause, a count or anything of the data."""
-    out = []
+    """For a viewer: the types they may see that were confirmed and now wait for a second look (object_types.waiting_for_viewer), and the views (by their name,
+    object_views.view_waiting_for_viewer), when the question names one."""
+    return _waiting_lines(conn, user, question)
+
+
+def _waiting_lines(conn, user: dict, question: str | None = None) -> list[dict]:
+    """For a viewer, the types and views that were confirmed and now wait for a confirmer (all of them, or those the question names), with their name and who they
+    wait for. What a viewer is told of them is up to VIEWERS_TOLD_WHAT_WAITS (off: only that the answer waits); never a reason, a cause, a count or anything of the
+    data."""
+    out, muted = [], _muted(conn, user, question)
     for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objtype:%' ORDER BY element_id").fetchall():
         row = element_row(conn, element_id)
         if not waiting_for_viewer(conn, row, user):
             continue
         content = _content(row)
-        if _named(question, content['name']) or _named(question, content['english_name']):
+        if question is None or _names(question, content, ('type', content['english_name']), muted, content['name'], content['english_name']):
             waiting = _waiting_line(conn, row, user)
             out.append({'id': element_id, 'kind': 'type', 'name': waiting['name'], 'state': waiting['state'], 'waiting': True, 'who_can_confirm': waiting['waiting_for'], 'because': []})
+    for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objview:%' ORDER BY element_id").fetchall():
+        row = element_row(conn, element_id)
+        content = _content(row)
+        if view_waiting_for_viewer(conn, row, user) and (question is None or _names(question, content, ('view', element_id), muted, content['name'])):
+            out.append({'id': element_id, 'kind': 'view', 'name': content['name'], 'state': 'needs_look', 'waiting': True, 'who_can_confirm': _confirmers(conn, row, user)[1], 'because': [], 'type': content['type']})
     return out
+
+
+def _waiting_text(d: dict) -> str:
+    """A viewer's line for a definition that waits: where it stands and who it waits for, nothing more."""
+    why = tr(f'在等 {"、".join(d["who_can_confirm"])} 再确认', f'waiting for {", ".join(d["who_can_confirm"])} to confirm it again') if d['who_can_confirm'] else _state_words(d['state'])
+    return tr(f'{_kind_word(d["kind"])}「{d["name"]}」：{why}', f'{_kind_word(d["kind"])} "{d["name"]}": {why}')
 
 
 def _refused_unsettled(blockers: list[dict]) -> dict:
@@ -262,10 +348,10 @@ def _refused_unsettled(blockers: list[dict]) -> dict:
                     lines.append({'kind': d['kind'], 'state': d['state'], 'waiting': True, 'text': text})
                 continue
             if d.get('waiting'):   # a viewer's line: where it stands and who it waits for, nothing more
-                why, who = (tr(f'在等 {"、".join(d["who_can_confirm"])} 再确认', f'waiting for {", ".join(d["who_can_confirm"])} to confirm it again') if d['who_can_confirm'] else _state_words(d['state'])), ''
-            else:
-                why = d['reason'] or (f'{d["stale_word"] or tr("要再看一遍", "Needs another look")}{tr("：", ": ")}{d["reason_hidden"]}' if d['reason_hidden'] else _state_words(d['state']))
-                who = tr(f'；可以确认的人：{"、".join(d["who_can_confirm"])}', f'; who can confirm: {", ".join(d["who_can_confirm"])}') if d['who_can_confirm'] else ''
+                lines.append({**d, 'text': _waiting_text(d)})
+                continue
+            why = d['reason'] or (f'{d["stale_word"] or tr("要再看一遍", "Needs another look")}{tr("：", ": ")}{d["reason_hidden"]}' if d['reason_hidden'] else _state_words(d['state']))
+            who = tr(f'；可以确认的人：{"、".join(d["who_can_confirm"])}', f'; who can confirm: {", ".join(d["who_can_confirm"])}') if d['who_can_confirm'] else ''
             lines.append({**d, 'text': tr(f'{_kind_word(d["kind"])}「{d["name"]}」：{why}{who}', f'{_kind_word(d["kind"])} "{d["name"]}": {why}{who}')})
     return {'status': 'refused', 'reason': tr('没有回答：问题用到的定义不是已确认的状态。', 'Not answered: a definition the question uses is not confirmed. ') + tr('；', '; ').join(l['text'] for l in lines),
             'refusal': {'kind': 'unsettled', 'definitions': lines}}
@@ -303,7 +389,7 @@ def _unwalkable(sc: dict) -> list[dict]:
             for r in sc['relations'].values() if (why := _walk_problem(sc, r['content']))]
 
 
-def _inputs(conn, sc: dict) -> dict:
+def _inputs(conn, sc: dict, asked: str = '') -> dict:
     """The ontology, the rows and the meanings in the shape the engine reads: a dataset is a source (its name without dots, which the engine reads as the end of
     a table name), a type is read from its dataset by its key, a property is an attribute, a confirmed relation binds its one side by the key and the many
     side's column. A relation the engine cannot bind (a one side that is not keyed on the joined column, or a relation between one type) stays out of the
@@ -324,7 +410,7 @@ def _inputs(conn, sc: dict) -> dict:
         extra[content['type']] = [*extra.get(content['type'], []), {'source': source, 'path': content['name']}]
         derived_attrs[f'{source}.{content["name"]}'] = {'element': element_id, 'type': result['output_type'], 'says': describe_derived(conn, content), 'name': content['name'],
                                                         'source': alias[sc['types'][content['types'][-1]]['dataset']['name']], 'conditions': content['conditions']}   # the table its rows are counted from, and by which conditions (answer_checks)
-        derived_attrs[f'{source}.{content["name"]}'].update(exact=_each_row_once(conn, sc, content), waiting=_waiting_views(conn, sc, content), fn=content['fn'])   # whether it can stand for a view's rows (answer_checks)
+        derived_attrs[f'{source}.{content["name"]}'].update(**_each_row_once(conn, sc, content), waiting=_waiting_views(conn, sc, content), fn=content['fn'])   # whether it can stand for a view's rows (answer_checks)
     object_types = [{'key': k, 'label': t['content']['name'], 'populated_from': [{'source': alias[t['dataset']['name']], 'identity': {c: c for c in t['content']['key']}}],
                      'attributes': [*({'source': alias[t['dataset']['name']], 'path': p['column']} for p in t['content']['properties']), *extra.get(k, [])]} for k, t in sc['types'].items()]
     relations, unusable = [], []
@@ -339,32 +425,94 @@ def _inputs(conn, sc: dict) -> dict:
                           'source': alias[sc['types'][c[many]]['dataset']['name']], f'{one}_identity': {one_key[0]: c[f'{many}_column']}})
     sources = {source: {'records': [r for _, r in kept], 'requests': []} for source, kept in rows.items()}
     meanings = {f'{alias[sc["types"][k]["dataset"]["name"]]}.{column}': {'labels': m['labels']} for k, cols in sc['meanings'].items() for column, m in cols.items()}
+    fan, unmeasured = _fanned(conn, sc, alias), _unmeasured(conn, sc, alias)
     return {'ontology': {'object_types': object_types, 'relations': relations, 'ignored_fields': [], 'open_questions': []}, 'alias': alias, 'unusable': unusable, 'derived': derived_attrs,
-            'bundle': {'decision': '', 'sources': sources, 'meanings': meanings}, 'views': _engine_views(conn, sc, alias, sources)}
+            'bundle': {'decision': '', 'sources': sources, 'meanings': meanings, **({'fan': fan} if fan else {}), **({'unmeasured': unmeasured} if unmeasured else {})},
+            'views': _engine_views(conn, sc, alias, sources),
+            'also': _also(sc, alias, _muted(conn, sc['user'], asked))}
 
 
-def _each_row_once(conn, sc: dict, content: dict) -> bool:
-    """Whether every row of the type a derived statistic counts reaches exactly one object of its own type, by the relations' checks now (over the rows this
-    person may read): each hop goes from the one side to the many side, every row of the many side is matched (no empty or missing key) and the one side's key
-    does not repeat. Only then do its values, added up over the objects, add up to the rows themselves; a row whose key names nothing would be dropped, a key
-    that repeats would count a row twice, and a hop toward the one side (or a many-to-many one) repeats what it reaches."""
+def _unmeasured(conn, sc: dict, alias: dict) -> dict:
+    """{table: {'dataset', 'version', 'pipeline'}} for the dataset versions the types read that a pipeline wrote before copies were measured
+    (workspace_store.not_measured); 'pipeline' is the one to run again, None when this person may not open it."""
+    out = {}
+    for t in sc['types'].values():
+        d = t['dataset']
+        if alias[d['name']] not in out and (pipeline := not_measured(conn, d['id'])):
+            out[alias[d['name']]] = {'dataset': d['name'], 'version': d['version'], 'pipeline': shown_pipeline(conn, pipeline, sc['user'])}
+    return out
+
+
+def _fanned(conn, sc: dict, alias: dict) -> dict:
+    """{"table.path": the pipeline, None when this person may not open it}: the columns of the dataset version each type reads that a pipeline wrote as a figure a join repeated (workspace_store.fan_marks),
+    and the confirmed derived functions worked out from one of them (a copy of a repeated figure repeats too). The engine refuses to add them up or average them."""
+    out = {}
+    for t in sc['types'].values():
+        marked = fan_pipelines(conn, t['dataset']['id'], sc['user'])
+        out |= {f'{alias[t["dataset"]["name"]]}.{column}': pipeline for column, pipeline in marked.items()}
+    for d in sc['derived'].values():
+        content, owner = d['content'], sc['types'][d['content']['type']]
+        marked = fan_pipelines(conn, owner['dataset']['id'], sc['user'])
+        hit = [i['column'] for i in content.get('inputs') or [] if i.get('column') in marked] if content['kind'] == 'function' else []
+        if hit:
+            out[f'{alias[owner["dataset"]["name"]]}.{content["name"]}'] = marked[hit[0]]
+    return out
+
+
+def _also(sc: dict, alias: dict, muted: frozenset = frozenset()) -> dict:
+    """The other names heard in a question (other_names.heard), of the confirmed definitions in scope, in the shape answer_checks reads: {'views': {name: names},
+    'meanings': {meaning id: names}, 'columns': {"dataset.column": the other names of its property}, 'by_field': {"dataset.column": {label: names}}, 'muted':
+    {'views': {name: names}, 'meanings': {meaning id: names}}: the names and other names the question says only inside a longer name of another definition
+    (_muted)}. Empty while HEARD is off or nothing in scope has one."""
+    out = {'views': {}, 'meanings': {}, 'columns': {}, 'by_field': {}, 'muted': {'views': {}, 'meanings': {}}}
+    for key, text in muted:
+        if key[0] == 'view':
+            out['muted']['views'].setdefault(key[1][len(VIEW_PREFIX):], set()).add(text)
+        elif key[0] == 'meaning' and key[1] in sc['types']:
+            out['muted']['meanings'].setdefault(meaning_id(f'{alias[sc["types"][key[1]]["dataset"]["name"]]}.{key[2]}', key[3]), set()).add(text)
+    if not other_names.HEARD:
+        return out
+    for name, v in sc['views'].items():
+        if other_names.of(v['content']):
+            out['views'][name] = other_names.of(v['content'])
+    for k, t in sc['types'].items():
+        source = alias[t['dataset']['name']]
+        for p in t['content']['properties']:
+            if other_names.of(p):
+                out['columns'][f'{source}.{p["column"]}'] = other_names.of(p)
+        for column, m in sc['meanings'].get(k, {}).items():
+            for label, names in other_names.meaning_names(_content(m['row'])['values']).items():
+                out['meanings'][meaning_id(f'{source}.{column}', label)] = names
+                kept = [n for n in names if n not in out['muted']['meanings'].get(meaning_id(f'{source}.{column}', label), ())]
+                if kept:   # what says a filter's value: this column's meanings only
+                    out['by_field'].setdefault(f'{source}.{column}', {})[label] = kept
+    return out
+
+
+def _each_row_once(conn, sc: dict, content: dict) -> dict:
+    """{'once', 'exact'} for the rows of the type a derived statistic counts, by the relations' checks now (over the rows this person may read). 'once': no row
+    is counted for more than one object: each hop goes from the one side to the many side and the one side's key does not repeat (a hop toward the one side, or
+    a many-to-many one, repeats what it reaches; a key that repeats counts a row twice). 'exact': also every row of the many side is matched (no empty or missing
+    key), so every row reaches exactly one object. Only then do its values, added up over all the objects, add up to the rows themselves; added up over
+    particular objects they are those objects' own rows as soon as 'once' holds."""
     if content['kind'] != 'statistic':
-        return False
-    here = content['type']
+        return {'once': False, 'exact': False}
+    here, reaches_all = content['type'], True
     for key in content['path']:
         relation = sc['relations'].get(key)
         if relation is None:
-            return False
+            return {'once': False, 'exact': False}
         c = relation['content']
         many = {'many_to_one': 'from', 'one_to_many': 'to'}.get(c['cardinality'])
         if many is None or c['from'] == c['to'] or c[many] == here:
-            return False
+            return {'once': False, 'exact': False}
         result = check_relation(conn, c, record=False, user=sc['user'], examples=False)
         n = result.get('numbers')
-        if result['problems'] or not n or n['matched'] != n['rows'] or n['fan_keys'] or n['extra_rows']:
-            return False
+        if result['problems'] or not n or n['fan_keys'] or n['extra_rows']:
+            return {'once': False, 'exact': False}
+        reaches_all = reaches_all and n['matched'] == n['rows']
         here = c[many]
-    return True
+    return {'once': True, 'exact': reaches_all}
 
 
 def _waiting_views(conn, sc: dict, content: dict) -> list[str]:
@@ -426,17 +574,25 @@ def _catalog_for_model(conn, sc: dict, parts: dict) -> tuple[dict, list[dict]]:
     for entry in catalog['object_types']:
         t = sc['types'][entry['key']]
         kinds = {p['column']: p['type'] for p in t['content']['properties']}
+        called = {p['column']: other_names.heard(p) for p in t['content']['properties'] if other_names.heard(p)}   # the properties this person may read: the hidden ones are not in the content
         entry['description'] = t['content'].get('description') or ''
+        if other_names.heard(t['content']):
+            entry['also_called'] = other_names.heard(t['content'])
         for a in entry['attributes']:
             if a['path'] in kinds:
                 a['type'] = kinds[a['path']]
+            if a['path'] in called:
+                a['also_called'] = called[a['path']]
             if f'{alias[t["dataset"]["name"]]}.{a["path"]}' in parts['derived']:   # a derived value: its kind and what it says, never its values (they are worked out from rows)
                 a.update(type=parts['derived'][f'{alias[t["dataset"]["name"]]}.{a["path"]}']['type'], computed_as=parts['derived'][f'{alias[t["dataset"]["name"]]}.{a["path"]}']['says'])   # not `derived`: that word is the query's formula measure
                 a.pop('values', None)
+                if other_names.heard(sc['derived'][parts['derived'][f'{alias[t["dataset"]["name"]]}.{a["path"]}']['element']]['content']):
+                    a['also_called'] = other_names.heard(sc['derived'][parts['derived'][f'{alias[t["dataset"]["name"]]}.{a["path"]}']['element']]['content'])
             if f'{alias[t["dataset"]["name"]]}.{a["path"]}' in hidden or a['path'] in t['content']['key']:
                 a.pop('values', None)
                 a.pop('meanings', None)
-    return catalog, definition_catalog(sent, parts['views'])
+    told = {'views': parts['also']['views'], 'meanings': {i: n for i, n in parts['also']['meanings'].items() if any(i.startswith(f'{f}=') for f in sent)}}   # not the meanings of a column whose values are kept from the model
+    return catalog, definition_catalog(sent, parts['views'], told)
 
 
 def _checked_relations(conn, sc: dict, parts: dict) -> list[dict]:
@@ -530,28 +686,32 @@ def _clean_question(question) -> str:
 
 
 def _engine(sc: dict, parts: dict, relations: list[dict]):
-    """answer(query, asked, used=None, check=True, told=None): one structured query run on the rows this person may read, with the definitions checked, the
-    views it names applied and what it stood on said; the views the last run read are kept in answer.applied. The same for Q&A and OntoPoc Query."""
+    """answer(query, asked, used=None, check=True, told=None, instead=None): one structured query run on the rows this person may read, with the definitions
+    checked, the views it names applied and what it stood on said; the views the last run read are kept in answer.applied. `instead`: read these views (none:
+    every row) in place of the ones checked, for a number beside the answer; answer.applied is then left as it was. The same for Q&A and OntoPoc Query."""
     ontology, bundle = parts['ontology'], parts['bundle']
     graph = build_graph(ontology, bundle)
     applied = []   # the views the last answer was worked out from, kept for the definitions it stood on
     held = column_values(bundle, bundle['meanings'], ontology, graph)   # what a filter that leaves codes out lets through
 
-    def answer(query, asked, used=None, check=True, told=None):
-        checked = definition_check(asked, query, ontology, parts['views'], bundle['meanings'], used, told, values=held, derived=parts['derived'])
+    def answer(query, asked, used=None, check=True, told=None, instead=None):
+        checked = definition_check(asked, query, ontology, parts['views'], bundle['meanings'], used, told, values=held, derived=parts['derived'],
+                                   picks=isinstance(query, dict) and picks_objects(query, ontology, bundle, graph), also=parts['also'])
         if checked['unmet']:
             return {**refusal(checked['unmet']), 'understood': checked['understood']}
+        read_views = checked['apply'] if instead is None else instead   # `instead`: other views than the ones checked, for a number beside the answer
         reading, reading_graph = bundle, graph
-        if checked['apply']:   # the rows the views keep, in every table they are about (a row all of them keep)
+        if read_views:   # the rows the views keep, in every table they are about (a row all of them keep)
             kept = {}
-            for v in checked['apply']:
+            for v in read_views:
                 kept[v['source']] = set(v['positions']) if v['source'] not in kept else kept[v['source']] & set(v['positions'])
             chosen = choose_rows(ontology, bundle, kept)
             reading = {**bundle, 'sources': {**bundle['sources'], **{t: {**bundle['sources'][t], 'records': r} for t, r in chosen.items()}}}
             reading_graph = build_graph(ontology, reading)
-        applied[:] = checked['apply']
-        now = name_views(with_relation_gaps(answer_query(ontology, reading, query, asked, reading_graph), query, ontology, relations), query, ontology, checked['apply'], None)
-        by = {v['name']: v['confirmed_by'] for v in checked['apply']}
+        if instead is None:
+            applied[:] = checked['apply']
+        now = name_views(with_relation_gaps(answer_query(ontology, reading, query, asked, reading_graph, also=_said_by(parts, query)), query, ontology, relations), query, ontology, read_views, None)
+        by = {v['name']: v['confirmed_by'] for v in read_views}
         if (now.get('evidence') or {}).get('views'):   # the answer says who stands behind each view it read
             now = {**now, 'evidence': {**now['evidence'], 'views': [{**v, 'confirmed_by': by[v['name']]} for v in now['evidence']['views']]}}
         return {**now, 'understood': checked['understood']} if checked['understood'] else now
@@ -559,13 +719,24 @@ def _engine(sc: dict, parts: dict, relations: list[dict]):
     return answer
 
 
-def _finish(conn, user: dict | None, sc: dict, parts: dict, item: dict, applied: list, spec=None) -> dict:
-    """The answer as it is returned and kept: what it read, the definitions it stood on, the refusal's scope, the row rules that limited it, the steps."""
+def _said_by(parts: dict, query) -> dict:
+    """{column: {label: other names}} of the meanings of the columns of the type the query starts from: what may say a filter's value in the question
+    (ontology_questions.flag_unasked_filters). A meaning of another type's column never does."""
+    start = next((t for t in parts['ontology']['object_types'] if isinstance(query, dict) and t['key'] == query.get('start')), None)
+    sources = {p['source'] for p in start['populated_from']} if start else set()
+    return {field.partition('.')[2]: labels for field, labels in parts['also']['by_field'].items() if field.partition('.')[0] in sources}
+
+
+def _finish(conn, user: dict | None, sc: dict, parts: dict, item: dict, applied: list, spec=None, beside=None) -> dict:
+    """The answer as it is returned and kept: what it read, the definitions it stood on, the refusal's scope, the row rules that limited it, the steps.
+    `beside`: (the engine, the question) to add the other readings beside it (_beside)."""
     query = item.get('query') if isinstance(item.get('query'), dict) and item['query'].get('start') in sc['types'] else None
     read, walked, fields = _reads(sc, parts, query, item.get('definitions_used') or [], spec) if item['status'] in ('answered', 'no_data') else ([], [], set())
     lines, types, datasets = _used_definitions(conn, sc, parts, read, walked, fields, applied if item['status'] in ('answered', 'no_data') else [])
     result = {key: item[key] for key in ('status', 'answer', 'path', 'reason', 'reasoning', 'query', 'evidence', 'understood', 'unmet', 'definitions_used') if key in item}
-    if item['status'] in ('ontology_gap', 'query_limit') and not item.get('from_relation_check'):
+    if item.get('fan'):   # a figure a join copied, or a version whose copies were never measured: its own kind of refusal
+        result['refusal'] = {'kind': item['fan'], **(item.get('fan_detail') or {})}
+    elif item['status'] in ('ontology_gap', 'query_limit') and not item.get('from_relation_check'):
         result['refusal'] = {'kind': 'not_in_scope', 'in_scope': [t['content']['name'] for t in sc['types'].values()], 'left_out': [*_unsettled(conn, user), *_unwalkable(sc)]}
     elif item['status'] == 'definition_unmet':
         result['refusal'] = {'kind': 'definition_unmet', 'definitions': item.get('unmet') or []}
@@ -574,11 +745,40 @@ def _finish(conn, user: dict | None, sc: dict, parts: dict, item: dict, applied:
         result['limited_by_rule'] = limited
     held = {t['dataset']['name']: t['dataset'] for t in sc['types'].values()}
     as_of = [{'dataset': n, 'version': v, 'imported_at': held[n]['imported_at'] if n in held else None} for n, v in sorted(datasets.items())]   # the data the answer read: which version, and when it came
-    return {**result, 'steps': _steps({**item, **result}, types, [d['name'] for d in lines if d['kind'] == 'relation']), 'definitions': lines, 'types': types, 'datasets': datasets, 'data_as_of': as_of}
+    found = _beside(sc, parts, beside[0], item, beside[1], applied, fields) if ADD_BESIDE and beside is not None else None
+    return {**result, 'steps': _steps({**item, **result}, types, [d['name'] for d in lines if d['kind'] == 'relation']), 'definitions': lines, 'types': types, 'datasets': datasets, 'data_as_of': as_of,
+            **({'beside': found} if found else {})}
+
+
+def _beside(sc: dict, parts: dict, answer, item: dict, asked: str, applied: list, fields: set) -> dict | None:
+    """{'views': [...], 'more': [names]}: the same query worked out on other rows, shown beside an answer whose rows are every row of one type the asker may read
+    (then each confirmed view on that type they may see, by name, who confirmed it and its number) or exactly one such view (then every row first, as
+    {'all_rows': True, 'name': the type}, and the other views). At most BESIDE_LIMIT views; the rest by name. None for any other answer: a condition, a walk
+    to another type, a grouping or top-N, a derived property, a refusal. It changes nothing in the answer itself."""
+    query = item.get('query')
+    if item.get('status') not in ('answered', 'no_data') or not isinstance(query, dict) or query.get('start') not in sc['types']:
+        return None
+    if query.get('where') or query.get('group_by') or query.get('top') or query.get('via') or query.get('graph') is not None or any(f in parts['derived'] for f in fields):
+        return None
+    on = sorted((n for n, v in sc['views'].items() if v['content']['type'] == query['start']), key=str.casefold)
+    read = [v['name'] for v in applied]
+    if len(read) > 1 or (read and read[0] not in on):
+        return None
+    by, used = {v['name']: v for v in parts['views']}, item.get('definitions_used') or []
+
+    def number(got):
+        if got.get('status') not in ('answered', 'no_data'):
+            return {}
+        return {'answer': got['answer']} if isinstance(got.get('answer'), dict) else {'no_data': True}
+    lines = [{'all_rows': True, 'name': sc['types'][query['start']]['content']['name'], **number(answer(query, asked, used, instead=[]))}] if read else []
+    others = [n for n in on if n not in read]
+    lines += [{'id': by[n]['element'], 'name': n, 'confirmed_by': by[n]['confirmed_by'], 'version': sc['views'][n]['row']['version'], **number(answer(query, asked, used, instead=[by[n]]))}
+              for n in others[:BESIDE_LIMIT]]
+    return {'views': lines, 'more': others[BESIDE_LIMIT:]} if lines else None
 
 
 def _answered(conn, gateway, user: dict | None, question: str, sc: dict) -> dict:
-    parts = _inputs(conn, sc)
+    parts = _inputs(conn, sc, question)
     ontology = parts['ontology']
     catalog, definitions = _catalog_for_model(conn, sc, parts)
     relations = _checked_relations(conn, sc, parts)
@@ -595,7 +795,7 @@ def _answered(conn, gateway, user: dict | None, question: str, sc: dict) -> dict
     if asked['error'] or not asked['items']:   # it replied, but with no query for this question: kept as unanswered, said in the reader's words
         item = {'question': question, 'reasoning': '', 'query': None, 'status': 'no_query', 'reason': _no_query_reason(sc)}
         return {**_finish(conn, user, sc, parts, item, []), 'model': asked['model']}
-    return {**_finish(conn, user, sc, parts, asked['items'][0], answer.applied, spoken.get('spec')), 'model': asked['model']}
+    return {**_finish(conn, user, sc, parts, asked['items'][0], answer.applied, spoken.get('spec'), beside=(answer, question)), 'model': asked['model']}
 
 
 def _no_query_reason(sc: dict) -> str:
@@ -657,10 +857,11 @@ def _query_used(parts: dict, query: dict) -> list[dict]:
     return out
 
 
-def run_text(conn, user: dict | None, text, params=None) -> dict:
+def run_text(conn, user: dict | None, text, params=None, beside: bool = False) -> dict:
     """Run an OntoPoc Query text as this person: compiled against what they may see, run by the same engine and on the same rows as a question, with no model.
     QaRefused (400) when the text cannot be read or names what is not there for them; a refusal on the definitions (one not confirmed, a relation that
-    cannot be walked) is an answer that says why, with no number."""
+    cannot be walked) is an answer that says why, with no number. `beside`: with the other readings beside it, as a question's answer has them (_beside); a
+    board's number has none."""
     if params is not None and not isinstance(params, dict):
         raise QaRefused(tr('params 要是一个对象，例如 {"start": "2026-01-01"}', 'params must be an object, for example {"start": "2026-01-01"}'))
     if is_graph(text) and user is not None and user['role'] == 'viewer':   # a graph shows the objects one by one: a viewer reads numbers
@@ -677,7 +878,7 @@ def run_text(conn, user: dict | None, text, params=None) -> dict:
     if blockers:
         result = {**_refused_unsettled(blockers), 'definitions': [], 'types': [], 'datasets': {}, 'steps': [{'name': tr('核对定义', 'Check definitions'), 'text': tr('查询用到的定义还没有确认，没有计算', 'A definition the query uses is not confirmed, so nothing was calculated'), 'failed': True}]}
     else:
-        result = _run_compiled(conn, user, sc, query)
+        result = _run_compiled(conn, user, sc, query, beside=beside)
         if result['status'] == 'query_limit':   # what the writer wrote and the engine cannot run (a bound that is no number or date): theirs to fix, said as such
             raise QaRefused(result['reason'])
         result['text'] = to_text(query, query_catalog(sc))
@@ -686,7 +887,7 @@ def run_text(conn, user: dict | None, text, params=None) -> dict:
     return result
 
 
-def _run_compiled(conn, user: dict | None, sc: dict, query: dict, asked: str = '', views: tuple = ()) -> dict:
+def _run_compiled(conn, user: dict | None, sc: dict, query: dict, asked: str = '', views: tuple = (), beside: bool = False) -> dict:
     """A compiled OntoPoc Query run as this person: refused naming the relation when one it walks cannot be walked, else run by the Q&A engine with the meanings
     the text uses (read from the text) and the views named. `asked`: the question it answers, so a meaning the question names and the text leaves out is caught."""
     walks = [k for k in dict.fromkeys([*query['via'], *(k for d in query['group_by'] or [] for k in d['via']), *(k for path in query.get('graph') or [] for k in path)])]
@@ -695,7 +896,7 @@ def _run_compiled(conn, user: dict | None, sc: dict, query: dict, asked: str = '
         reason = tr('；', '; ').join(tr(f'关系「{sc["relations"][k]["content"]["name"]}」现在不能走：{why}', f'The relation "{sc["relations"][k]["content"]["name"]}" cannot be followed now: {why}') for k, why in stuck)
         return {'status': 'refused', 'reason': tr(f'没有计算：{reason}', f'Not calculated: {reason}'), 'query': query, 'refusal': {'kind': 'unwalkable', 'definitions': [d for d in _unwalkable(sc) if d['id'] in {relation_id(k) for k, _ in stuck}]},
                 'definitions': [], 'types': [], 'datasets': {}, 'steps': [{'name': tr('找关系', 'Find relations'), 'text': reason, 'failed': True}]}
-    parts = _inputs(conn, sc)
+    parts = _inputs(conn, sc, asked)
     used = [*_query_used(parts, query), *({'id': v, 'direction': 'include', 'basis': tr('模型说问题要这个视图', 'The model said the question needs this view')} for v in views)]
     if query.get('graph') is not None:
         return _finish(conn, user, sc, parts, {**_graph_answer(parts, query, asked, used), 'query': query, 'definitions_used': used}, [])
@@ -703,7 +904,7 @@ def _run_compiled(conn, user: dict | None, sc: dict, query: dict, asked: str = '
     item = {**answer(query, asked, used), 'query': query, 'definitions_used': used}
     if item['status'] == 'query_limit':
         return {'status': 'query_limit', 'reason': item['reason'], 'query': query, 'definitions': [], 'types': [], 'datasets': {}, 'steps': [{'name': tr('结果', 'Result'), 'text': item['reason'], 'failed': True}]}
-    return _finish(conn, user, sc, parts, item, answer.applied)
+    return _finish(conn, user, sc, parts, item, answer.applied, beside=(answer, asked) if beside else None)
 
 
 def _graph_answer(parts: dict, query: dict, asked: str, used: list) -> dict:
@@ -711,7 +912,7 @@ def _graph_answer(parts: dict, query: dict, asked: str, used: list) -> dict:
     ones (a graph applies no view: it draws the objects as they are)."""
     ontology, bundle = parts['ontology'], parts['bundle']
     as_number = {**{k: v for k, v in query.items() if k != 'graph'}, 'top': None}   # the conditions checked as those of a count, which they are
-    checked = definition_check(asked, as_number, ontology, [], bundle['meanings'], used)
+    checked = definition_check(asked, as_number, ontology, [], bundle['meanings'], used, also=parts['also'])
     if checked['unmet']:
         return {**refusal(checked['unmet']), 'understood': checked['understood']}
     drawn = graph_objects(ontology, bundle, query)
@@ -784,7 +985,7 @@ Rules:
 def _answered_in_text(conn, gateway, user: dict | None, question: str, sc: dict) -> dict:
     """The question answered with OntoPoc Query the model writes: the same catalog and definitions as the JSON form (no row), one call, then the text run as
     POST /api/workspace/query runs it for this person. Text that does not compile is a miss that says why, with what the model wrote kept as `written`."""
-    parts = _inputs(conn, sc)
+    parts = _inputs(conn, sc, question)
     catalog, definitions = _catalog_for_model(conn, sc, parts)
     request = {'asked': question, 'ontology': catalog, **({'definitions': definitions} if definitions else {})}
     judgement = ask_model(gateway, 'question_writer', TEXT_PROMPT_VERSION, TEXT_SYSTEM_PROMPT + ENGLISH_NOTE if english() else TEXT_SYSTEM_PROMPT, request)
@@ -819,7 +1020,7 @@ def _answered_in_text(conn, gateway, user: dict | None, question: str, sc: dict)
     except (KeyError, TypeError, AttributeError):
         item = {'status': 'query_limit', 'reason': tr('模型写的查询读不了', 'The query the model wrote cannot be read'), 'reasoning': reasoning}
         return {**_finish(conn, user, sc, parts, item, []), **said, 'written': text}
-    result = _run_compiled(conn, user, sc, query, question, views)
+    result = _run_compiled(conn, user, sc, query, question, views, beside=True)
     return {**result, **said, 'written': text, **({'query_text': to_text(query, query_catalog(sc))} if result['status'] in ('answered', 'no_data') else {})}
 
 
@@ -894,7 +1095,7 @@ def _named_ids(result: dict, sc: dict) -> list[str]:
     if refusal.get('kind') == 'unsettled':
         ids += [d['id'] for d in refusal['definitions'] if 'id' in d]   # a viewer's line that says only that something waits names nothing
     elif refusal.get('kind') in ('not_in_scope', 'definition_unmet'):   # these say what is in scope (and for a builder what is left out)
-        ids += [type_id(k) for k in sc['types']] + [v['row']['element_id'] for v in sc['views'].values()] + [d['id'] for d in refusal.get('left_out', [])]
+        ids += [type_id(k) for k in sc['types']] + [v['row']['element_id'] for v in sc['views'].values()] + [d['id'] for d in refusal.get('left_out', []) if 'id' in d]
     return list(dict.fromkeys(ids))
 
 
@@ -912,10 +1113,11 @@ def _hidden_read(sc: dict, result: dict) -> dict:
     return {t['id']: sorted(sc['types'][t['id']]['hidden']) for t in result.get('types', []) if t['id'] in sc['types']}
 
 
-def ask(conn, gateway, user: dict | None, question, writes='json') -> dict:
+def ask(conn, gateway, user: dict | None, question, writes='json', keep: bool = True) -> dict:
     """Answer one question from what this person may see and what is confirmed, keep it with the definitions and dataset versions it used, and return it.
     QaRefused (503 without a model, 502 when it failed) when no answer could be worked out at all; a refusal to answer is an answer, saved like the rest.
-    `writes`: what the model writes, the JSON query ('json', the default) or OntoPoc Query text ('query')."""
+    `writes`: what the model writes, the JSON query ('json', the default) or OntoPoc Query text ('query'). `keep=False`: the same answer, not kept as one of
+    this person's questions (a run of the team's list of questions we need asks through here; its asks are the run's, not the person's, and have no id)."""
     if writes not in WRITES:
         raise QaRefused(tr('writes 只能是 "json"（模型写结构化查询，默认）或 "query"（模型写本体查询）', 'writes must be "json" (the model writes a structured query, the default) or "query" (the model writes an ontology query)'))
     question = _clean_question(question)
@@ -924,7 +1126,15 @@ def ask(conn, gateway, user: dict | None, question, writes='json') -> dict:
     if blockers:
         result = {**_refused_unsettled(blockers), 'definitions': [], 'types': [], 'datasets': {}, 'steps': [{'name': tr('核对定义', 'Check definitions'), 'text': tr('问题里提到的定义还没有确认，没有去问模型', 'A definition the question mentions is not confirmed, so the model was not asked'), 'failed': True}]}
     elif not sc['types']:
-        result = {'status': 'refused', 'reason': tr('范围里还没有已确认的对象类型，没有东西可以回答。', 'There is no confirmed object type in scope yet, so there is nothing to answer from.'), 'refusal': {'kind': 'not_in_scope', 'in_scope': [], 'left_out': _unsettled(conn, user)},
+        waiting = _waiting_lines(conn, user) if user is not None and user['role'] == 'viewer' else []   # a viewer's scope emptied by definitions that wait
+        if VIEWERS_TOLD_WHAT_WAITS:   # which, and for whom
+            said = tr(f'在等再确认的：{tr("；", "; ").join(_waiting_text(d) for d in waiting)}。', f' Waiting to be confirmed again: {"; ".join(_waiting_text(d) for d in waiting)}.')
+            lines = [{**d, 'text': _waiting_text(d)} for d in waiting]
+        else:   # only that some wait: no name, nobody it waits for
+            said = tr('用到的定义在等再确认，确认之后再问。', ' The definitions it would use are waiting to be confirmed again; ask once they are.')
+            lines = [{'kind': d['kind'], 'state': d['state'], 'waiting': True, 'text': said.strip()} for d in waiting[:1]]
+        result = {'status': 'refused', 'reason': tr('范围里还没有已确认的对象类型，没有东西可以回答。', 'There is no confirmed object type in scope yet, so there is nothing to answer from.') + (said if waiting else ''),
+                  'refusal': {'kind': 'not_in_scope', 'in_scope': [], 'left_out': [*_unsettled(conn, user), *lines]},
                   'definitions': [], 'types': [], 'datasets': {}, 'steps': []}
     else:
         if gateway is None:
@@ -939,6 +1149,8 @@ def ask(conn, gateway, user: dict | None, question, writes='json') -> dict:
     if user is not None and user['role'] == 'viewer':
         result = _strip_rows(result)
     now = _now()
+    if not keep:
+        return {'id': None, 'question': question, 'asked_at': now, **result}
     cursor = conn.execute('INSERT INTO qa_question(user_id, asked_by, question, asked_at, status, answer_json, definitions_json, dataset_versions_json, types_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
                           (user['id'] if user else None, user['display_name'] if user else None, question, now, result['status'], json.dumps({**result, 'named': _named_ids(result, sc), 'rules': _rules_read(sc, result), 'hidden_columns': _hidden_read(sc, result)}, ensure_ascii=False),
                            json.dumps(result['definitions'], ensure_ascii=False), json.dumps(result['datasets'], ensure_ascii=False), json.dumps(result['types'], ensure_ascii=False)))
@@ -997,7 +1209,7 @@ def tally(conn, user: dict | None, now: str | None = None) -> dict:
                 questions[element_id] = questions.get(element_id, 0) + 1
     held = []
     for element_id in sorted(questions, key=lambda i: -questions[i]):   # sorted is stable: ties stay in the order the refusals named them
-        row = element_row(conn, element_id)
+        row = presented_row(conn, element_row(conn, element_id))   # a type whose value rules are not known to hold still waits
         if row is None or row['state'] == 'confirmed' or not _may_see(conn, user, element_id):   # gone, confirmed since, or not this reader's to see
             continue
         kind, name = _kind_and_name(conn, row)
@@ -1072,8 +1284,13 @@ def reopen(conn, user: dict | None, question_id: int) -> dict:
             stale.append({'dataset': name, 'read': read, 'now': now['version'] if now else None})
     changed = []
     for d in record['definitions']:
-        row = element_row(conn, d['id'])
+        row = presented_row(conn, element_row(conn, d['id']))   # a type whose value rules are not known to hold is not as it was
         if row is None or row['state'] != 'confirmed' or row['version'] != d['version']:
             changed.append({'id': d['id'], 'name': d['name'], 'state': row['state'] if row else None,
                             **({'reason': reason_for(conn, row, user)[0], 'reason_hidden': reason_for(conn, row, user)[1], 'cause': row['cause'], 'cause_word': CAUSE_WORDS.get(row['cause']), 'stale_word': stale_word(row['cause'], row['via'])} if row and row['state'] == 'needs_look' else {})})
+    if isinstance(record.get('beside'), dict):   # what was beside it, as a fresh answer would name it: only views still confirmed and still this person's to see
+        standing = lambda element_id: (row := element_row(conn, element_id)) is not None and row['state'] == 'confirmed' and _may_see(conn, user, element_id)
+        views = [v for v in record['beside']['views'] if v.get('all_rows') or standing(v['id'])]
+        record['beside'] = {**record['beside'], 'views': views, 'more': [n for n in record['beside'].get('more', []) if standing(view_id(n))]}
+        record['beside_changed'] = [v['name'] for v in views if not v.get('all_rows') and element_row(conn, v['id'])['version'] != v.get('version')]   # confirmed again since
     return {'id': i, 'question': question, 'asked_at': at, **record, 'stale': stale, 'changed': changed}

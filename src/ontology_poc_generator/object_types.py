@@ -20,14 +20,20 @@ import contextvars
 import json
 import re
 import sys
+import threading
 
 from ontology_poc_generator.accounts import two_person
 from ontology_poc_generator.assistant_checks import drafted_mark
 from ontology_poc_generator.draft_receipts import spend as spend_receipt
 from ontology_poc_generator.code_meanings import check_enum, merge_enum
+from ontology_poc_generator import other_names
 from ontology_poc_generator.row_rules import keeps, positions, restriction
 from ontology_poc_generator.type_access import can_access, column_allowed, dataset_hidden, hidden_columns, hidden_values, reads_hidden, visible_to
-from ontology_poc_generator.workspace_store import fan_note, StaleElement, _canonical, _key_of, check_key, current_dataset, dataset_records, element_state_writes, fan_marks, log_line
+from ontology_poc_generator.value_rules import EXAMPLES, REASON_EXAMPLES, RuleRefused, broken_text, columns_of, note as rules_note, read_rules, run as run_rules, says as rule_says
+from ontology_poc_generator.actor import actor_id_for
+from ontology_poc_generator.workspace_store import (
+    SelfConfirmation, barred, fan_note, StaleElement, _canonical, _key_of, _quote, check_key, current_dataset, dataset_records, element_state_writes, fan_marks, log_line,
+    may_confirm, next_record, now_text, record_result, restore_if_back, tracked)
 
 TYPE_PREFIX = 'objtype:'
 ENUM_PREFIX = 'enum:'
@@ -228,6 +234,7 @@ def check_definition(conn, payload: dict, english_name: str | None = None, user:
         raise TypeRefused(tr('英文名不能叫 new：页面的“新建”用了这个地址', 'The English name cannot be "new": the New page uses that address'))
     name = _text(payload.get('name'), tr('名称', 'The name'), MAX_NAME)
     description = _text(payload.get('description') or '', tr('说明', 'The description'), MAX_DESCRIPTION, required=False)
+    also = other_names.clean(payload.get('other_names'), tr(f'对象类型“{name}”', f'the object type "{name}"'))
     dataset = _readable_dataset(conn, payload.get('dataset'), user)
     if dataset is None:
         raise TypeRefused(tr(f'没有叫“{payload.get("dataset")}”的数据集', f'There is no dataset named "{payload.get("dataset")}"'), 404)
@@ -264,26 +271,41 @@ def check_definition(conn, payload: dict, english_name: str | None = None, user:
         if shown.casefold() in shown_names:
             raise TypeRefused(tr(f'属性名称“{shown}”重复了', f'The property name "{shown}" is repeated'))
         shown_names.add(shown.casefold())
-        properties.append({'column': column, 'name': shown, 'type': kind, 'enum': enum})
-    content = {'name': name, 'english_name': english, 'description': description, 'dataset': dataset['name'], 'key': list(key), 'properties': properties}
+        properties.append(other_names.put({'column': column, 'name': shown, 'type': kind, 'enum': enum}, other_names.clean(p.get('other_names'), tr(f'属性“{shown}”', f'the property "{shown}"'))))
+    other_names.check_properties(properties)
+    content = other_names.put({'name': name, 'english_name': english, 'description': description, 'dataset': dataset['name'], 'key': list(key), 'properties': properties}, also)
     posted = payload.get('enums') or {}
     if not isinstance(posted, dict):
         raise TypeRefused(tr('含义要写成 {列名: [{value, label}]}', 'Meanings must be written as {column: [{value, label}]}'))
     for column in posted:
         if not any(p['column'] == column and p['enum'] for p in properties):
             raise TypeRefused(tr(f'“{column}”不是这个类型里的代码列，没法写含义', f'"{column}" is not a code column of this type, so it cannot have meanings'))
+    try:   # value rules are part of the type: kept only when there are some, so a type without them is stored as it always was
+        rules = read_rules([] if payload.get('rules') is None else payload['rules'], properties, lambda column: bool(posted.get(column)) or bool(_kept_meanings(conn, english, column)))
+    except RuleRefused as exc:
+        raise TypeRefused(str(exc)) from None
+    if rules:
+        content['rules'] = rules
     return content, posted, warnings, key_check
 
 
 def _meanings(kept: list[dict], column: str, col: dict, posted) -> list[dict]:
     """The meanings after a person's entries are put over the ones on file (check_enum, merge_enum): only values the data has or that already have a
-    meaning (so a stale one can be taken back); a blank label takes one back."""
+    meaning (so a stale one can be taken back); a blank label takes one back. An entry's other names are its own; an entry that gives none keeps the ones on
+    file for that value. TypeRefused when an other name clashes with another meaning of the column (other_names.check_meanings)."""
     profile = {'values': [{'value': v} for v in {*(col['counts'] or {}), *(e['value'] for e in kept)}]}
     try:
         entries = check_enum(profile, posted)
     except ValueError as exc:
         raise TypeRefused(str(exc)) from None
-    return merge_enum(kept, entries)
+    was = {e['value']: other_names.of(e) for e in kept}
+    said = {e['value']: e.get('description', '') for e in kept}   # an entry that does not send its description keeps the one on file
+    entries = [{**e, 'description': said.get(e['value'], '')} if isinstance(raw, dict) and 'description' not in raw else e for e, raw in zip(entries, posted)]
+    entries = [other_names.put(e, other_names.clean(raw.get('other_names'), tr(f'含义“{e["label"]}”', f'the meaning "{e["label"]}"')) if 'other_names' in raw else was.get(e['value']))
+               for e, raw in zip(entries, posted)]
+    merged = merge_enum(kept, entries)
+    other_names.check_meanings(merged)
+    return merged
 
 
 def _kept_meanings(conn, english_name: str, column: str) -> list[dict]:
@@ -292,7 +314,8 @@ def _kept_meanings(conn, english_name: str, column: str) -> list[dict]:
 
 
 def check_names_free(conn, content: dict) -> None:
-    """The English name is the type's id, so it is unique case-insensitively; the display name too."""
+    """The English name is the type's id, so it is unique case-insensitively; the display name too; and other names clash with no name in their scope
+    (other_names.check_type)."""
     mine = type_id(content['english_name'])
     for element_id, other in conn.execute("SELECT element_id, content_json FROM element_state WHERE element_id LIKE 'objtype:%'"):
         if element_id == mine:
@@ -301,11 +324,26 @@ def check_names_free(conn, content: dict) -> None:
             raise TypeRefused(tr(f'英文名“{content["english_name"]}”和已有的“{element_id[len(TYPE_PREFIX):]}”只差大小写', f'The English name "{content["english_name"]}" differs from the existing "{element_id[len(TYPE_PREFIX):]}" only in case'), 409)
         if json.loads(other)['name'].casefold() == content['name'].casefold():
             raise TypeRefused(tr(f'已经有叫“{content["name"]}”的对象类型', f'There is already an object type named "{content["name"]}"'), 409)
+    other_names.check_type(conn, content)
 
 
 def _type_change(content: dict, dataset: dict, key_check: dict, who: str | None) -> tuple:
     anchors = {'dataset': dataset['name'], 'version': dataset['version'], 'key_rows': key_check['rows_checked']}
     return (type_id(content['english_name']), 'checked', f'check_result:{key_check["id"]},dataset:{dataset["name"]}@v{dataset["version"]}', who, content, anchors, who)
+
+
+def _proposed_rules(conn, content: dict, dataset: dict, user: dict | None) -> tuple[dict, list[str]]:
+    """What putting a type forward answers with about its value rules, once it is written: {'rules': the rules as this person reads them, with the rows that break
+    each now} and a warning for each broken one (it can be proposed; it cannot be confirmed while one is broken). Nothing for a type without rules."""
+    whole = _whole_pass(conn, content, dataset)
+    if whole is not None:   # kept, so what is read on every page knows how the rules stand on this version without counting them again
+        keep_count(conn, type_id(content['english_name']), content, whole)
+    shown = rules_readout(conn, type_id(content['english_name']), content, dataset, user, whole) if content.get('rules') else None
+    if shown is None:
+        return {}, []
+    warnings = [tr(f'值规则{r["says"]}：现在有 {r["broken"]} 行不满足。可以先提出，但有规则不满足时不能确认', f'The value rule {r["says"]}: {r["broken"]} rows break it now. It can be proposed, but it cannot be confirmed while a rule is broken')
+                for r in shown if r['broken']]
+    return {'rules': shown}, warnings
 
 
 def _meaning_change(conn, content: dict, column: str, values: list[dict], dataset: dict, cols: dict, who: str | None, fresh: bool = False) -> tuple | None:
@@ -317,6 +355,7 @@ def _meaning_change(conn, content: dict, column: str, values: list[dict], datase
     if not fresh and row and row['state'] in (*WAITING, 'confirmed') and values == _content(row)['values']:
         return None
     meaning = {'type': content['english_name'], 'column': column, 'dataset': dataset['name'], 'values': values}
+    other_names.check_across(conn, other_names.entries_of(enum_id(content['english_name'], column), meaning), {enum_id(content['english_name'], column)})
     anchors = {'dataset': dataset['name'], 'version': dataset['version'], 'counts': dict(cols[column]['counts'] or {})}
     return (enum_id(content['english_name'], column), 'checked', f'dataset:{dataset["name"]}@v{dataset["version"]}', who, meaning, anchors, who)
 
@@ -337,7 +376,8 @@ def create_type(conn, payload: dict, who: str | None, user: dict | None = None) 
             changes.append(_meaning_change(conn, content, column, values, dataset, cols, who))
             reads[changes[-1][0]] = [f'column:{dataset["name"]}.{column}']
     write_elements(conn, changes, reads)
-    return {'id': content['english_name'], 'warnings': warnings}
+    shown, broken = _proposed_rules(conn, content, dataset, user)
+    return {'id': content['english_name'], 'warnings': [*warnings, *broken], **shown}
 
 
 def reset_reasons(old: dict, new: dict) -> list[str]:
@@ -351,15 +391,54 @@ def reset_reasons(old: dict, new: dict) -> list[str]:
     kinds = lambda c: {p['column']: (p['type'], p['enum']) for p in c['properties']}
     if kinds(old) != kinds(new):
         reasons.append(tr('属性的类型', 'a property type'))
+    if old.get('rules', []) != new.get('rules', []):
+        reasons.append(tr('值规则', 'the value rules'))
     return reasons
 
 
-def token_edit(row: dict, user: dict | None, edited: bool) -> list[str]:
+def token_edit(row: dict, user: dict | None, edited: bool, others: bool = False) -> list[str]:
     """[the reason] when a confirmed definition is edited with a token: whatever the edit, it is put forward again, as a change of what it means is, and a person
-    confirms it again (a token's words must not stand beside a person's confirmation). [] for a person signed in, for nothing edited, or for one not confirmed."""
-    if edited and row['state'] == 'confirmed' and user is not None and user.get('token_id') is not None:
-        return [tr('名称或说明（用令牌改的）', 'its name or description, with a token')]
+    confirms it again (a token's words must not stand beside a person's confirmation). [] for a person signed in, for nothing edited, or for one not confirmed.
+    `others`: what changed is only its other names."""
+    if (edited or others) and row['state'] == 'confirmed' and user is not None and user.get('token_id') is not None:
+        return [tr('名称或说明（用令牌改的）', 'its name or description, with a token') if edited else tr('另称（用令牌改的）', 'its other names, with a token')]
     return []
+
+
+def edit_sends_back(row: dict, user: dict | None, edited: bool, others: bool = False) -> list[str]:
+    """[the reason] when an edit changes what a confirmed definition says without touching what its reset list names (its name, its description, its other names, a
+    property's display name): it is put forward again by the path a token's edit takes (token_edit), whoever makes it, signed in or with a token, its last confirmer
+    included, so a second person confirms the new words. [] for nothing edited, or for one that is not confirmed. (Pipelines keep token_edit: their rule is their own.)"""
+    if not (edited or others) or row['state'] != 'confirmed':
+        return []
+    if user is not None and user.get('token_id') is not None:
+        return token_edit(row, user, edited, others)
+    return [tr('名称或说明', 'its name or description') if edited else tr('另称', 'its other names')]
+
+
+def keep_unsaid(payload: dict, old: dict) -> dict:
+    """An edit that does not send the description keeps the one on file: only a value actually sent (an empty one too) is a change. Every kind's update reads its
+    payload through this, so a save that leaves the field out sends nothing back and puts nobody among those who changed it."""
+    return payload if 'description' in payload else {**payload, 'description': old.get('description') or ''}
+
+
+def keep_other_names(payload: dict, old: dict) -> dict:
+    """An edit that does not say the other names keeps the ones on file: the type's own, and each property's that it lists without them; nor the description
+    (keep_unsaid), nor a property's display name for a property it lists without one."""
+    out = keep_unsaid({**payload, 'other_names': payload['other_names'] if 'other_names' in payload else other_names.of(old)}, old)
+    if isinstance(payload.get('properties'), list):
+        was = {p['column']: other_names.of(p) for p in old.get('properties', [])}
+        shown = {p['column']: p['name'] for p in old.get('properties', [])}
+        out['properties'] = [{**p, 'other_names': was.get(p.get('column'), [])} if isinstance(p, dict) and 'other_names' not in p else p for p in payload['properties']]
+        out['properties'] = [{**p, 'name': shown[p['column']]} if isinstance(p, dict) and 'name' not in p and isinstance(p.get('column'), str) and p['column'] in shown else p
+                             for p in out['properties']]
+    return out
+
+
+def others_changed(old: dict, new: dict) -> bool:
+    """Whether the other names changed: the definition's own, or (for a type) a property's."""
+    props = lambda c: {p['column']: other_names.of(p) for p in c.get('properties', []) if other_names.of(p)}
+    return other_names.of(old) != other_names.of(new) or props(old) != props(new)
 
 
 def _meaning_columns(conn, english_name: str) -> list[str]:
@@ -394,18 +473,20 @@ def _meaning_reset_flags(conn, columns: list[str], english_name: str) -> None:
 def update_type(conn, payload: dict, who: str | None, user: dict | None = None) -> dict:
     """Save a changed definition ({id, version, ...the fields of create}). `version` is the one the person was looking at: 409 when it has moved. A change
     on the reset list (reset_reasons) makes it checked again with this person as its proposer, and so does saving a model's draft; a change to the names or
-    the description keeps its state and only goes to the log (made by a person signed in; made with a token, a confirmed one is put forward again: object_types.token_edit). Meanings in the payload are put forward like propose_meanings does; the meanings of a column
+    the description, the other names or a property's display name keeps the state of one that waits and goes to the log; a confirmed one is put forward again by any change of what it says, whoever makes it (edit_sends_back). Meanings in the payload are put forward like propose_meanings does; the meanings of a column
     that is no longer a code column, or of a dataset the type no longer reads, are taken away (post them again to keep them). Everything is written in one
     transaction, with what a confirmed element that stopped being confirmed moves. Returns {'id', 'state', 'reset', 'warnings'}."""
     row = whole_type_row(conn, payload.get('id'), user)
     if payload.get('version') != row['version']:
         raise TypeRefused(tr('这个对象类型在你打开之后被改了，请刷新后再改', 'This object type was changed after you opened it. Refresh and edit again'), 409)
     old = _content(row)
-    content, posted, warnings, key_check = check_definition(conn, {**payload, 'english_name': old['english_name']}, old['english_name'], user)
+    kept = {} if payload.get('rules') is not None else {'rules': old.get('rules', [])}   # a request that says nothing of the rules keeps them; [] takes them away
+    content, posted, warnings, key_check = check_definition(conn, keep_other_names({**payload, **kept, 'english_name': old['english_name']}, old), old['english_name'], user)   # and nothing of the other names, keeps those
     check_names_free(conn, content)
     dataset = current_dataset(conn, content['dataset'])
     cols = dataset_columns(conn, dataset['id'])
-    reset = reset_reasons(old, content) or token_edit(row, user, (old['name'], old['description']) != (content['name'], content['description']))
+    renamed, others = _type_words(old) != _type_words(content), others_changed(old, content)
+    reset = reset_reasons(old, content) or edit_sends_back(row, user, renamed, others)
     if mark := drafted_mark(conn, payload, who, user, 'type', content, old.get('drafted'), old['english_name']):   # applied from the assistant's draft: who, when (a later ordinary edit keeps it)
         content = {**content, 'drafted': mark}
     english = old['english_name']
@@ -427,9 +508,10 @@ def update_type(conn, payload: dict, who: str | None, user: dict | None = None) 
             if _confirmed_meaning(conn, english, column):
                 was_confirmed.append(column)
     if not changes:   # (something to retire always comes with a change on the reset list)
-        if (old['name'], old['description']) != (content['name'], content['description']):
+        if renamed or others:
             _edit_names(conn, row, content, who)
-        return {'id': english, 'state': row['state'], 'reset': reset, 'warnings': warnings}
+        shown, broken = _proposed_rules(conn, content, dataset, user)
+        return {'id': english, 'state': row['state'], 'reset': reset, 'warnings': [*warnings, *broken], **shown}
 
     def after(c):
         if reset and row['state'] == 'confirmed':   # the type is not confirmed any more: what reads it (the relations) cannot stand on it
@@ -439,20 +521,45 @@ def update_type(conn, payload: dict, who: str | None, user: dict | None = None) 
 
     write_elements(conn, changes, reads, {row['element_id']: row['version']}, after)
     spend_receipt(conn, payload, user)
-    if not reset and (old['name'], old['description']) != (content['name'], content['description']):
+    if not reset and (renamed or others):
         _edit_names(conn, element_row(conn, row['element_id']), content, who)
-    return {'id': english, 'state': element_row(conn, row['element_id'])['state'], 'reset': reset, 'warnings': warnings}
+    shown, broken = _proposed_rules(conn, content, dataset, user)
+    return {'id': english, 'state': element_row(conn, row['element_id'])['state'], 'reset': reset, 'warnings': [*warnings, *broken], **shown}
+
+
+def _type_words(content: dict) -> tuple:
+    """What a type says that is not on its reset list: its name, its description and each property's display name."""
+    return content['name'], content['description'], {p['column']: p['name'] for p in content['properties']}
 
 
 def _edit_names(conn, row: dict, content: dict, who: str | None) -> None:
-    """A change to the display name or the description: the state stays, the log says who."""
+    """A change to the display name, the description or the other names (a type's own and its properties', and its properties' display names) of a definition that
+    waits (one that is confirmed is put forward again instead: edit_sends_back): the state stays, the log says who, and the writer joins those who changed it since it
+    was last confirmed (workspace_store.next_record); when that puts it back exactly as it was last confirmed, and an edit is what sent it back, it is confirmed
+    again as it was (restore_if_back)."""
     old = _content(row)
+    new = other_names.put({**old, 'name': content['name'], 'description': content['description']}, other_names.of(content))
+    typed = row['element_id'].startswith(TYPE_PREFIX)   # only a type's properties are named by their column (an action's are something else)
+    named = lambda c: {p['column']: other_names.of(p) for p in c.get('properties', []) if other_names.of(p)} if typed else {}
+    if typed and 'properties' in content:   # a property's display name and other names, by its column; the rest of the property as it is on file
+        theirs = {p['column']: p for p in content['properties']}
+        new['properties'] = [other_names.put({**p, 'name': theirs[p['column']]['name'] if p['column'] in theirs else p['name']}, other_names.of(theirs[p['column']]) if p['column'] in theirs else other_names.of(p))
+                             for p in old['properties']]
+    said = lambda c: {**({'other_names': other_names.of(c)} if other_names.of(old) or other_names.of(new) else {}),
+                      **({'property_other_names': named(c)} if named(old) != named(new) else {})}   # said only when there are some: a log line as before other names existed otherwise
+    shown = lambda c: {p['column']: p['name'] for p in c['properties']} if typed else {}
+    names = {'property_names': shown(new)} if shown(old) != shown(new) else {}
+    text = json.dumps(new, ensure_ascii=False, sort_keys=True)
     conn.execute('BEGIN IMMEDIATE')
     try:
-        conn.execute('UPDATE element_state SET content_json = ?, version = version + 1 WHERE element_id = ?',
-                     (json.dumps({**old, 'name': content['name'], 'description': content['description']}, ensure_ascii=False, sort_keys=True), row['element_id']))
-        log_line(conn, who or tr('未署名', 'unsigned'), row['element_id'], 'edited', before={'name': old['name'], 'description': old['description']},
-                 after={'name': content['name'], 'description': content['description'], 'state': row['state']})
+        held = conn.execute('SELECT * FROM element_state WHERE element_id = ?', (row['element_id'],))
+        before = dict(zip([c[0] for c in held.description], held.fetchone()))
+        record, was = next_record(conn, row['element_id'], before, text, before['state'], actor_id_for(who))
+        conn.execute('UPDATE element_state SET content_json = ?, changed_json = ?, version = version + 1 WHERE element_id = ?', (text, record, row['element_id']))
+        log_line(conn, who or tr('未署名', 'unsigned'), row['element_id'], 'edited', before={'name': old['name'], 'description': old['description'], **said(old), **({'property_names': shown(old)} if names else {})},
+                 after={'name': content['name'], 'description': content['description'], **said(new), **names, 'state': row['state']})
+        if was is not None:
+            restore_if_back(conn, row['element_id'], was)
         conn.execute('COMMIT')
     except BaseException:
         conn.execute('ROLLBACK')
@@ -492,23 +599,288 @@ def _refresh_view_reasons(conn, english_name: str, column: str) -> None:
 
 # --- checks: now, and again when the data moves ---------------------------------------------------------------------------------------------------
 
-def _type_problems(conn, content: dict) -> tuple[list[str], int | None]:
-    """(what is wrong now, the id of the key check that ran) for a type, read from the current version of its dataset."""
+def _type_problems(conn, content: dict, record: bool = True, ahead: dict | None = None, saved_only: bool = False) -> tuple[list[str], int | None, int | None]:
+    """(what is wrong now, the id of the key check that ran, the id of the value rules' check) for a type, read from the current version of its dataset. Each value
+    rule that some row breaks is a problem of its own, saying which rule and how many rows. `record=False`: the checks are not kept (a page asking whether it can
+    be confirmed now). `ahead`: the rules already counted on this version before a write lock was taken (_rules_ahead), used only when it was counted on the same
+    version, the same rules and the same codes. `saved_only` (what is read on every page): the rules are not counted, the last kept count on this version is
+    used (_saved_rules), and without one that the rules are not counted yet is itself a problem."""
     dataset = current_dataset(conn, content['dataset'])
     if dataset is None:
-        return [tr(f'数据集“{content["dataset"]}”已经不在了', f'The dataset "{content["dataset"]}" is gone')], None
+        return [tr(f'数据集“{content["dataset"]}”已经不在了', f'The dataset "{content["dataset"]}" is gone')], None, None
     cols = dataset_columns(conn, dataset['id'])
     gone = [p['column'] for p in content['properties'] if p['column'] not in cols]
     if gone:
-        return [tr(f'{dataset["name"]} 第 {dataset["version"]} 版里没有这些列了：{tr("、", ", ").join(gone)}', f'{dataset["name"]} version {dataset["version"]} no longer has these columns: {", ".join(gone)}')], None
+        return [tr(f'{dataset["name"]} 第 {dataset["version"]} 版里没有这些列了：{tr("、", ", ").join(gone)}', f'{dataset["name"]} version {dataset["version"]} no longer has these columns: {", ".join(gone)}')], None, None
     problems = [tr(f'“{p["column"]}”现在的内容是{TYPE_NAME[cols[p["column"]]["type"]]}，装不进{TYPE_NAME[p["type"]]}', f'"{p["column"]}" now holds {TYPE_NAME[cols[p["column"]]["type"]]} values, which do not fit {TYPE_NAME[p["type"]]}')
                 for p in content['properties'] if p['type'] not in FITS[cols[p['column']]['type']]]
-    key_check = check_key(conn, dataset['id'], content['key'])
+    key_check = check_key(conn, dataset['id'], content['key'], record)
     if key_check['status'] != 'passed' and not key_check['rows_checked']:
         problems.append(tr(f'主键“{" + ".join(content["key"])}”没法检查：{no_rows_text(dataset["name"])}', f'The key "{" + ".join(content["key"])}" cannot be checked: {no_rows_text(dataset["name"])}'))
     elif key_check['status'] != 'passed':
         problems.append(tr(f'主键“{" + ".join(content["key"])}”现在不唯一或有空值：{_key_failure(conn, key_check)[0]}', f'The key "{" + ".join(content["key"])}" is no longer unique or has empty values: {_key_failure(conn, key_check)[0]}'))
-    return problems, key_check['id']
+    if not content.get('rules'):
+        return problems, key_check['id'], None
+    if saved_only:
+        saved = _saved_rules(conn, content, dataset)
+        if saved is None:
+            return [*problems, unchecked_rules_text(dataset)], key_check['id'], None
+        names = {p['column']: p['name'] for p in content['properties']}
+        return [*problems, *(broken_text(rule_says(rule, names), n, saved['rows_checked'], []) for rule, n in zip(content['rules'], saved['broken']) if n)], key_check['id'], None
+    codes = _rule_codes(conn, content, content['rules'])
+    ahead = ahead if ahead is not None else (_COUNTED.get() or {}).get(type_id(content['english_name']))
+    same = ahead is not None and (ahead['dataset_id'], ahead['rules'], ahead['codes']) == (dataset['id'], content['rules'], codes)
+    try:
+        found = ahead['found'] if same else _rule_pass(conn, content, dataset, content['rules'], REASON_EXAMPLES)
+    except RulesUncheckable:
+        found = None
+    if found is None:   # the count failed: the rules are not known to hold
+        return [*problems, uncheckable_text(conn, type_id(content['english_name']))], key_check['id'], None
+    names = {p['column']: p['name'] for p in content['properties']}
+    problems += [broken_text(rule_says(rule, names), result['broken'], found['rows_checked'], result['examples']) for rule, result in zip(content['rules'], found['rules']) if result['broken']]
+    return problems, key_check['id'], _record_rules(conn, content, dataset, found) if record else None
+
+
+def _rule_codes(conn, content: dict, rules: list[dict]) -> dict[str, list[str]]:
+    """The values each code rule allows: the values its column's meanings give a meaning to."""
+    return {r['column']: [e['value'] for e in _kept_meanings(conn, content['english_name'], r['column'])] for r in rules if r['check'] == 'in_codes'}
+
+
+class RulesUncheckable(Exception):
+    """Counting a type's value rules failed; the service log says which type (and no data value)."""
+
+
+def uncheckable_text(conn, element_id: str) -> str:
+    """Why a type whose rules could not be counted is not trusted, and who can look."""
+    row = element_row(conn, element_id)
+    who = tr('、', ', ').join(name for _, name in confirmer_people(conn, row)) if row else ''
+    return tr(f'值规则没法检查：数规则时出了错，不能当作成立。请{who or "能确认它的人"}看一下', f'Its value rules could not be checked: counting them failed, so they cannot be taken to hold. {who or "Someone who can confirm it"} should look')
+
+
+def _rule_pass(conn, content: dict, dataset: dict, rules: list[dict], examples: int, only: str | None = None) -> dict:
+    """The value rules counted on the current version of the type's dataset, in one pass (value_rules.run): a code rule reads the values its column's meanings name.
+    Any failure is written to the service log with the type's id and nothing of the data, and raised as RulesUncheckable."""
+    kinds = {p['column']: p['type'] for p in content['properties']}
+    try:
+        return run_rules(conn, dataset['table_name'], rules, kinds, _rule_codes(conn, content, rules), content['key'], examples, only)
+    except Exception as exc:
+        print(f'value rules of {type_id(content["english_name"])} could not be counted: {type(exc).__name__}', file=sys.stderr, flush=True)
+        raise RulesUncheckable(type_id(content['english_name'])) from None
+
+
+def _whole_pass(conn, content: dict, dataset: dict | None, examples: int = EXAMPLES) -> dict | None:
+    """The value rules of a type counted over all rows of the current version, in the shape a later check takes as `ahead`; None for a type without rules or
+    one whose columns are not all there (its own check says so). 'found' is None when counting failed (RulesUncheckable): the checks that take it say so."""
+    if not content.get('rules') or dataset is None:
+        return None
+    cols = dataset_columns(conn, dataset['id'])
+    if any(c not in cols for c in [*content['key'], *(p['column'] for p in content['properties'])]):
+        return None
+    try:
+        found = _rule_pass(conn, content, dataset, content['rules'], examples)
+    except RulesUncheckable:
+        found = None
+    return {'dataset_id': dataset['id'], 'rules': content['rules'], 'codes': _rule_codes(conn, content, content['rules']), 'found': found}
+
+
+def _rules_ahead(conn, readers) -> dict[str, dict]:
+    """The value rules of each confirmed type among these readers, counted on the current version of its dataset before the recheck takes the write lock, so the
+    lock is held no longer than the key check needs: a stored version never changes, and the recheck uses a count only when the version, the rules and the codes
+    are still the ones it was made on (otherwise it counts again, inside)."""
+    ahead = {}
+    for element_id in sorted(r for r in readers if r.startswith(TYPE_PREFIX)):
+        row = element_row(conn, element_id)
+        content = _content(row) if row is not None and row['state'] == 'confirmed' else {}
+        found = _whole_pass(conn, content, current_dataset(conn, content['dataset']), REASON_EXAMPLES) if content.get('rules') else None
+        if found is not None:
+            ahead[element_id] = found
+    return ahead
+
+
+_COUNTED = contextvars.ContextVar('ontopoc_rules_counted', default=None)   # {type id: a count made before a write lock} for the checks run inside counted_ahead
+
+
+@contextlib.contextmanager
+def counted_ahead(conn, element_ids):
+    """Count the value rules of these types on their current data now, before the caller takes the write lock, so the checks it runs under the lock (confirming a
+    group) use these counts instead of reading the rows again (each is used only while its version, rules and codes are unchanged). Yields the counts."""
+    counts = {}
+    for element_id in element_ids:
+        row = element_row(conn, element_id) if element_id.startswith(TYPE_PREFIX) else None
+        content = _content(row) if row and row['content_json'] else {}
+        found = _whole_pass(conn, content, current_dataset(conn, content['dataset'])) if content.get('rules') else None
+        if found is not None:
+            counts[element_id] = found
+    token = _COUNTED.set({**(_COUNTED.get() or {}), **counts})
+    try:
+        yield counts
+    finally:
+        _COUNTED.reset(token)
+
+
+def keep_count(conn, element_id: str, content: dict, found: dict) -> None:
+    """Keep a count made while reading (a page that opened the type), so the reads made on every page can stand on it: one statement, written only when the same
+    count is not already the one kept for this version (two readers at once keep one row), and never inside the caller's transaction."""
+    if conn.in_transaction or found['found'] is None:
+        return
+    samples = json.dumps({'rules': found['rules'], 'codes': found['codes'], 'broken': [r['broken'] for r in found['found']['rules']]}, ensure_ascii=False)
+    broken = [r['broken'] for r in found['found']['rules']]
+    conn.execute("INSERT INTO check_result(element_id, check_type, query, rows_checked, violations, samples_json, status, checked_at, dataset_id, null_key_rows) "
+                 "SELECT ?, 'value_rules', ?, ?, ?, ?, ?, ?, ?, NULL WHERE NOT EXISTS (SELECT 1 FROM check_result WHERE id = (SELECT MAX(id) FROM check_result "
+                 "WHERE element_id = ? AND check_type = 'value_rules' AND dataset_id = ?) AND samples_json = ?)",
+                 (element_id, found['found']['query'], found['found']['rows_checked'], sum(broken), samples, 'failed' if any(broken) else 'passed', now_text(),
+                  found['dataset_id'], element_id, found['dataset_id'], samples))
+
+
+_SETTLING = threading.Lock()   # one settle at a time in this process: requests that arrive together wait, and then find the type already judged
+
+
+def _latest_counts(conn) -> dict[str, tuple]:
+    """{type id: (dataset id, rows checked, what was kept)} of the latest kept count of every type's value rules, in one read of the kept checks."""
+    return {e: (d, n, json.loads(k) if k else {}) for e, d, n, k in conn.execute(
+        "SELECT element_id, dataset_id, rows_checked, samples_json FROM check_result WHERE id IN (SELECT MAX(id) FROM check_result WHERE check_type = 'value_rules' GROUP BY element_id)")}
+
+
+def rules_untrusted(conn, element_id: str, latest: dict | None = None) -> dict | None:
+    """The one test of whether a type's value rules may be relied on. A type with rules holds them only when its LATEST kept count was made on its current data
+    version, for its current rules and codes, and shows no broken row for any rule. None when that is so (or the type has no rules); otherwise {'counted': False}
+    (no count, or one on other data, rules or codes: count before trusting it) or {'counted': True, 'problems': [which rule, how many rows]}. Reads no data row.
+    `latest`: _latest_counts, when the caller reads it once for many types."""
+    row = element_row(conn, element_id)
+    content = _content(row) if row and row['content_json'] else {}
+    if not content.get('rules'):
+        return None
+    dataset = current_dataset(conn, content['dataset'])
+    if latest is None:   # one type: its own latest count
+        found = conn.execute("SELECT dataset_id, rows_checked, samples_json FROM check_result WHERE element_id = ? AND check_type = 'value_rules' ORDER BY id DESC LIMIT 1", (element_id,)).fetchone()
+        latest = {element_id: (found[0], found[1], json.loads(found[2]) if found[2] else {})} if found else {}
+    kept = latest.get(element_id)
+    if dataset is None or kept is None or kept[0] != dataset['id'] or kept[2].get('rules') != content['rules'] or kept[2].get('codes') != _rule_codes(conn, content, content['rules']):
+        return {'counted': False}
+    names = {p['column']: p['name'] for p in content['properties']}
+    problems = [broken_text(rule_says(rule, names), n, kept[1], []) for rule, n in zip(content['rules'], kept[2].get('broken') or []) if n]
+    return {'counted': True, 'problems': problems} if problems else None
+
+
+def presented_row(conn, row: dict | None) -> dict | None:
+    """The row of an element as every reader shows it and relies on it: a confirmed type whose value rules are not known to hold (rules_untrusted: an older
+    version wrote to the file) reads as needing another look, with the reason, until it is judged; anything else as stored. Reads no data row; writes nothing."""
+    if row is None or row['state'] != 'confirmed' or not row['element_id'].startswith(TYPE_PREFIX) or '"rules"' not in (row['content_json'] or ''):
+        return row
+    verdict = rules_untrusted(conn, row['element_id'])
+    if verdict is None:
+        return row
+    dataset = current_dataset(conn, _content(row)['dataset'])
+    reason = tr('；', '; ').join(verdict['problems']) if verdict['counted'] else unchecked_rules_text(dataset) if dataset else tr('值规则没法检查', 'Its value rules cannot be checked')
+    return {**row, 'state': 'needs_look', 'cause': 'data', 'via': 'self', 'reason': reason, 'untrusted': True}
+
+
+def settle_rules(conn, only: list[str] | None = None) -> set[str]:
+    """Every confirmed type that fails rules_untrusted is judged now: one with no usable count is counted (outside any lock), one whose count shows a broken rule,
+    or whose count now shows one, or whose count failed, goes back to needs another look the way a recheck sends it, under the write lock, and who can confirm
+    it is told once. Finding them reads no data row; requests that arrive together settle one at a time. Returns the ids that could not be judged because the
+    caller holds a transaction: they are not to be used."""
+    def failing():
+        latest = _latest_counts(conn)
+        return {e: verdict for (e,) in conn.execute("SELECT element_id FROM element_state WHERE element_id LIKE 'objtype:%' AND state = 'confirmed' "
+                                                     "AND json_extract(content_json, '$.rules') IS NOT NULL").fetchall()
+                if (only is None or e in only) and (verdict := rules_untrusted(conn, e, latest)) is not None}
+    if not failing():
+        return set()
+    if conn.in_transaction:
+        return set(failing())
+    with _SETTLING:
+        found = failing()   # again, now that this request has its turn: another may have judged them
+        counts = {}
+        for element_id, verdict in found.items():
+            if not verdict['counted']:   # the slow part, before the lock
+                content = _content(element_row(conn, element_id))
+                counts[element_id] = _whole_pass(conn, content, current_dataset(conn, content['dataset']), REASON_EXAMPLES)
+        with one_telling(conn):
+            conn.execute('BEGIN IMMEDIATE')
+            try:
+                moved: list[str] = []
+                for element_id, verdict in found.items():
+                    row = element_row(conn, element_id)
+                    if row is None or row['state'] != 'confirmed':
+                        continue
+                    if verdict['counted']:
+                        problems = verdict['problems']   # its own kept count, on this data, shows a broken rule
+                    elif counts.get(element_id) is None:
+                        continue   # its columns are gone: its own check says so at the next data change
+                    else:
+                        problems = _type_problems(conn, _content(row), ahead=counts[element_id])[0]   # keeps the key check and the count, as a recheck does
+                    if problems:
+                        _flag(conn, element_id, tr('；', '; ').join(problems), None, moved, 'data')
+                conn.execute('COMMIT')
+            except BaseException:
+                conn.execute('ROLLBACK')
+                raise
+    return set()
+
+
+def _record_rules(conn, content: dict, dataset: dict, found: dict) -> int:
+    """Keep the value rules' check beside the key check: the query, the rows it read, how many rows broke each rule."""
+    broken = [r['broken'] for r in found['rules']]
+    return record_result(conn, type_id(content['english_name']), dataset['id'], 'value_rules', found['query'], found['rows_checked'], sum(broken), None,
+                         {'rules': content['rules'], 'codes': _rule_codes(conn, content, content['rules']), 'broken': broken}, 'failed' if any(broken) else 'passed')
+
+
+def _saved_rules(conn, content: dict, dataset: dict) -> dict | None:
+    """The rows that broke each rule as the latest kept check counted them (a proposal, a confirmation, a recheck or an opened page), when it counted these rules
+    with these codes on this very version; None otherwise. Reads no data row: what is read on every page stands on it."""
+    found = conn.execute("SELECT rows_checked, samples_json, dataset_id FROM check_result WHERE element_id = ? AND check_type = 'value_rules' ORDER BY id DESC LIMIT 1",
+                         (type_id(content['english_name']),)).fetchone()
+    kept = json.loads(found[1]) if found and found[1] else {}
+    if not found or found[2] != dataset['id'] or kept.get('rules') != content['rules'] or kept.get('codes') != _rule_codes(conn, content, content['rules']):
+        return None
+    return {'rows_checked': found[0], 'broken': kept['broken']}
+
+
+def unchecked_rules_text(dataset: dict) -> str:
+    return tr(f'值规则还没有按 {dataset["name"]} 第 {dataset["version"]} 版数过：打开对象类型来数', f'The value rules have not been counted on {dataset["name"]} version {dataset["version"]} yet: open the type to count them')
+
+
+def rules_readout(conn, element_id: str, content: dict, dataset: dict | None, user: dict | None, ahead: dict | None = None, saved_only: bool = False) -> list[dict] | None:
+    """The value rules as this person may read them, each with what it says and the rows that break it now with up to 20 of their keys: counted over the
+    rows a row rule lets them see, and without a rule on a column kept from them. None when there is no rule for them to read. `ahead` (_whole_pass): the
+    count over all rows already made, used when this person reads all rows and every rule. `saved_only` (a list read on every page): no row is read; the counts are
+    the last kept ones on this version (_saved_rules), 'counted' False when there are none, 'own_rows' for a person a row rule limits (their rows are counted on
+    the type's page)."""
+    hidden = hidden_columns(conn, element_id, user)
+    rules = [r for r in content.get('rules') or [] if not columns_of(r) & hidden]
+    if not rules:
+        return None
+    names = {p['column']: p['name'] for p in content['properties']}
+    cols = dataset_columns(conn, dataset['id']) if dataset else {}
+    if dataset is None or any(c not in cols for r in rules for c in [*columns_of(r), *content['key']]):   # what the type's own check says is gone: nothing to count
+        return [{**r, 'says': rule_says(r, names), 'broken': None, 'examples': []} for r in rules]
+    limit = restriction(conn, element_id, user)
+    if saved_only:
+        saved = _saved_rules(conn, content, dataset) if limit is None else None
+        counted = 'own_rows' if limit is not None else saved is not None
+        return [{**r, 'says': rule_says(r, names), 'broken': saved['broken'][content['rules'].index(r)] if saved else None, 'examples': [], 'counted': counted} for r in rules]
+    if ahead is not None and limit is None and rules == content['rules']:
+        if ahead['found'] is None:   # counting failed: nothing is known of them
+            return [{**r, 'says': rule_says(r, names), 'broken': None, 'examples': []} for r in rules]
+        return [{**r, 'says': rule_says(r, names), 'broken': f['broken'], 'examples': f['examples']} for r, f in zip(rules, ahead['found']['rules'])]
+    only = None
+    if limit is not None:   # a row rule names this person: only their rows are counted, through a temporary list of them
+        cursor = conn.execute(f'SELECT rowid, * FROM {_quote(dataset["table_name"])} ORDER BY rowid')
+        names_now = [c[0] for c in cursor.description][1:]
+        kept = [(r[0],) for r in cursor if keeps(dict(zip(names_now, r[1:])), limit)]
+        only = 'value_rule_rows'
+        conn.execute(f'DROP TABLE IF EXISTS temp.{only}')
+        conn.execute(f'CREATE TEMP TABLE {only} (r INTEGER PRIMARY KEY)')
+        conn.executemany(f'INSERT INTO temp.{only} VALUES (?)', kept)
+    try:
+        found = _rule_pass(conn, content, dataset, rules, EXAMPLES, only)
+    except RulesUncheckable:
+        return [{**r, 'says': rule_says(r, names), 'broken': None, 'examples': []} for r in rules]
+    finally:
+        if only:
+            conn.execute(f'DROP TABLE IF EXISTS temp.{only}')
+    return [{**r, 'says': rule_says(r, names), 'broken': f['broken'], 'examples': f['examples']} for r, f in zip(rules, found['rules'])]
 
 
 def _new_codes(conn, row: dict) -> dict[str, int]:
@@ -522,17 +894,18 @@ def _new_codes(conn, row: dict) -> dict[str, int]:
 
 def _new_value_question(conn, view: dict, moved: list[str]) -> str | None:
     """The reason a view needs another look when a code its conditions read has a new value: the question that has to be answered, and what the view does with it now
-    (a condition "is not" lets it in, "is" keeps it out). None when no code its conditions name got a new value in this pass."""
+    (conditions "is not" let it in, an "is" keeps it out), once per column. None when no code its conditions name got a new value in this pass."""
     from ontology_poc_generator.object_views import in_out_text   # object_views reads this module
     content = _content(view)
     said = []
-    for f in content['filters']:
-        meanings = element_row(conn, enum_id(content['type'], f['column']))
+    for column in dict.fromkeys(f['column'] for f in content['filters']):   # several conditions on one column ask one question
+        meanings = element_row(conn, enum_id(content['type'], column))
         new = _new_codes(conn, meanings) if meanings and meanings['element_id'] in moved and meanings['anchors_json'] else {}
         if new:
             values = tr('、', ', ').join(new)
-            default = tr('会算进来' if f['op'] == 'is_not' else '不会算进来', 'they are counted' if f['op'] == 'is_not' else 'they are left out')
-            said.append(tr(f'它用的{_label(conn, meanings["element_id"])}需要再看（原因见那一组含义）。“{f["column"]}”出现了新值 {tr("、", ", ").join(f"{v}（{n} 行）" for v, n in new.items())}：新值 {values} 算不算进来？', f'It uses {_label(conn, meanings["element_id"])}, which needs review (see the reason on that set of meanings). "{f["column"]}" has new values {", ".join(f"{v} ({n} rows)" for v, n in new.items())}: should the new values {values} be counted? ') +
+            counted = all(f['op'] == 'is_not' for f in content['filters'] if f['column'] == column)   # a value with no meaning yet passes every "is not" and no "is"
+            default = tr('会算进来' if counted else '不会算进来', 'they are counted' if counted else 'they are left out')
+            said.append(tr(f'它用的{_label(conn, meanings["element_id"])}需要再看（原因见那一组含义）。“{column}”出现了新值 {tr("、", ", ").join(f"{v}（{n} 行）" for v, n in new.items())}：新值 {values} 算不算进来？', f'It uses {_label(conn, meanings["element_id"])}, which needs review (see the reason on that set of meanings). "{column}" has new values {", ".join(f"{v} ({n} rows)" for v, n in new.items())}: should the new values {values} be counted? ') +
                         tr(f'按现在的写法（{in_out_text(conn, content)}），{"它们" if len(new) > 1 else "它"}{default}。请先给新值写含义，再决定', f'As it is written now ({in_out_text(conn, content)}), {default}. Write meanings for the new values first, then decide'))
     return tr('；', '; ').join(said) or None
 
@@ -697,6 +1070,7 @@ def recheck_dependents(conn, dataset_name: str, caused_by: str | None = None) ->
     from ontology_poc_generator.object_views import view_problems
     from ontology_poc_generator.workspace_pipelines import pipeline_problems
     order = lambda e: (0 if e.startswith(ENUM_PREFIX) else 2 if e.startswith((RELATION_PREFIX, VIEW_PREFIX, DERIVED_PREFIX)) else 1, e)   # meanings, then types and pipelines (which move with their meanings), then relations, views and derived properties (which move with their types and relations)
+    ahead = _rules_ahead(conn, readers)   # read before the lock: the value rules' pass is the slow part
     conn.execute('BEGIN IMMEDIATE')
     try:
         for element_id in sorted(readers, key=order):
@@ -706,7 +1080,7 @@ def recheck_dependents(conn, dataset_name: str, caused_by: str | None = None) ->
             problems = (_enum_problems(conn, row) if element_id.startswith(ENUM_PREFIX) else relation_problems(conn, row) if element_id.startswith(RELATION_PREFIX)
                         else view_problems(conn, row) if element_id.startswith(VIEW_PREFIX) else pipeline_problems(conn, row) if element_id.startswith(PIPELINE_PREFIX)
                         else derived_problems(conn, row) if element_id.startswith(DERIVED_PREFIX)
-                        else _type_problems(conn, _content(row))[0])
+                        else _type_problems(conn, _content(row), ahead=ahead.get(element_id))[0])
             if problems:
                 _flag(conn, element_id, tr('；', '; ').join(problems), caused_by, moved, 'data')
         conn.execute('COMMIT')
@@ -806,7 +1180,7 @@ def confirm_element(conn, payload: dict, who: str | None, user: dict | None = No
     dataset = current_dataset(conn, content['dataset'])
     if is_type:
         refuse_ai_columns(conn, content['dataset'], content['key'], tr('主键', 'a key'))
-        problems, check_id = _type_problems(conn, content)
+        problems, check_id, rules_check = _type_problems(conn, content)
         waiting = _unconfirmed_meanings(conn, element_id)
         if waiting:
             raise TypeRefused(tr(f'它的{tr("、", ", ").join(f"“{c}”" for c in waiting)}的含义还没有确认，要先确认含义', f'The meanings of {", ".join(waiting)} are not confirmed yet. Confirm the meanings first'), 409)
@@ -814,7 +1188,7 @@ def confirm_element(conn, payload: dict, who: str | None, user: dict | None = No
         if unsettled:
             raise TypeRefused(tr(f'“{content["dataset"]}”是管道{tr("、", ", ").join(f"“{n}”" for n in unsettled)}写出来的数据，管道还没有确认，要先确认管道', f'"{content["dataset"]}" is data written by the pipeline {", ".join(unsettled)}, which is not confirmed yet. Confirm the pipeline first'), 409)
         anchors = {'dataset': dataset['name'], 'version': dataset['version']} if dataset else None
-        evidence = f'check_result:{check_id},dataset:{dataset["name"]}@v{dataset["version"]}' if check_id else row['evidence_ref']
+        evidence = f'check_result:{check_id},{f"check_result:{rules_check}," if rules_check else ""}dataset:{dataset["name"]}@v{dataset["version"]}' if check_id else row['evidence_ref']
         now = seen_of_type(dataset)
     else:
         refuse_ai_columns(conn, content['dataset'], [content['column']], tr('已确认的代码含义', 'a confirmed code meaning'))
@@ -837,7 +1211,14 @@ def write_confirmation(conn, element_id: str, content: dict, evidence: str | Non
                        version: int | None = None, reads: list[str] | None = None, snapshot: dict | None = None) -> None:
     """The element becomes confirmed by this person and the snapshot of what they confirmed (definition, evidence, dataset versions) is kept with it;
     all or nothing. SelfConfirmation when it is their own proposal while two-person confirmation is active. `version`: the one the person read, 409 when the
-    row has moved since; `reads`: what the element reads now, written with it; `snapshot`: more evidence kept with the confirmation (a pipeline's statistics)."""
+    row has moved since; `reads`: what the element reads now, written with it; `snapshot`: more evidence kept with the confirmation (a pipeline's statistics).
+    For the definitions the changed-since rule covers (workspace_store.tracked), nobody who changed it since it was last confirmed confirms it either (may_confirm):
+    refused with who did and the ways out (held_note); with two-person confirmation off it is allowed and marked a self-confirmation."""
+    row = element_row(conn, element_id)
+    person = actor_id_for(who)
+    if row is not None and tracked(element_id) and not may_confirm(conn, row, person):
+        raise SelfConfirmation(held_note(conn, row) or tr('这一条是你自己提的，要另一位来确认', 'You put this forward yourself, so someone else must confirm it'))
+    own = row is not None and tracked(element_id) and person is not None and person in barred(conn, row)   # with two-person off: theirs, said so
     try:
         with element_state_writes(conn, [(element_id, 'confirmed', evidence, who, content, anchors, None)], None if version is None else {element_id: version}) as rows:
             kept = rows[element_id]
@@ -845,7 +1226,7 @@ def write_confirmation(conn, element_id: str, content: dict, evidence: str | Non
                          ' VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                          (element_id, kept['confirmed_by'], kept['confirmed_by_user_id'], kept['proposed_by'], kept['confirmed_at'], kept['content_json'], kept['evidence_ref'],
                           json.dumps(dataset_versions, ensure_ascii=False),
-                          int(kept['confirmed_by_user_id'] is not None and kept['confirmed_by_user_id'] == kept['proposed_by_user_id']),
+                          int(own or (kept['confirmed_by_user_id'] is not None and kept['confirmed_by_user_id'] == kept['proposed_by_user_id'])),
                           None if snapshot is None else json.dumps(snapshot, ensure_ascii=False)))
             if reads is not None:
                 _set_deps(conn, element_id, reads)
@@ -912,27 +1293,63 @@ def refuse_if_limited(conn, row: dict, user: dict | None) -> None:
         raise TypeRefused(tr('你受行规则或列的限制，看不到全部数据：确认要对着全部数据看过才行，请让不受限制的建设者来确认', 'A row rule or a column limit keeps you from seeing all the data. Confirming needs a look at all of it, so ask a builder without the limit'), 403)
 
 
-def confirmer_people(conn, row: dict) -> list[tuple[int, str]]:
-    """(id, name) of the builders who may confirm it: not the one who put it forward while two-person is active, and only people who may see what it is about,
-    and all of its data."""
-    excluded = row['proposed_by_user_id'] if two_person(conn)['active'] else None
+def _who_may_see(conn, row: dict) -> list[tuple[int, str]]:
+    """(id, name) of the builders who may see what it is about and all of its data: who could confirm it, were none of them kept out by who they are."""
     types = _types_read(row)
-    return [(person, name) for person, name, role in conn.execute(
-        "SELECT id, display_name, role FROM user WHERE disabled = 0 AND role IN ('builder', 'admin') AND (? IS NULL OR id != ?) ORDER BY display_name", (excluded, excluded))
-        if all(can_access(conn, t, {'id': person, 'role': role}) for t in types) and not limited_on(conn, row, {'id': person, 'role': role})]
+    return [(person, name) for person, name, role in conn.execute("SELECT id, display_name, role FROM user WHERE disabled = 0 AND role IN ('builder', 'admin') ORDER BY display_name")
+            if all(can_access(conn, t, {'id': person, 'role': role}) for t in types) and not limited_on(conn, row, {'id': person, 'role': role})]
+
+
+def confirmer_people(conn, row: dict) -> list[tuple[int, str]]:
+    """(id, name) of the builders who may confirm it: while two-person is active, nobody who put it forward or changed it since it was last confirmed
+    (workspace_store.may_confirm), and only people who may see what it is about, and all of its data."""
+    return [(person, name) for person, name in _who_may_see(conn, row) if may_confirm(conn, row, person)]
 
 
 def _confirmers(conn, row: dict, user: dict | None) -> tuple[bool, list[str]]:
-    """(whether this person may confirm it now, the builders who may). A viewer never; the one who put it forward not while two-person is active."""
-    excluded = row['proposed_by_user_id'] if two_person(conn)['active'] else None
+    """(whether this person may confirm it now, the builders who may). A viewer never; while two-person is active, nobody who put it forward or changed it since it was
+    last confirmed (workspace_store.may_confirm)."""
     others = [name for _, name in confirmer_people(conn, row)]
     if user is not None and user['role'] == 'viewer':
         return False, others
-    return not (excluded is not None and user is not None and user['id'] == excluded), others
+    return user is None or may_confirm(conn, row, user.get('id')), others
 
 
-def _state_view(conn, row: dict, user: dict | None) -> dict:
-    """The state of one element for a page: who put it forward, whether this person may confirm it, who could, the last confirmation, the reason it needs a look."""
+def held_note(conn, row: dict, free: list[str] | None = None) -> str | None:
+    """The sentence a person who may not confirm it reads (refused, or shown no button): who changed it since it was last confirmed (or wrote it, when it never
+    was) and the ways out: someone who did not change it confirms it (named, or said to be missing), or what it says is put back to the version last confirmed.
+    None when two-person confirmation is not active, when it is not waiting, or when nobody but the one who put it forward is kept out of it (they read, as
+    before, that they put it forward themselves and someone else confirms it)."""
+    if row['state'] in ('confirmed', 'rejected') or not two_person(conn)['active']:
+        return None
+    held = barred(conn, row)
+    if not held - {row.get('proposed_by_user_id')}:
+        return None
+    names = dict(conn.execute('SELECT id, display_name FROM user'))
+    who = [names.get(p, str(p)) for p in sorted(held, key=lambda p: names.get(p, str(p)))]
+    free = [name for _, name in confirmer_people(conn, row)] if free is None else free
+    confirmed = conn.execute('SELECT 1 FROM confirmation WHERE element_id = ?', (row['element_id'],)).fetchone() is not None
+    listed = tr('、', ', ').join(who)
+    one = len(who) == 1
+    if confirmed:
+        said = tr(f'{listed} 在上次确认之后改过它（或提出了它），{"不能" if one else "都不能"}确认它', f'{listed} changed it since it was last confirmed (or put it forward), so they cannot confirm it')
+    else:
+        said = tr(f'{listed} 写过或改过它，还没有别人确认过，{"不能" if one else "都不能"}确认它', f'{listed} wrote or changed it and nobody else has confirmed it, so they cannot confirm it')
+    other = tr('另一位' if one else '第三位', 'someone else' if one else 'a third person')
+    if free:
+        out = tr(f'请没有改过它的{other}来确认（可以确认的人：{tr("、", ", ").join(free)}）', f'ask {other} who did not change it to confirm it (who can: {", ".join(free)})')
+    else:
+        out = tr(f'请没有改过它的{other}来确认（现在没有这样的建设者，管理员可以把另一个人设为建设者）', f'ask {other} who did not change it to confirm it (there is no such builder now; an admin can give another person the builder role)')
+    if confirmed and not row['element_id'].startswith(PIPELINE_PREFIX):   # a pipeline has no undo: words or steps put back are another change
+        out += tr('，或把它改回上次确认的版本', ', or put back the version that was last confirmed')
+    two = confirmed and not row['element_id'].startswith(PIPELINE_PREFIX)
+    return tr(f'{said}。出路：{out}。', f'{said}. {"Ways out" if two else "The way out"}: {out}.')
+
+
+def _state_view(conn, row: dict, user: dict | None, ahead: dict | None = None, saved_only: bool = False) -> dict:
+    """The state of one element for a page: who put it forward, whether this person may confirm it, who could, the last confirmation, the reason it needs a look.
+    A confirmed type whose value rules are not known to hold is shown as needing another look (presented_row), with nothing to confirm until it is judged."""
+    row = presented_row(conn, row)
     waiting = row['state'] in WAITING or (row['state'] == 'needs_look' and row['element_id'].startswith((TYPE_PREFIX, RELATION_PREFIX, VIEW_PREFIX, ACTION_PREFIX, PIPELINE_PREFIX, DERIVED_PREFIX)))
     can, others = _confirmers(conn, row, user)
     meanings = _unconfirmed_meanings(conn, row['element_id']) if row['element_id'].startswith(TYPE_PREFIX) and waiting else []   # a type waits for its meanings first
@@ -942,21 +1359,27 @@ def _state_view(conn, row: dict, user: dict | None) -> dict:
     last = conn.execute('SELECT confirmed_by, confirmed_at, dataset_versions_json, evidence_ref FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1',
                         (row['element_id'],)).fetchone()
     limited = limited_on(conn, row, user)
+    problems = _type_problems(conn, _content(row), record=False, ahead=ahead, saved_only=saved_only)[0] if waiting and can and not blocked and not limited and row['element_id'].startswith(TYPE_PREFIX) else []
+    failing = bool(problems)   # confirming would be refused (confirm_element), or (saved_only) its rules are not counted on this version yet: not one to confirm now
+    dataset = current_dataset(conn, _content(row)['dataset']) if problems else None
+    unchecked = dataset is not None and problems == [unchecked_rules_text(dataset)]   # held out only because its rules wait to be counted
     reason, reason_hidden = reason_for(conn, row, user)
     return {'state': row['state'], 'version': row['version'], 'proposed_by': row['proposed_by'], 'drafted': _content(row).get('drafted'), 'reason': reason, 'reason_hidden': reason_hidden,
-            'model_draft': row['state'] == 'proposed' and row['proposed_by'] is None, 'can_confirm': waiting and can and not blocked and not limited, 'limited_by_rule': limited,
+            'model_draft': row['state'] == 'proposed' and row['proposed_by'] is None, 'can_confirm': waiting and can and not blocked and not limited and not failing and not row.get('untrusted'), 'limited_by_rule': limited,
             'cause': row['cause'] if row['state'] == 'needs_look' else None, 'via': row['via'] if row['state'] == 'needs_look' else None,
             'stale_word': stale_word(row['cause'], row['via']) if row['state'] == 'needs_look' else None,
             'cause_word': CAUSE_WORDS.get(row['cause']) if row['state'] == 'needs_look' else None, 'pipelines_blocking': producers,
             'confirmers': others if waiting and not blocked else [],
             'meanings_blocking': [c for c in meanings if c not in kept] if meanings and (kept := hidden_columns(conn, row['element_id'], user)) else meanings,   # a column kept from them is not named
             'confirmed_by': last[0] if last else None, 'confirmed_at': last[1] if last else None,
-            'confirmed_on': json.loads(last[2]) if last else None, 'evidence': last[3] if last else None, 'written_at': row['confirmed_at']}
+            'confirmed_on': json.loads(last[2]) if last else None, 'evidence': last[3] if last else None, 'written_at': row['confirmed_at'], **({'rules_unchecked': True} if unchecked else {}),
+            'held': held_note(conn, row, others) if waiting else None}   # who changed it since it was last confirmed and the ways out, for a person who may not confirm it
 
 
 def _visible(conn, row: dict, user: dict | None) -> bool:
-    """A type nobody confirmed is for builders; a type with a list of people is for them (and admins) only (type_access)."""
-    if user is not None and user['role'] == 'viewer' and row['state'] != 'confirmed':
+    """A type nobody confirmed is for builders; a type with a list of people is for them (and admins) only (type_access). A viewer reads the state as presented
+    (presented_row): a type whose value rules are not known to hold waits."""
+    if user is not None and user['role'] == 'viewer' and presented_row(conn, row)['state'] != 'confirmed':
         return False
     return can_access(conn, row['element_id'], user)
 
@@ -968,7 +1391,7 @@ def was_confirmed(conn, element_id: str) -> bool:
 def waiting_for_viewer(conn, row: dict | None, user: dict | None) -> bool:
     """A type a viewer is allowed to see that was confirmed once and now needs another look: it is not closed to them, it waits for a confirmer. They are shown
     that it waits and nothing of its definition or data (a type nobody ever confirmed, or one a list of people leaves them out of, is not this)."""
-    return (row is not None and user is not None and user['role'] == 'viewer' and row['state'] == 'needs_look' and row['element_id'].startswith(TYPE_PREFIX)
+    return (row is not None and user is not None and user['role'] == 'viewer' and presented_row(conn, row)['state'] == 'needs_look' and row['element_id'].startswith(TYPE_PREFIX)
             and can_access(conn, row['element_id'], user) and was_confirmed(conn, row['element_id']))
 
 
@@ -1004,7 +1427,7 @@ def list_types(conn, user: dict | None) -> list[dict]:
         waiting = conn.execute("SELECT COUNT(*) FROM element_dep d JOIN element_state s ON s.element_id = d.depends_on WHERE d.element_id = ? AND d.depends_on LIKE 'enum:%' "
                                "AND s.state != 'confirmed'", (element_id,)).fetchone()[0]
         out.append({'id': content['english_name'], 'name': content['name'], 'dataset': content['dataset'], 'dataset_version': dataset['version'] if dataset else None,
-                    'rows': visible_rows(conn, row, dataset, user) if dataset else None, 'meanings_waiting': waiting, **_state_view(conn, row, user)})
+                    'rows': visible_rows(conn, row, dataset, user) if dataset else None, 'meanings_waiting': waiting, **_state_view(conn, row, user, saved_only=True)})
     return out
 
 
@@ -1028,6 +1451,7 @@ def _meaning_view(conn, content: dict, prop: dict, cols: dict, dataset: dict | N
     else:
         values = [{'value': v, 'label': labels[v]['label'] if v in labels else '', 'description': labels[v]['description'] if v in labels else '',
                    'rows': now.get(v), 'rows_at_confirmation': was.get(v), 'in_data': v in now} for v in _by_value({*now, *labels})]
+    values = [other_names.put(e, other_names.of(labels.get(e['value']))) for e in values]   # a meaning's other names, when it has some
     return {'column': prop['column'], 'values': values, 'seen': None if limited else seen_of_meaning(dataset, cols.get(prop['column'])),
             **({'limited_note': limited_note()} if limited else {}), **(_state_view(conn, row, user) if row else {'state': None, 'can_confirm': False})}
 
@@ -1035,6 +1459,8 @@ def _meaning_view(conn, content: dict, prop: dict, cols: dict, dataset: dict | N
 def type_page(conn, english_name: str, user: dict | None) -> dict:
     """What the type's page is sent: a viewer's waiting type says so and nothing more; everything else is type_detail. (The objects, log, views and the rest keep
     asking type_detail, which refuses a type a viewer may not read.)"""
+    if element_row(conn, type_id(str(english_name))) is not None:
+        settle_rules(conn, [type_id(str(english_name))])   # a confirmed type whose rules were never counted on its data is not shown as holding
     row = element_row(conn, type_id(str(english_name)))
     return _waiting_line(conn, row, user) if waiting_for_viewer(conn, row, user) else type_detail(conn, english_name, user)
 
@@ -1050,13 +1476,17 @@ def type_detail(conn, english_name: str, user: dict | None) -> dict:
     fanned = fan_marks(conn, dataset['id']) if dataset else set()
     props = [{**p, 'key': p['column'] in content['key'], 'hide_values': p['column'] in unsent, 'fan': fan_note() if p['column'] in fanned else None, 'meanings': _meaning_view(conn, content, p, cols, dataset, user) if p['enum'] else None} for p in content['properties']]
     limited = restriction(conn, row['element_id'], user) is not None
+    whole = _whole_pass(conn, _content(row), dataset) if not limited and not hidden else None   # one pass serves both what the page lists and whether it can be confirmed
+    if whole is not None:
+        keep_count(conn, row['element_id'], _content(row), whole)   # so the reads made on every page know it from now on
+    rules = rules_readout(conn, row['element_id'], _content(row), dataset, user, whole)   # none on a column kept from them, counted on their rows
     from ontology_poc_generator.derived_properties import limited_reads   # derived_properties reads this module: imported here, where it is used
-    return {'id': content['english_name'], 'name': content['name'], 'description': content['description'], 'dataset': content['dataset'], 'limited_reads': limited_reads(conn, english_name, user),
+    return {'id': content['english_name'], 'name': content['name'], **({'other_names': other_names.of(content)} if other_names.of(content) else {}), 'description': content['description'], 'dataset': content['dataset'], 'limited_reads': limited_reads(conn, english_name, user),
             'dataset_version': dataset['version'] if dataset else None, 'rows': visible_rows(conn, row, dataset, user) if dataset else None, 'rows_limited': limited,
             **({'limited_note': limited_note()} if limited else {}), 'seen': None if limited else seen_of_type(dataset), 'key': content['key'],
-            'properties': props, 'visible_to': None if user is not None and user['role'] == 'viewer' else visible_to(conn, row['element_id']), **_state_view(conn, row, user),
+            'properties': props, 'visible_to': None if user is not None and user['role'] == 'viewer' else visible_to(conn, row['element_id']), **_state_view(conn, row, user, whole),
             'columns': [{'name': n, 'type': c['type'], 'enum_candidate': bool(c['counts']) and c['type'] in CODE_TYPES} for n, c in cols.items() if n not in hidden],
-            'columns_kept': len(hidden)}
+            'columns_kept': len(hidden), **({'rules': rules, 'rules_note': rules_note()} if rules else {})}
 
 
 def type_objects(conn, english_name: str, page: int, user: dict | None) -> dict:

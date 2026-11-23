@@ -13,6 +13,7 @@ import { canBuild, isGuest, roleLabel, searchPlaceholder } from "./authModel.js"
 import { SettingsPage } from "./SettingsPage.jsx";
 import { ConfirmGroupPage } from "./ConfirmGroupPage.jsx";
 import { ConfirmPage } from "./ConfirmPage.jsx";
+import { NeededPage } from "./NeededPage.jsx";
 import { DatasetList } from "./DatasetList.jsx";
 import { DatasetPage } from "./DatasetPage.jsx";
 import { LineagePage } from "./LineagePage.jsx";
@@ -268,6 +269,7 @@ const VIEWS = {
   relationnew: () => <RelationForm key="new" />,
   relationedit: (route) => <RelationForm key={route.id} id={route.id} />,
   confirm: () => <ConfirmPage />,
+  needed: () => <NeededPage />,
   confirmgroup: (route) => <ConfirmGroupPage key={`${route.dataset}@${route.version}`} route={route} />,
   agents: () => <AgentsPage />,
   boards: () => <BoardsPage />,

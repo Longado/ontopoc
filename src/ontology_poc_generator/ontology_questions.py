@@ -15,6 +15,7 @@ from ontology_poc_generator.derived_measures import compute as compute_derived, 
 from ontology_poc_generator.ontology_card import evidence as card_evidence, is_period_to_date, measure_fields, refusal as card_refusal
 from ontology_poc_generator import ontopoc_query
 from ontology_poc_generator.lang import english, tr
+from ontology_poc_generator.workspace_store import fan_refusal, not_measured_refusal
 
 ontopoc_query.SAY = tr   # the query language says its messages in the asker's language (it imports nothing itself)
 
@@ -599,6 +600,13 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
     seen = [(tuple(d['via']), d['field'], d.get('by')) for d in dims]
     if len(set(seen)) < len(seen):   # "which X go together": one dimension cannot pair two different values of itself
         return {'status': 'query_limit', 'reason': tr('同一个字段沿同一条路径分了两次组，这是在问哪些值常在一起出现；查询只会把每个值和它自己配成一对，这种问法还不支持', 'The same field is grouped twice along the same path, which asks which values often appear together. A query only pairs each value with itself, so this kind of question is not supported yet')}
+    unmeasured = (bundle.get('unmeasured') or {}).get(measure['field'].partition('.')[0]) if measure else None   # a version written before copies were measured
+    if unmeasured:
+        return {'status': 'query_limit', 'reason': not_measured_refusal(unmeasured['dataset'], unmeasured['pipeline']), 'fan': 'not_measured',
+                'fan_detail': {'dataset': unmeasured['dataset'], 'version': unmeasured['version']}}
+    fanned = bundle.get('fan') or {}   # {"table.path": the pipeline, or None when the asker may not open it}: a figure a join copied (workspace_store.fan_marks)
+    if measure and measure['field'] in fanned:   # a sum and an average are both changed by copies of a row
+        return {'status': 'query_limit', 'reason': fan_refusal(measure['field'].partition('.')[2], fanned[measure['field']], measure['op']), 'fan': 'repeated'}
     refused = card_refusal(card, bundle, measure, where, dims) if card and measure else None
     if refused:
         return refused
@@ -828,9 +836,10 @@ def _labels(meanings: dict | None, where: dict) -> dict:
     return {'labels': said} if said else {}
 
 
-def flag_unasked_filters(result: dict, question: str) -> dict:
+def flag_unasked_filters(result: dict, question: str, also: dict | None = None) -> dict:
     """Mark the filters whose value the question never says: the model added them on its own. A hint for the person
-    checking the answer, not a refusal. Compared upper-cased with spaces removed, and as a substring of the question."""
+    checking the answer, not a refusal. Compared upper-cased with spaces removed, and as a substring of the question. `also`: {column: {label: its other names}}
+    of the columns the filters can be on; a question that says one says the label of a filter on that column, and never of a filter on another."""
     filters = (result.get('evidence') or {}).get('filters')
     if not filters:
         return result
@@ -848,7 +857,7 @@ def flag_unasked_filters(result: dict, question: str) -> dict:
             return bool(v) and re.search(rf'(?<![{left}]){re.escape(v)}(?![{right}]){decimal}', words) is not None
         return v in said
     # a condition that leaves a value out is not marked: the path says it, and the workspace has already checked the model's word for the meaning it leaves out
-    marked = [f if f.get('not') or 'range' in f or named(f['equals']) or any(named(label) for label in f.get('labels', [])) else {**f, 'not_in_question': True} for f in filters]
+    marked = [f if f.get('not') or 'range' in f or named(f['equals']) or any(named(n) for label in f.get('labels', []) for n in (label, *(also or {}).get(f.get('field'), {}).get(label, ()))) else {**f, 'not_in_question': True} for f in filters]
     return {**result, 'evidence': {**result['evidence'], 'filters': marked}}
 
 
@@ -874,15 +883,16 @@ def _for_reader(reasoning: str, status: str) -> str:
 
 def _in_names(ontology: dict, result: dict) -> dict:
     """The reason of an answer that did not succeed, written in the names a person reads instead of the ontology's keys."""
-    if result['status'] != 'answered' and result.get('reason') and 'refused_by_card' not in result:   # the card's reason names a column, not an object
+    if result['status'] != 'answered' and result.get('reason') and 'refused_by_card' not in result and 'fan' not in result:   # the card's and the repeat's reason name a column, not an object
         return {**result, 'reason': plain_reason(ontology, result['reason'])}
     return result
 
 
 def answer_query(ontology: dict, bundle: dict, query: dict, question: str, graph: dict | None = None, derived: list | None = None,
-                 card: dict | None = None) -> dict:
-    """One question's query run and read for a person: the filters the question never says are marked, and a reason is in names."""
-    return _in_names(ontology, flag_unasked_filters(run_query(ontology, bundle, query, graph, derived, card), question))
+                 card: dict | None = None, also: dict | None = None) -> dict:
+    """One question's query run and read for a person: the filters the question never says are marked (`also`: the other names of meanings, see
+    flag_unasked_filters), and a reason is in names."""
+    return _in_names(ontology, flag_unasked_filters(run_query(ontology, bundle, query, graph, derived, card), question, also))
 
 
 def _catalog(ontology: dict, bundle: dict, derived: list | None = None) -> dict:

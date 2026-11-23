@@ -14,22 +14,22 @@ import json
 from ontology_poc_generator.object_relations import (
     _relation_visible, check_relation, confirm_relation, counts_only, evidence_lines, relation_view)
 from ontology_poc_generator.object_types import (
-    ACTION_PREFIX, DERIVED_PREFIX, ENUM_PREFIX, limited_note, PIPELINE_PREFIX, RELATION_PREFIX, stale_note, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _confirmers, _content, _readers_of_dataset, _state_view, _visible, confirm_element, dataset_columns, element_row, seen_of_meaning, seen_of_type)
+    ACTION_PREFIX, DERIVED_PREFIX, ENUM_PREFIX, limited_note, PIPELINE_PREFIX, RELATION_PREFIX, stale_note, TYPE_PREFIX, VIEW_PREFIX, TypeRefused, _confirmers, _content, _readers_of_dataset, _state_view, _visible, confirm_element, dataset_columns, element_row, rules_readout, seen_of_meaning, seen_of_type)
 from ontology_poc_generator.derived_properties import confirm_derived, derived_state, derived_visible, describe as describe_derived, open_new_values as derived_new_values, trial as derived_trial
 from ontology_poc_generator.object_actions import action_state, action_visible, confirm_action, describe as describe_action, open_records
 from ontology_poc_generator.object_views import confirm_view, describe, open_new_values, seen_of_view, view_state, view_summary, view_visible
 from ontology_poc_generator.workspace_pipelines import (
     _inputs_now, confirm_pipeline, output_states, pipeline_state, pipeline_visible, waiting_on as pipeline_waiting)
-from ontology_poc_generator.row_rules import without_rules
+from ontology_poc_generator.row_rules import restriction, without_rules
 from ontology_poc_generator.type_access import hidden_columns, reads_hidden
-from ontology_poc_generator.workspace_store import fan_note, current_dataset, fan_marks, log_line
+from ontology_poc_generator.workspace_store import drop_was, fan_note, current_dataset, fan_marks, log_line
 
 IN_QUEUE = ('proposed', 'checked', 'needs_look')
 ORDER = {'needs_look': 0, 'pending': 1, 'checked': 1, 'proposed': 2}
 MAX_REASON = 300
 
 
-def _type_lines(conn, row: dict, content: dict, limited: bool = False, hidden: frozenset = frozenset()) -> list[dict]:
+def _type_lines(conn, row: dict, content: dict, limited: bool = False, hidden: frozenset = frozenset(), rules: list[dict] | None = None, own_rows: bool = False) -> list[dict]:
     anchors = json.loads(row['anchors_json']) if row['anchors_json'] else {}
     lines = []
     if limited:   # a row rule keeps part of the data from this person: no count of the whole data
@@ -45,7 +45,22 @@ def _type_lines(conn, row: dict, content: dict, limited: bool = False, hidden: f
                                       "WHERE d.element_id = ? AND d.depends_on LIKE 'enum:%'", (len(f'{ENUM_PREFIX}{content["english_name"]}:') + 1, row['element_id'])):
         if column not in hidden:   # a column kept from this person is not named to them
             lines.append({'ok': state == 'confirmed', 'text': tr(f'“{column}”的含义{"已确认" if state == "confirmed" else "还没有确认"}', f'The meanings of "{column}" are {"confirmed" if state == "confirmed" else "not confirmed yet"}')})
-    return lines
+    return lines + _rule_lines(rules or [], own_rows)
+
+
+def _rule_lines(rules: list[dict], own_rows: bool) -> list[dict]:
+    """One line for each value rule this person may read: what it says and how many rows break it now (of the rows a row rule lets them see, when one does)."""
+    def said(r):
+        if r.get('counted') == 'own_rows':
+            return tr(f'{r["says"]}：打开对象类型来数你能看到的行里有多少不满足', f'{r["says"]}: open the type to count the rows you can see that break it')
+        if r.get('counted') is False:
+            return tr(f'{r["says"]}：还没有按现在的数据数过，打开对象类型来数', f'{r["says"]}: not counted on the data as it is yet; open the type to count')
+        if r['broken'] is None:
+            return tr(f'{r["says"]}：现在没法检查', f'{r["says"]}: it cannot be checked now')
+        if not r['broken']:
+            return tr(f'{r["says"]}：{"你能看到的行里" if own_rows else ""}现在没有行不满足', f'{r["says"]}: no row{" you can see" if own_rows else ""} breaks it now')
+        return tr(f'{r["says"]}：{"你能看到的行里" if own_rows else ""}现在有 {r["broken"]} 行不满足', f'{r["says"]}: {r["broken"]}{" of the rows you can see" if own_rows else " rows"} break it now')
+    return [{'ok': r['broken'] == 0, 'text': said(r)} for r in rules]
 
 
 def _meaning_lines(content: dict, row: dict, limited: bool = False) -> list[dict]:
@@ -133,10 +148,12 @@ def _item(conn, row: dict, user: dict | None, light: bool = False) -> dict | Non
             return None
         hidden = frozenset(hidden_columns(conn, element_id, user))
         content = {**content, 'properties': [p for p in content['properties'] if p['column'] not in hidden]}
-        view = _state_view(conn, row, user)
+        own_rows = restriction(conn, element_id, user) is not None
+        dataset = current_dataset(conn, content['dataset'])
+        view = _state_view(conn, row, user, saved_only=True)   # the queue is read on every page: no data row is read for value rules (the type's page counts them)
         base = {'kind': 'type', 'title': content['name'], 'id': content['english_name'], 'lines': []}
         if not light:
-            base['lines'] = _type_lines(conn, row, content, view['limited_by_rule'], hidden)
+            base['lines'] = _type_lines(conn, row, content, view['limited_by_rule'], hidden, rules_readout(conn, element_id, _content(row), dataset, user, saved_only=True), own_rows)
             view['seen'] = None if view['limited_by_rule'] else seen_of_type(current_dataset(conn, content['dataset']))
     if light:
         return {'element': element_id, **base, **view}
@@ -150,7 +167,9 @@ def _item(conn, row: dict, user: dict | None, light: bool = False) -> dict | Non
 def queue(conn, user: dict | None, light: bool = False) -> dict:
     """{'items': what this person may see, those they can confirm first, then needs-another-look, checked, proposed; 'count': how many of them they can confirm now;
     'hidden_by_rules': how many more would be theirs but for a row rule on the data they read (a number only, no names)}.
-    `light`: the count only, from the states (no relation check runs); items carry no evidence."""
+    `light`: the count only, from the states (no relation check runs); items carry no evidence. No data row is read for value rules: a type counts by the rule
+    count kept by its last proposal, confirmation or recheck on its current version; one whose rules were not counted on that version is not in 'count' (it may
+    be confirmable: its page counts them), and 'rules_unchecked', present only when there are some, says how many such types were left out."""
     items, ruled_out = [], 0
     for element_id, in conn.execute("SELECT element_id FROM element_state WHERE state IN ('proposed', 'checked', 'needs_look') AND "
                                     "(element_id LIKE 'objtype:%' OR element_id LIKE 'enum:%' OR element_id LIKE 'relation:%' OR element_id LIKE 'objview:%' OR element_id LIKE 'objaction:%' OR element_id LIKE 'pipeline:%' OR element_id LIKE 'derived:%') ORDER BY element_id").fetchall():
@@ -162,7 +181,8 @@ def queue(conn, user: dict | None, light: bool = False) -> dict:
             ruled_out += 1
     items += [approval_item(r, conn, user) for r in open_records(conn, user)]   # the submissions waiting for a second person: a card each
     items.sort(key=lambda i: (not i['can_confirm'], ORDER[i['state']], i['element']))
-    return {'items': [] if light else items, 'count': sum(1 for i in items if i['can_confirm']), 'hidden_by_rules': ruled_out}
+    unchecked = sum(1 for i in items if i.get('rules_unchecked'))
+    return {'items': [] if light else items, 'count': sum(1 for i in items if i['can_confirm']), 'hidden_by_rules': ruled_out, **({'rules_unchecked': unchecked} if unchecked else {})}
 
 
 def seen_by(conn, row: dict, user: dict | None) -> bool:
@@ -266,6 +286,7 @@ def send_back(conn, payload: dict, who: str | None, user: dict | None) -> dict:
                         (reason, element, row['version'])).rowcount != 1:   # someone wrote it between the read and here
             raise TypeRefused(stale_note(), 409)
         log_line(conn, who or tr('未署名', 'unsigned'), element, 'sent_back', before={'state': row['state']}, after={'state': 'rejected', 'reason': reason})
+        drop_was(conn, element)   # sent back by a person: putting its words back does not confirm it again by itself
         conn.execute('COMMIT')
     except BaseException:
         conn.execute('ROLLBACK')

@@ -14,6 +14,7 @@ export default {
   "group.objects": "定义",
   "group.objects.hint": "另一位同事对着当前数据确认过，AI 才会按它回答",
   "confirm": "待确认",
+  "needed": "要回答的问题",
   "types": "对象类型",
   "relations": "关系",
   "group.apps": "智能体",

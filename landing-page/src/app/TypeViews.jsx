@@ -3,7 +3,7 @@ import { confirmView, createView, getTypeViews } from "./api.js";
 import { Select } from "./Select.jsx";
 import { State } from "./TypesPage.jsx";
 import { t } from "./i18n/index.js";
-import { confirmersText, stateLine } from "./typeModel.js";
+import { alsoCalled, confirmersText, stateLine } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
 import { OP_LABEL, confirmWords, emptyViewForm, newValueChoices, newValueText, rowsText, viewPayload, viewProblem, viewWaitingText } from "./viewModel.js";
 
@@ -31,6 +31,7 @@ function ViewCard({ view, mayBuild, onChanged }) {
         <h2 className="item-title">{view.name}</h2>
         <State item={view} />
       </div>
+      {alsoCalled(view.other_names) && <p className="muted small">{alsoCalled(view.other_names)}</p>}
       <p>{view.says}</p>
       {view.caliber && <p className="small">{view.caliber}</p>}
       <p className="facts">
@@ -86,7 +87,7 @@ function Condition({ row, codes, onChange, onRemove, only }) {
 }
 
 function NewView({ type, form: options, onSaved }) {
-  const [form, setForm] = useState(emptyViewForm());
+  const [form, setForm] = useState({ ...emptyViewForm(), otherNames: "" });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const problem = viewProblem(form);
@@ -97,7 +98,7 @@ function NewView({ type, form: options, onSaved }) {
     setError("");
     try {
       await createView(viewPayload(type, form));
-      setForm(emptyViewForm());
+      setForm({ ...emptyViewForm(), otherNames: "" });
       onSaved();
     } catch (e) {
       setError(e.message);
@@ -110,6 +111,11 @@ function NewView({ type, form: options, onSaved }) {
       <label className="field">
         <span className="caption">{t("types.view.name")}</span>
         <input type="text" value={form.name} maxLength={40} placeholder={t("types.view.namePlaceholder")} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+      </label>
+      <label className="field">
+        <span className="caption">{t("types.otherNames")}</span>
+        <input type="text" value={form.otherNames} placeholder={t("types.otherNamesPlaceholder")} onChange={(e) => setForm({ ...form, otherNames: e.target.value })} />
+        <span className="muted small">{t("types.otherNamesHint")}</span>
       </label>
       <div className="field">
         <span className="caption">{t("types.view.keepOnly")}</span>

@@ -30,6 +30,32 @@ export function answerView(record) {
   return { big: unit ? countText(a.total, unit) : count(a.total), note: record.status === "no_data" ? record.reason ?? "" : "", table: null };
 }
 
+/** The same question worked out on other rows, beside an answer (the service adds it when the answer covers every row of a type, or exactly one confirmed view):
+ * {title, lines: [{key, name, text, of, by}], more, hint}, or null when there is none. Every row is the first line when the answer read one view. */
+export function besideView(record) {
+  const views = record.beside?.views ?? [];
+  if (!views.length) return null;
+  const unit = record.types?.[0]?.name ?? "";
+  const all = views.find((v) => v.all_rows);
+  const total = all ? all.answer?.total : record.answer?.total;   // what "107 of 150" counts against: every row
+  const lines = views.map((v) => ({
+    key: v.all_rows ? "all-rows" : v.id ?? v.name, name: v.all_rows ? t("ask.beside.all", { unit }) : v.name,
+    text: v.answer ? answerView({ ...record, status: "answered", answer: v.answer }).big : v.no_data ? t("ask.noData") : "",
+    of: !v.all_rows && v.answer?.total != null && total != null ? t("ask.beside.of", { n: count(v.answer.total), total: count(total), unit }) : "",
+    by: v.confirmed_by ? t("ask.beside.by", { by: v.confirmed_by }) : "",
+  }));
+  const more = record.beside.more ?? [];
+  return { title: t("ask.beside.title"), lines, more: more.length ? t("ask.beside.more", { n: more.length, names: more.join(t("ask.sep")) }) : "", hint: t(all ? "ask.beside.hintView" : "ask.beside.hint") };
+}
+
+/** Which part of the refusal card a record fills: a kind the card has its own lines for ("unsettled", "not_in_scope", "definition_unmet"), or, for any other
+ * kind and for none, the service's own sentence (it comes in the asker's language), so a refusal of a kind the page does not know yet still says why. */
+const REFUSAL_BRANCHES = ["unsettled", "not_in_scope", "definition_unmet"];
+export function refusalBranch(record) {
+  const kind = record.refusal?.kind;
+  return REFUSAL_BRANCHES.includes(kind) ? { kind } : { kind: "reason", text: record.reason ?? "" };
+}
+
 /** The answer, or the refusal, in one word for the history list. */
 export const statusText = (status) => t(status === "answered" ? "ask.status.answered" : status === "no_data" ? "ask.status.noData" : "ask.status.refused");
 export const isAnswer = (record) => record.status === "answered" || record.status === "no_data";
@@ -141,7 +167,9 @@ export function timeWarning(record) {
 }
 
 /** The one-line caliber under an answer: what was counted by which definitions (the views that chose its rows, then its conditions), and the data as of
- * when. Names are shown without the query's `quoting`. Empty when the answer carries no written query. */
+ * when. Names are shown without the query's `quoting`. Empty when the answer carries no written query. In a question's answer (`record.model`: the model wrote
+ * the query) the conditions are the model's filter, not a confirmed definition: they are said as its reading of the confirmed code meanings (when they read a
+ * code column) and never as a confirmed view. In a query a person wrote they are that person's, said as before. */
 export function criteriaLine(record, asOf) {
   const text = String(record.query_text ?? "");
   const aliases = [...text.matchAll(/\(\s*(\w+)\s*:\s*(`[^`]*`|[^)\s]+)\s*\)/g)];
@@ -152,8 +180,15 @@ export function criteriaLine(record, asOf) {
   const views = [...(record.evidence?.views ?? []).map((v) => t("ask.criteria.view", { name: v.name })),
     ...(record.definitions ?? []).filter((d) => d.kind === "derived").map((d) => t("ask.criteria.derived", { name: d.name }))];   // the views that chose its rows, the derived properties it read values from
   const conds = where ? [plain(where.replace(/\b(\w+)\.(?=[^\s.])/g, (s, a) => (alias.has(a) ? `${alias.get(a)}.` : s)).replace(/'((?:[^']|'')*)'/g, "$1").replace(/\s+/g, " "))] : [];
-  const cond = [...views, ...conds].join(t("ask.criteria.sep")) || t("ask.criteria.all", { type: alias.get(aliases[0][1]) });
-  return t("ask.criteria", { cond, asOf: asOf ? t("ask.criteria.asOf", { when: asOf }) : "" });
+  const all = t("ask.criteria.all", { type: alias.get(aliases[0][1]) });
+  const when = asOf ? t("ask.criteria.asOf", { when: asOf }) : "";
+  if (record.model && conds.length) {
+    const coded = (record.definitions ?? []).some((d) => d.kind === "meaning" && conds[0].includes(d.name));
+    const filter = t(coded ? "ask.criteria.modelMeanings" : "ask.criteria.modelFilter", { cond: conds[0] });
+    return t("ask.criteria", { cond: `${views.join(t("ask.criteria.sep")) || all}${t("ask.criteria.then")}${filter}`, asOf: when });
+  }
+  const cond = [...views, ...conds].join(t("ask.criteria.sep")) || all;
+  return t("ask.criteria", { cond, asOf: when });
 }
 
 /** "数据截至" of an answer: each dataset it read by its version and when that version came (`when` formats the time), "" when the answer does not say (one kept

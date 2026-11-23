@@ -1,7 +1,8 @@
 """An edit made with a token to a confirmed definition: what stays confirmed, and what the log says.
 
-The rule: any edit made with a token to a confirmed definition sends it back to waiting for confirmation, as an edit that changes what it means does; a signed-in
-person's edit of the name or the description alone keeps it confirmed, as before. Every log line of a write made with a token says so, with the token's label."""
+The rule: any edit made with a token to a confirmed definition sends it back to waiting for confirmation, as an edit that changes what it means does. A signed-in
+person's edit of the name or the description now takes the same path (tests/test_changed_since_confirm.py); for a pipeline, a new description is a new definition
+version, as a new step is (tests/test_changed_since_acceptance.py). Every log line of a write made with a token says so, with the token's label."""
 import sqlite3
 from urllib.parse import quote
 
@@ -94,10 +95,8 @@ class FactsTests(World):
                 out[(kind, field)] = self.states_now()[kind]
         return out
 
-    def test_a_signed_in_persons_edit_of_the_name_or_description_keeps_it_confirmed_and_a_new_meaning_does_not(self):
-        facts = self.facts(by_token=False)
-        self.assertEqual({k: v for k, v in facts.items() if k[0] != 'meanings'}, {k: 'confirmed' for k in NAME_AND_DESCRIPTION})
-        self.assertEqual(facts[('meanings', 'label')], 'checked')
+    def test_a_signed_in_persons_edit_of_the_name_or_description_sends_it_back_as_a_tokens_does(self):
+        self.assertEqual(self.facts(by_token=False), {**{k: 'checked' for k in NAME_AND_DESCRIPTION}, ('meanings', 'label'): 'checked'})
 
     def test_any_edit_made_with_a_token_sends_a_confirmed_definition_back(self):
         self.assertEqual(self.facts(by_token=True), {**{k: 'checked' for k in NAME_AND_DESCRIPTION}, ('meanings', 'label'): 'checked'})
@@ -112,6 +111,8 @@ class TokenWriteInTheLogTests(World):
             ann = team['ann']
             token = bearer(ann.post('/api/auth/tokens', {'label': 'support agent'})[1]['token'])
             self.assertEqual(self.edit(ann, 'type', 'description', '一位同事改的')[0], 200)
+            shown = team['bob'].get('/api/workspace/types/customer')[1]   # a person's edit waits for a second person too: Bob confirms it
+            self.assertEqual(team['bob'].post('/api/workspace/types/confirm', {'id': 'customer', 'version': shown['version'], 'seen': shown['seen']})[0], 200)
             before = ann.get('/api/workspace/types/customer/log')[1]['log']
             self.assertTrue(before)
             self.assertTrue(all(e['with_token'] is None for e in before), before)

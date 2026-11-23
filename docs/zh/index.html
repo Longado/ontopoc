@@ -76,7 +76,7 @@
         <h1 id="h1"><span class="ph">团队数据和 AI 之间，</span><span class="ph">有一道确认关口。</span></h1>
         <p class="lede">AI 只按具名同事对着当前数据确认过的定义回答；没确认的，就<strong>拒答，并说出谁能确认</strong>。OntoPoc 是一个开源的<strong>本体工具</strong>，给数据团队用，也能通过 MCP 接进 Claude：表里的字段和代码是什么意思，可以让模型先起草；代码拿全部数据核一遍；再由另一个人确认。数据一变，定义退回“需要再看”。</p>
         <div class="cta">
-          <!-- DEMO_URL：本页唯一的在线演示链接。临时域名，定了正式域名只改这里。 -->
+          <!-- DEMO_URL：本页唯一的在线演示链接。临时域名，定了正式域名要改这里、docs/index.html，以及 README.md、README.en.md。 -->
           <a class="btn btn-primary" id="demo" href="https://35-229-236-140.sslip.io/">试用在线演示，免注册
             <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 10h11m-4-4 4 4-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
           <a class="btn btn-ghost" href="https://github.com/Longado/ontopoc">
@@ -169,7 +169,7 @@
           <div>
             <span class="no">第 2 步</span>
             <h3>由另一个人确认，提议人不能自己确认</h3>
-            <p>另一位建设者看过检查结果和每个取值的行数，再点确认。谁提的定义，谁就不能确认它；只有一位建设者时这条会放开，日志里写明。</p>
+            <p>另一位建设者看过检查结果和每个取值的行数，再点确认。谁提的定义、上次确认之后谁改过它，谁就不能确认它；已确认的定义改了任何一处（名称也算）都退回等人确认。只有一位建设者时这条会放开，日志里写明。</p>
             <p>确认时记下是谁、依据哪一版数据。问答、看板和智能体只用已确认的定义。</p>
           </div>
           <figure class="shot">
