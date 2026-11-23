@@ -911,7 +911,7 @@ def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = 
                   more: tuple[str, str] | None = None) -> dict:
     """`answerer(query, question, used)` works out one question's answer in place of answer_query (the caller reads the rows its own
     way; `used` is the model's `definitions_used`). `definitions` is what the person has confirmed, told to the model; `catalog` replaces the one built from the data.
-    `more`: (its version, its text), what the caller adds to the prompt, after it and under a version of its own.
+    `more`: (its version, its text), what the caller adds to the prompt, after all of it (the English note too) and under a version of its own.
     One call. With question: that question. With purpose_only: the questions the person wrote as the purpose, which
     an upload answers. With neither: the model's own round, asked for on the questions page."""
     request = {'purpose': bundle['decision'], 'ontology': catalog or _catalog(ontology, bundle, derived)}   # `catalog`: what the caller lets the model see (the workspace hides values)
@@ -921,10 +921,11 @@ def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = 
         request['asked'] = question
     elif purpose_only:
         request['only_purpose'] = True
-    version, system = (QUESTION_PROMPT_VERSION, QUESTION_SYSTEM_PROMPT) if more is None else (f'{QUESTION_PROMPT_VERSION}+{more[0]}', QUESTION_SYSTEM_PROMPT + more[1])
+    system = QUESTION_SYSTEM_PROMPT + ENGLISH_NOTE if english() else QUESTION_SYSTEM_PROMPT
+    version, system = (QUESTION_PROMPT_VERSION, system) if more is None else (f'{QUESTION_PROMPT_VERSION}+{more[0]}', system + more[1])   # after it, every word of it as it was
     out = {'prompt_version': version, 'model': None, 'asked_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
            'items': [], 'answered': 0, 'total': 0, 'error': None}
-    judgement = ask_model(gateway, 'question_writer', version, system + ENGLISH_NOTE if english() else system, request)
+    judgement = ask_model(gateway, 'question_writer', version, system, request)
     out['model'] = judgement.model
     if judgement.failure == 'request':
         return {**out, 'error': model_failure_text(judgement.message), 'request_failed': True}   # nothing came back: told apart from a reply that could not be read

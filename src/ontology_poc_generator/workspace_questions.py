@@ -1055,18 +1055,14 @@ def _answered(conn, gateway, user: dict | None, question: str, sc: dict) -> dict
             **({'ran': answer.ran()} if ROW_ANSWERS else {})}
 
 
-ROWS_PROMPT_VERSION = 'workspace_rows.v1'
+ROWS_PROMPT_VERSION = 'workspace_rows.v2'
 ROWS_PROMPT = '''
-Which objects, and one object (in this workspace):
-- When the question asks WHICH objects rather than how many ("哪些加急订单是高风险的", "列出…", "which orders…"), write the query you would write to count
-  them and add "list": {"properties": ["<attribute path of the start type>", "..."]} (an empty list: the key and the first attributes). Same start, same
-  where, same definitions_used (a view the question names is applied by code, as for a count); no via, group_by, share, measure, top or order. Code lists
-  the objects to the person; you never see them.
-- When the question asks about ONE object named by its key ("订单 SO-88 的状态", "措施 P-3 的审批状态"), write {"start": "<type key>", "lookup":
-  {"<each attribute path in the type's `identified_by`>": "<the key value exactly as the question writes it>"}} and nothing else in the query. Code finds the object
-  and shows its properties to the person; you never see it.
-- A where range bound on a date attribute may be the word "today" ("before today": {"field": "<date path>", "less_than": "today"}); code puts in the date
-  it runs on and says which. No other relative time word (yesterday, this week, next month) can be written: say so with "missing": "query_language".
+
+Lists, one object and today (added for this workspace):
+- WHICH objects, not how many: the count query (same start, where, definitions_used) plus "list": {"properties": [<start type attribute paths>]}
+  ([]: the key and the first attributes). Code shows the objects to the person; you never see them.
+- ONE object named by its key: {"start": <type key>, "lookup": {<each path in identified_by>: "<the value as the question writes it>"}}, nothing else.
+- A where range bound on a date attribute may be "today". No other relative time word: "missing": "query_language".
 '''
 
 
@@ -1267,15 +1263,12 @@ Rules:
 
 
 TEXT_ROWS_PROMPT = '''
-Which objects, and one object (in this workspace):
-  query  := ... | SELECT LIST var [{, var.property}] FROM (var:type) [WHERE cond {AND cond}] [LIMIT n]
-                | SELECT ONE var FROM (var:type) WHERE var.key = value {AND var.key = value}
-- When the question asks WHICH objects rather than how many, write SELECT LIST: SELECT LIST o FROM (o:订单) WHERE o.紧急程度 = '加急' gives the key
-  and the first properties; SELECT LIST o.金额, o.状态码 FROM … names them. One type, no relation, no GROUP BY or ORDER BY; a view the question names
-  goes in "views" as for a count; LIMIT n (at most 50) is the page size. Code lists the objects to the person; you never see them.
-- When the question asks about one object named by its key, write SELECT ONE o FROM (o:措施) WHERE o.措施编号 = 'P-3', one condition for each
-  property in the type's `identified_by`, the value exactly as the question writes it. Code finds it and shows it to the person; you never see it.
-- A range bound on a date property may be the word today, unquoted: WHERE o.承诺日期 < today. No other relative time word can be written.
+
+Lists, one object and today (added for this workspace):
+- WHICH objects, not how many: SELECT LIST o FROM (o:订单) [WHERE …] [LIMIT n, at most 50] gives the key and the first properties; SELECT LIST o.金额, o.状态 …
+  names them. One type: no relation, GROUP BY or ORDER BY; views go in "views" as for a count. You never see the objects.
+- ONE object by its key: SELECT ONE o FROM (o:措施) WHERE o.措施编号 = 'P-3', one = for each property in identified_by.
+- A date range bound may be the bare word today: WHERE o.承诺日期 < today. No other relative time word.
 '''
 
 
@@ -1285,8 +1278,9 @@ def _answered_in_text(conn, gateway, user: dict | None, question: str, sc: dict)
     parts = _inputs(conn, sc, question)
     catalog, definitions = _catalog_for_model(conn, sc, parts)
     request = {'asked': question, 'ontology': catalog, **({'definitions': definitions} if definitions else {})}
-    version, system = (f'{TEXT_PROMPT_VERSION}+{ROWS_PROMPT_VERSION}', TEXT_SYSTEM_PROMPT + TEXT_ROWS_PROMPT) if ROW_ANSWERS else (TEXT_PROMPT_VERSION, TEXT_SYSTEM_PROMPT)
-    judgement = ask_model(gateway, 'question_writer', version, system + ENGLISH_NOTE if english() else system, request)
+    system = TEXT_SYSTEM_PROMPT + ENGLISH_NOTE if english() else TEXT_SYSTEM_PROMPT
+    version, system = (f'{TEXT_PROMPT_VERSION}+{ROWS_PROMPT_VERSION}', system + TEXT_ROWS_PROMPT) if ROW_ANSWERS else (TEXT_PROMPT_VERSION, system)   # after it, every word of it as it was
+    judgement = ask_model(gateway, 'question_writer', version, system, request)
     if judgement.failure == 'request':
         raise QaRefused(model_failure_text(judgement.message), 502)
     reply = judgement.reply if isinstance(judgement.reply, dict) else None
