@@ -1,0 +1,6927 @@
+{
+ "ask": {
+  "avg_amount": [
+   200,
+   {
+    "answer": {
+     "measure": {
+      "counted": 3,
+      "field": "amount",
+      "op": "average",
+      "skipped": 0,
+      "value": 60
+     },
+     "total": 3
+    },
+    "asked_at": "<time>",
+    "data_as_of": [
+     {
+      "dataset": "orders",
+      "imported_at": "<time>",
+      "version": 1
+     }
+    ],
+    "datasets": {
+     "orders": 1
+    },
+    "definitions": [
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "objtype:order",
+      "kind": "type",
+      "name": "订单",
+      "state": "confirmed",
+      "version": 2
+     }
+    ],
+    "id": 2,
+    "model": "test-model",
+    "path": "订单，算“amount”的平均",
+    "query": {
+     "group_by": null,
+     "measure": {
+      "field": "amount",
+      "op": "average"
+     },
+     "share": null,
+     "start": "order",
+     "via": [],
+     "where": []
+    },
+    "query_text": "SELECT avg(o.amount) AS 平均\nFROM (o:订单)",
+    "question": "订单金额平均是多少？",
+    "reasoning": "把金额加起来",
+    "status": "answered",
+    "steps": [
+     {
+      "name": "理解问题",
+      "text": "把金额加起来"
+     },
+     {
+      "name": "找对象类型",
+      "text": "订单"
+     },
+     {
+      "name": "找关系",
+      "text": "这道题用不到关系"
+     },
+     {
+      "name": "改写成查询",
+      "query": {
+       "group_by": null,
+       "measure": {
+        "field": "amount",
+        "op": "average"
+       },
+       "share": null,
+       "start": "order",
+       "via": [],
+       "where": []
+      },
+      "text": "订单，算“amount”的平均"
+     },
+     {
+      "failed": false,
+      "name": "结果",
+      "text": "算出了结果"
+     }
+    ],
+    "types": [
+     {
+      "id": "order",
+      "name": "订单"
+     }
+    ]
+   }
+  ],
+  "by_customer": [
+   200,
+   {
+    "answer": {
+     "groups": [
+      [
+       "C1",
+       150,
+       2
+      ],
+      [
+       "C2",
+       30,
+       1
+      ]
+     ],
+     "measure": {
+      "counted": 3,
+      "field": "amount",
+      "op": "sum",
+      "skipped": 0,
+      "value": 180
+     },
+     "total_groups": 2,
+     "without_value": 0
+    },
+    "asked_at": "<time>",
+    "data_as_of": [
+     {
+      "dataset": "orders",
+      "imported_at": "<time>",
+      "version": 1
+     }
+    ],
+    "datasets": {
+     "orders": 1
+    },
+    "definitions": [
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "objtype:order",
+      "kind": "type",
+      "name": "订单",
+      "state": "confirmed",
+      "version": 2
+     }
+    ],
+    "id": 3,
+    "model": "test-model",
+    "path": "订单，按“customer”分组，算每组“amount”的合计",
+    "query": {
+     "group_by": [
+      {
+       "field": "customer",
+       "via": []
+      }
+     ],
+     "measure": {
+      "field": "amount",
+      "op": "sum"
+     },
+     "share": null,
+     "start": "order",
+     "via": [],
+     "where": []
+    },
+    "query_text": "SELECT o.customer, sum(o.amount) AS 合计\nFROM (o:订单)\nGROUP BY o.customer",
+    "question": "每个客户的订单金额合计？",
+    "reasoning": "把金额加起来",
+    "status": "answered",
+    "steps": [
+     {
+      "name": "理解问题",
+      "text": "把金额加起来"
+     },
+     {
+      "name": "找对象类型",
+      "text": "订单"
+     },
+     {
+      "name": "找关系",
+      "text": "这道题用不到关系"
+     },
+     {
+      "name": "改写成查询",
+      "query": {
+       "group_by": [
+        {
+         "field": "customer",
+         "via": []
+        }
+       ],
+       "measure": {
+        "field": "amount",
+        "op": "sum"
+       },
+       "share": null,
+       "start": "order",
+       "via": [],
+       "where": []
+      },
+      "text": "订单，按“customer”分组，算每组“amount”的合计"
+     },
+     {
+      "failed": false,
+      "name": "结果",
+      "text": "算出了结果"
+     }
+    ],
+    "types": [
+     {
+      "id": "order",
+      "name": "订单"
+     }
+    ]
+   }
+  ],
+  "count_lines": [
+   200,
+   {
+    "answer": {
+     "total": 4
+    },
+    "asked_at": "<time>",
+    "data_as_of": [
+     {
+      "dataset": "line_rows",
+      "imported_at": "<time>",
+      "version": 1
+     }
+    ],
+    "datasets": {
+     "line_rows": 1
+    },
+    "definitions": [
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "objtype:line",
+      "kind": "type",
+      "name": "订单行",
+      "state": "confirmed",
+      "version": 2
+     }
+    ],
+    "id": 6,
+    "model": "test-model",
+    "path": "订单行",
+    "query": {
+     "group_by": null,
+     "measure": null,
+     "share": null,
+     "start": "line",
+     "via": [],
+     "where": []
+    },
+    "query_text": "SELECT count(l) AS 数量\nFROM (l:订单行)",
+    "question": "有多少订单行？",
+    "reasoning": "数一数",
+    "status": "answered",
+    "steps": [
+     {
+      "name": "理解问题",
+      "text": "数一数"
+     },
+     {
+      "name": "找对象类型",
+      "text": "订单行"
+     },
+     {
+      "name": "找关系",
+      "text": "这道题用不到关系"
+     },
+     {
+      "name": "改写成查询",
+      "query": {
+       "group_by": null,
+       "measure": null,
+       "share": null,
+       "start": "line",
+       "via": [],
+       "where": []
+      },
+      "text": "订单行"
+     },
+     {
+      "failed": false,
+      "name": "结果",
+      "text": "算出了结果"
+     }
+    ],
+    "types": [
+     {
+      "id": "line",
+      "name": "订单行"
+     }
+    ]
+   }
+  ],
+  "derived_function": [
+   200,
+   {
+    "answer": {
+     "measure": {
+      "counted": 4,
+      "field": "双倍件数",
+      "op": "sum",
+      "skipped": 0,
+      "value": 22
+     },
+     "total": 4
+    },
+    "asked_at": "<time>",
+    "data_as_of": [
+     {
+      "dataset": "line_rows",
+      "imported_at": "<time>",
+      "version": 1
+     }
+    ],
+    "datasets": {
+     "line_rows": 1
+    },
+    "definitions": [
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "objtype:line",
+      "kind": "type",
+      "name": "订单行",
+      "state": "confirmed",
+      "version": 2
+     },
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "derived:line:double_qty",
+      "kind": "derived",
+      "name": "订单行.双倍件数",
+      "says": "订单行的双倍件数 = qty * 2",
+      "state": "confirmed",
+      "type": "line",
+      "version": 2
+     }
+    ],
+    "id": 5,
+    "model": "test-model",
+    "path": "订单行，把“双倍件数”加起来",
+    "query": {
+     "group_by": null,
+     "measure": {
+      "field": "双倍件数",
+      "op": "sum"
+     },
+     "share": null,
+     "start": "line",
+     "via": [],
+     "where": []
+    },
+    "query_text": "SELECT sum(l.双倍件数) AS 合计\nFROM (l:订单行)",
+    "question": "双倍件数合计是多少？",
+    "reasoning": "把金额加起来",
+    "status": "answered",
+    "steps": [
+     {
+      "name": "理解问题",
+      "text": "把金额加起来"
+     },
+     {
+      "name": "找对象类型",
+      "text": "订单行"
+     },
+     {
+      "name": "找关系",
+      "text": "这道题用不到关系"
+     },
+     {
+      "name": "改写成查询",
+      "query": {
+       "group_by": null,
+       "measure": {
+        "field": "双倍件数",
+        "op": "sum"
+       },
+       "share": null,
+       "start": "line",
+       "via": [],
+       "where": []
+      },
+      "text": "订单行，把“双倍件数”加起来"
+     },
+     {
+      "failed": false,
+      "name": "结果",
+      "text": "算出了结果"
+     }
+    ],
+    "types": [
+     {
+      "id": "line",
+      "name": "订单行"
+     }
+    ]
+   }
+  ],
+  "derived_stat": [
+   200,
+   {
+    "answer": {
+     "measure": {
+      "counted": 3,
+      "field": "件数合计",
+      "op": "sum",
+      "skipped": 0,
+      "value": 11
+     },
+     "total": 3
+    },
+    "asked_at": "<time>",
+    "data_as_of": [
+     {
+      "dataset": "line_rows",
+      "imported_at": "<time>",
+      "version": 1
+     },
+     {
+      "dataset": "orders",
+      "imported_at": "<time>",
+      "version": 1
+     }
+    ],
+    "datasets": {
+     "line_rows": 1,
+     "orders": 1
+    },
+    "definitions": [
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "objtype:order",
+      "kind": "type",
+      "name": "订单",
+      "state": "confirmed",
+      "version": 2
+     },
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "derived:order:qty_sum",
+      "kind": "derived",
+      "name": "订单.件数合计",
+      "says": "订单的件数合计：每个订单，经过 订单行属于订单，订单行里的行，求和「qty」",
+      "state": "confirmed",
+      "type": "order",
+      "version": 2
+     }
+    ],
+    "id": 4,
+    "model": "test-model",
+    "path": "订单，把“件数合计”加起来",
+    "query": {
+     "group_by": null,
+     "measure": {
+      "field": "件数合计",
+      "op": "sum"
+     },
+     "share": null,
+     "start": "order",
+     "via": [],
+     "where": []
+    },
+    "query_text": "SELECT sum(o.件数合计) AS 合计\nFROM (o:订单)",
+    "question": "件数合计加起来是多少？",
+    "reasoning": "把金额加起来",
+    "status": "answered",
+    "steps": [
+     {
+      "name": "理解问题",
+      "text": "把金额加起来"
+     },
+     {
+      "name": "找对象类型",
+      "text": "订单"
+     },
+     {
+      "name": "找关系",
+      "text": "这道题用不到关系"
+     },
+     {
+      "name": "改写成查询",
+      "query": {
+       "group_by": null,
+       "measure": {
+        "field": "件数合计",
+        "op": "sum"
+       },
+       "share": null,
+       "start": "order",
+       "via": [],
+       "where": []
+      },
+      "text": "订单，把“件数合计”加起来"
+     },
+     {
+      "failed": false,
+      "name": "结果",
+      "text": "算出了结果"
+     }
+    ],
+    "types": [
+     {
+      "id": "order",
+      "name": "订单"
+     }
+    ]
+   }
+  ],
+  "english": [
+   200,
+   {
+    "answer": {
+     "measure": {
+      "counted": 4,
+      "field": "qty",
+      "op": "sum",
+      "skipped": 0,
+      "value": 11
+     },
+     "total": 4
+    },
+    "asked_at": "<time>",
+    "data_as_of": [
+     {
+      "dataset": "line_rows",
+      "imported_at": "<time>",
+      "version": 1
+     }
+    ],
+    "datasets": {
+     "line_rows": 1
+    },
+    "definitions": [
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "objtype:line",
+      "kind": "type",
+      "name": "订单行",
+      "state": "confirmed",
+      "version": 2
+     }
+    ],
+    "id": 9,
+    "model": "test-model",
+    "path": "订单行, adding up \"qty\"",
+    "query": {
+     "group_by": null,
+     "measure": {
+      "field": "qty",
+      "op": "sum"
+     },
+     "share": null,
+     "start": "line",
+     "via": [],
+     "where": []
+    },
+    "query_text": "SELECT sum(l.qty) AS total\nFROM (l:订单行)",
+    "question": "What is the total quantity?",
+    "reasoning": "把金额加起来",
+    "status": "answered",
+    "steps": [
+     {
+      "name": "Understand the question",
+      "text": "把金额加起来"
+     },
+     {
+      "name": "Find object types",
+      "text": "订单行"
+     },
+     {
+      "name": "Find relations",
+      "text": "This question needs no relation"
+     },
+     {
+      "name": "Write the query",
+      "query": {
+       "group_by": null,
+       "measure": {
+        "field": "qty",
+        "op": "sum"
+       },
+       "share": null,
+       "start": "line",
+       "via": [],
+       "where": []
+      },
+      "text": "订单行, adding up \"qty\""
+     },
+     {
+      "failed": false,
+      "name": "Result",
+      "text": "Worked out the result"
+     }
+    ],
+    "types": [
+     {
+      "id": "line",
+      "name": "订单行"
+     }
+    ]
+   }
+  ],
+  "over_lines": [
+   200,
+   {
+    "answer": {
+     "groups": [
+      [
+       "P1",
+       150,
+       2
+      ],
+      [
+       "P2",
+       100,
+       1
+      ],
+      [
+       "P3",
+       30,
+       1
+      ]
+     ],
+     "measure": {
+      "counted": 3,
+      "field": "amount",
+      "op": "sum",
+      "skipped": 0,
+      "value": 180
+     },
+     "total_groups": 3,
+     "without_value": 0
+    },
+    "asked_at": "<time>",
+    "data_as_of": [
+     {
+      "dataset": "line_rows",
+      "imported_at": "<time>",
+      "version": 1
+     },
+     {
+      "dataset": "orders",
+      "imported_at": "<time>",
+      "version": 1
+     }
+    ],
+    "datasets": {
+     "line_rows": 1,
+     "orders": 1
+    },
+    "definitions": [
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "objtype:order",
+      "kind": "type",
+      "name": "订单",
+      "state": "confirmed",
+      "version": 2
+     },
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "objtype:line",
+      "kind": "type",
+      "name": "订单行",
+      "state": "confirmed",
+      "version": 2
+     },
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "relation:line_order",
+      "kind": "relation",
+      "name": "订单行属于订单",
+      "state": "confirmed",
+      "version": 2
+     }
+    ],
+    "id": 8,
+    "model": "test-model",
+    "path": "订单 → 订单行，按“product”分组，算每组“amount”的合计",
+    "query": {
+     "group_by": [
+      {
+       "field": "product",
+       "via": [
+        "line_order"
+       ]
+      }
+     ],
+     "measure": {
+      "field": "amount",
+      "op": "sum"
+     },
+     "share": null,
+     "start": "order",
+     "via": [],
+     "where": []
+    },
+    "query_text": "SELECT l.product, sum(o.amount) AS 合计\nFROM (o:订单)<-[:订单行属于订单]-(l:订单行)\nGROUP BY l.product",
+    "question": "每个产品的订单金额合计？",
+    "reasoning": "把金额加起来",
+    "status": "answered",
+    "steps": [
+     {
+      "name": "理解问题",
+      "text": "把金额加起来"
+     },
+     {
+      "name": "找对象类型",
+      "text": "订单、订单行"
+     },
+     {
+      "name": "找关系",
+      "text": "订单行属于订单"
+     },
+     {
+      "name": "改写成查询",
+      "query": {
+       "group_by": [
+        {
+         "field": "product",
+         "via": [
+          "line_order"
+         ]
+        }
+       ],
+       "measure": {
+        "field": "amount",
+        "op": "sum"
+       },
+       "share": null,
+       "start": "order",
+       "via": [],
+       "where": []
+      },
+      "text": "订单 → 订单行，按“product”分组，算每组“amount”的合计"
+     },
+     {
+      "failed": false,
+      "name": "结果",
+      "text": "算出了结果"
+     }
+    ],
+    "types": [
+     {
+      "id": "order",
+      "name": "订单"
+     },
+     {
+      "id": "line",
+      "name": "订单行"
+     }
+    ]
+   }
+  ],
+  "sum_amount": [
+   200,
+   {
+    "answer": {
+     "measure": {
+      "counted": 3,
+      "field": "amount",
+      "op": "sum",
+      "skipped": 0,
+      "value": 180
+     },
+     "total": 3
+    },
+    "asked_at": "<time>",
+    "data_as_of": [
+     {
+      "dataset": "orders",
+      "imported_at": "<time>",
+      "version": 1
+     }
+    ],
+    "datasets": {
+     "orders": 1
+    },
+    "definitions": [
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "objtype:order",
+      "kind": "type",
+      "name": "订单",
+      "state": "confirmed",
+      "version": 2
+     }
+    ],
+    "id": 1,
+    "model": "test-model",
+    "path": "订单，把“amount”加起来",
+    "query": {
+     "group_by": null,
+     "measure": {
+      "field": "amount",
+      "op": "sum"
+     },
+     "share": null,
+     "start": "order",
+     "via": [],
+     "where": []
+    },
+    "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:订单)",
+    "question": "订单金额合计是多少？",
+    "reasoning": "把金额加起来",
+    "status": "answered",
+    "steps": [
+     {
+      "name": "理解问题",
+      "text": "把金额加起来"
+     },
+     {
+      "name": "找对象类型",
+      "text": "订单"
+     },
+     {
+      "name": "找关系",
+      "text": "这道题用不到关系"
+     },
+     {
+      "name": "改写成查询",
+      "query": {
+       "group_by": null,
+       "measure": {
+        "field": "amount",
+        "op": "sum"
+       },
+       "share": null,
+       "start": "order",
+       "via": [],
+       "where": []
+      },
+      "text": "订单，把“amount”加起来"
+     },
+     {
+      "failed": false,
+      "name": "结果",
+      "text": "算出了结果"
+     }
+    ],
+    "types": [
+     {
+      "id": "order",
+      "name": "订单"
+     }
+    ]
+   }
+  ],
+  "unknown": [
+   200,
+   {
+    "asked_at": "<time>",
+    "data_as_of": [],
+    "datasets": {},
+    "definitions": [],
+    "id": 7,
+    "model": "test-model",
+    "query": {
+     "group_by": null,
+     "measure": {
+      "field": "profit",
+      "op": "sum"
+     },
+     "share": null,
+     "start": "order",
+     "via": [],
+     "where": []
+    },
+    "question": "利润合计是多少？",
+    "reason": "本体里的 订单 没有属性 profit，无法对它求和或求平均",
+    "reasoning": "把金额加起来",
+    "refusal": {
+     "in_scope": [
+      "订单行",
+      "订单"
+     ],
+     "kind": "not_in_scope",
+     "left_out": []
+    },
+    "status": "ontology_gap",
+    "steps": [
+     {
+      "name": "理解问题",
+      "text": "把金额加起来"
+     },
+     {
+      "name": "找对象类型",
+      "text": "没有找到"
+     },
+     {
+      "name": "找关系",
+      "text": "这道题用不到关系"
+     },
+     {
+      "name": "改写成查询",
+      "query": {
+       "group_by": null,
+       "measure": {
+        "field": "profit",
+        "op": "sum"
+       },
+       "share": null,
+       "start": "order",
+       "via": [],
+       "where": []
+      },
+      "text": ""
+     },
+     {
+      "failed": true,
+      "name": "结果",
+      "text": "本体里的 订单 没有属性 profit，无法对它求和或求平均"
+     }
+    ],
+    "types": []
+   }
+  ]
+ },
+ "board": [
+  200,
+  {
+   "components": 3,
+   "created_at": "<time>",
+   "expired": false,
+   "expires_at": null,
+   "id": 1,
+   "may_change": true,
+   "mine": true,
+   "name": "订单看板",
+   "owner": "Ann",
+   "owner_id": 2,
+   "refresh_seconds": 0,
+   "scope": "everyone",
+   "sign_in_note": "分享链接打开时仍然要先登录，并且要在看板的发布范围里；没有匿名访问。",
+   "spec": {
+    "components": [
+     {
+      "chart": {
+       "bins": 10,
+       "fn": "sum",
+       "group": null,
+       "kind": "number",
+       "measure": "amount",
+       "order": null,
+       "top": null
+      },
+      "id": "amount",
+      "query": {
+       "filters": [],
+       "pivot": null,
+       "rows": null,
+       "type": "order",
+       "view": null
+      },
+      "title": "订单金额"
+     },
+     {
+      "chart": {
+       "kind": "query"
+      },
+      "id": "qty",
+      "text": "SELECT sum(l.qty) FROM (l:订单行)",
+      "title": "件数（查询）"
+     },
+     {
+      "chart": {
+       "kind": "query"
+      },
+      "id": "lines",
+      "text": "SELECT count(l) FROM (l:订单行)",
+      "title": "订单行数"
+     }
+    ],
+    "filters": [],
+    "params": []
+   },
+   "updated_at": "<time>",
+   "version": 1,
+   "visible_names": [],
+   "visible_to": []
+  }
+ ],
+ "board_data": [
+  200,
+  {
+   "bar": [],
+   "components": [
+    {
+     "chart": {
+      "bins": 10,
+      "fn": "sum",
+      "group": null,
+      "kind": "number",
+      "measure": "amount",
+      "order": null,
+      "top": null
+     },
+     "check": {
+      "at": "<time>",
+      "by": "Bob",
+      "moved": [],
+      "note": "财务报表",
+      "now": 180,
+      "reason": null,
+      "status": "same",
+      "then": 180,
+      "trusted": 180
+     },
+     "id": "amount",
+     "result": {
+      "chart": {
+       "bins": 10,
+       "fn": "sum",
+       "group": null,
+       "kind": "number",
+       "measure": "amount",
+       "order": null,
+       "top": null
+      },
+      "fn": "sum",
+      "group": null,
+      "measure": "amount",
+      "query": {
+       "filters": [],
+       "pivot": null,
+       "rows": null,
+       "type": "order",
+       "view": null
+      },
+      "rows": 3,
+      "rows_limited": false,
+      "standing": {
+       "confirmed": true,
+       "lines": [],
+       "reasons": [],
+       "why": null
+      },
+      "value": 180
+     },
+     "status": "ok",
+     "title": "订单金额"
+    },
+    {
+     "chart": {
+      "kind": "query"
+     },
+     "check": {
+      "at": "<time>",
+      "by": "Bob",
+      "moved": [],
+      "note": "财务报表",
+      "now": 11,
+      "reason": null,
+      "status": "same",
+      "then": 11,
+      "trusted": 11
+     },
+     "id": "qty",
+     "result": {
+      "answer": {
+       "measure": {
+        "counted": 4,
+        "field": "qty",
+        "op": "sum",
+        "skipped": 0,
+        "value": 11
+       },
+       "total": 4
+      },
+      "datasets": {
+       "line_rows": 1
+      },
+      "definitions": [
+       {
+        "confirmed_at": "<time>",
+        "confirmed_by": "Bob",
+        "id": "objtype:line",
+        "kind": "type",
+        "name": "订单行",
+        "state": "confirmed",
+        "version": 2
+       }
+      ],
+      "standing": {
+       "confirmed": true,
+       "lines": [],
+       "reasons": [],
+       "why": null
+      },
+      "status": "answered",
+      "text": "SELECT sum(l.qty) AS 合计\nFROM (l:订单行)",
+      "types": [
+       {
+        "id": "line",
+        "name": "订单行"
+       }
+      ]
+     },
+     "status": "ok",
+     "title": "件数（查询）"
+    },
+    {
+     "chart": {
+      "kind": "query"
+     },
+     "id": "lines",
+     "result": {
+      "answer": {
+       "total": 4
+      },
+      "datasets": {
+       "line_rows": 1
+      },
+      "definitions": [
+       {
+        "confirmed_at": "<time>",
+        "confirmed_by": "Bob",
+        "id": "objtype:line",
+        "kind": "type",
+        "name": "订单行",
+        "state": "confirmed",
+        "version": 2
+       }
+      ],
+      "standing": {
+       "confirmed": true,
+       "lines": [],
+       "reasons": [],
+       "why": null
+      },
+      "status": "answered",
+      "text": "SELECT count(l) AS 数量\nFROM (l:订单行)",
+      "types": [
+       {
+        "id": "line",
+        "name": "订单行"
+       }
+      ]
+     },
+     "status": "ok",
+     "title": "订单行数"
+    }
+   ],
+   "expired": false,
+   "headline": {
+    "checked": {
+     "differs": 0,
+     "moved": 0,
+     "refused": 0,
+     "same": 2,
+     "text": "2 个数核对过：2 一致、0 变了、0 拒答、0 不一致",
+     "total": 2
+    },
+    "components": 3,
+    "grey": [],
+    "text": "全部按已确认的定义算出",
+    "unavailable": [],
+    "waiting": []
+   },
+   "id": 1,
+   "name": "订单看板",
+   "params": [],
+   "read_at": "<time>",
+   "refresh_seconds": 0,
+   "sign_in_note": "分享链接打开时仍然要先登录，并且要在看板的发布范围里；没有匿名访问。"
+  }
+ ],
+ "charts": [
+  [
+   200,
+   {
+    "chart": {
+     "bins": 10,
+     "fn": "sum",
+     "group": null,
+     "kind": "number",
+     "measure": "amount",
+     "order": null,
+     "top": null
+    },
+    "fn": "sum",
+    "group": null,
+    "measure": "amount",
+    "query": {
+     "filters": [],
+     "pivot": null,
+     "rows": null,
+     "type": "order",
+     "view": null
+    },
+    "rows": 3,
+    "rows_limited": false,
+    "standing": {
+     "confirmed": true,
+     "lines": [],
+     "reasons": [],
+     "why": null
+    },
+    "value": 180
+   }
+  ],
+  [
+   200,
+   {
+    "chart": {
+     "bins": 10,
+     "fn": "sum",
+     "group": "customer",
+     "kind": "bar",
+     "measure": "qty",
+     "order": null,
+     "top": null
+    },
+    "fn": "sum",
+    "group": "customer",
+    "groups": [
+     {
+      "key": "C1",
+      "label": "C1",
+      "rows": 3,
+      "value": 8
+     },
+     {
+      "key": "C2",
+      "label": "C2",
+      "rows": 1,
+      "value": 3
+     }
+    ],
+    "groups_hidden": 0,
+    "hidden_groups": [],
+    "measure": "qty",
+    "query": {
+     "filters": [],
+     "pivot": null,
+     "rows": null,
+     "type": "line",
+     "view": null
+    },
+    "rows": 4,
+    "rows_hidden": 0,
+    "rows_limited": false,
+    "standing": {
+     "confirmed": true,
+     "lines": [],
+     "reasons": [],
+     "why": null
+    }
+   }
+  ],
+  [
+   200,
+   {
+    "chart": {
+     "bins": 10,
+     "fn": "count",
+     "group": null,
+     "kind": "table",
+     "measure": "qty",
+     "order": null,
+     "top": null
+    },
+    "columns": [
+     {
+      "fn": "count",
+      "name": "有值"
+     },
+     {
+      "fn": "sum",
+      "name": "求和"
+     },
+     {
+      "fn": "avg",
+      "name": "平均"
+     },
+     {
+      "fn": "min",
+      "name": "最小"
+     },
+     {
+      "fn": "p25",
+      "name": "P25"
+     },
+     {
+      "fn": "median",
+      "name": "中位数"
+     },
+     {
+      "fn": "p75",
+      "name": "P75"
+     },
+     {
+      "fn": "max",
+      "name": "最大"
+     }
+    ],
+    "fn": "count",
+    "group": null,
+    "groups_hidden": 0,
+    "hidden_groups": [],
+    "measure": "qty",
+    "query": {
+     "filters": [],
+     "pivot": null,
+     "rows": null,
+     "type": "line",
+     "view": null
+    },
+    "rows": 4,
+    "rows_hidden": 0,
+    "rows_limited": false,
+    "standing": {
+     "confirmed": true,
+     "lines": [],
+     "reasons": [],
+     "why": null
+    },
+    "table": [
+     {
+      "key": null,
+      "label": "全部",
+      "rows": 4,
+      "values": [
+       4,
+       11,
+       2.75,
+       1.0,
+       1.75,
+       2.5,
+       3.5,
+       5.0
+      ]
+     }
+    ]
+   }
+  ],
+  [
+   200,
+   {
+    "chart": {
+     "bins": 10,
+     "fn": "sum",
+     "group": null,
+     "kind": "number",
+     "measure": "derived:double_qty",
+     "order": null,
+     "top": null
+    },
+    "fn": "sum",
+    "group": null,
+    "measure": "双倍件数",
+    "query": {
+     "filters": [],
+     "pivot": null,
+     "rows": null,
+     "type": "line",
+     "view": null
+    },
+    "rows": 4,
+    "rows_limited": false,
+    "standing": {
+     "confirmed": true,
+     "lines": [
+      {
+       "by": "Bob",
+       "confirmed": true,
+       "id": "derived:line:double_qty",
+       "kind": "derived",
+       "line": "订单行的双倍件数 = qty * 2，Bob 确认于 line_rows v1",
+       "name": "订单行.双倍件数",
+       "on": "line_rows v1",
+       "reason": null,
+       "stale_word": null,
+       "state": "confirmed",
+       "text": "订单行的双倍件数 = qty * 2"
+      }
+     ],
+     "reasons": [],
+     "why": null
+    },
+    "value": 22.0
+   }
+  ],
+  [
+   200,
+   {
+    "chart": {
+     "bins": 10,
+     "fn": "avg",
+     "group": null,
+     "kind": "number",
+     "measure": "derived:qty_sum",
+     "order": null,
+     "top": null
+    },
+    "fn": "avg",
+    "group": null,
+    "measure": "件数合计",
+    "query": {
+     "filters": [],
+     "pivot": null,
+     "rows": null,
+     "type": "order",
+     "view": null
+    },
+    "rows": 3,
+    "rows_limited": false,
+    "standing": {
+     "confirmed": true,
+     "lines": [
+      {
+       "by": "Bob",
+       "confirmed": true,
+       "id": "derived:order:qty_sum",
+       "kind": "derived",
+       "line": "订单的件数合计：每个订单，经过 订单行属于订单，订单行里的行，求和「qty」，Bob 确认于 orders v1 line_rows v1",
+       "name": "订单.件数合计",
+       "on": "orders v1 line_rows v1",
+       "reason": null,
+       "stale_word": null,
+       "state": "confirmed",
+       "text": "订单的件数合计：每个订单，经过 订单行属于订单，订单行里的行，求和「qty」"
+      }
+     ],
+     "reasons": [],
+     "why": null
+    },
+    "value": 3.6666666666666665
+   }
+  ],
+  [
+   400,
+   {
+    "error": "饼图是份额，只能用计数或求和"
+   }
+  ]
+ ],
+ "checked": [
+  [
+   200,
+   {
+    "at": "<time>",
+    "by": "Bob",
+    "moved": [],
+    "note": "财务报表",
+    "now": 180,
+    "reason": null,
+    "status": "same",
+    "then": 180,
+    "trusted": 180
+   }
+  ],
+  [
+   200,
+   {
+    "at": "<time>",
+    "by": "Bob",
+    "moved": [],
+    "note": "财务报表",
+    "now": 11,
+    "reason": null,
+    "status": "same",
+    "then": 11,
+    "trusted": 11
+   }
+  ]
+ ],
+ "checked_answer": [
+  200,
+  {
+   "at": "<time>",
+   "by": "Ann",
+   "moved": [],
+   "note": "周报",
+   "now": 180,
+   "reason": null,
+   "status": "same",
+   "then": 180,
+   "trusted": 180
+  }
+ ],
+ "derived_confirm_double_qty": [
+  200,
+  {
+   "state": "confirmed"
+  }
+ ],
+ "derived_confirm_qty_sum": [
+  200,
+  {
+   "state": "confirmed"
+  }
+ ],
+ "derived_double_qty": [
+  200,
+  {
+   "id": "double_qty",
+   "trial": {
+    "datasets": {
+     "line_rows": 1
+    },
+    "examples": [
+     {
+      "object": "L1",
+      "value": "4"
+     },
+     {
+      "object": "L2",
+      "value": "2"
+     },
+     {
+      "object": "L3",
+      "value": "10"
+     },
+     {
+      "object": "L4",
+      "value": "6"
+     }
+    ],
+    "limited_note": null,
+    "lines": [
+     {
+      "ok": true,
+      "text": "4 个订单行里，4 个算出了值，0 个没有值"
+     }
+    ],
+    "numbers": {
+     "failed": 0,
+     "no_value": {
+      "empty_input": 0
+     },
+     "objects": 4,
+     "rows_used": null,
+     "shared_keys": null,
+     "with_value": 4
+    },
+    "output_type": "decimal",
+    "problems": [],
+    "sample": {
+     "inputs": [
+      {
+       "column": "qty",
+       "value": "2"
+      }
+     ],
+     "label": "样本",
+     "result": "4"
+    },
+    "seen": {
+     "datasets": {
+      "line_rows": 1
+     },
+     "failed": 0,
+     "objects": 4,
+     "with_value": 4
+    }
+   },
+   "type": "line"
+  }
+ ],
+ "derived_qty_sum": [
+  200,
+  {
+   "id": "qty_sum",
+   "trial": {
+    "datasets": {
+     "line_rows": 1,
+     "orders": 1
+    },
+    "examples": [
+     {
+      "object": "O1",
+      "value": "3"
+     },
+     {
+      "object": "O2",
+      "value": "5"
+     },
+     {
+      "object": "O3",
+      "value": "3"
+     }
+    ],
+    "limited_note": null,
+    "lines": [
+     {
+      "ok": true,
+      "text": "3 个订单里，3 个算出了值，0 个没有值"
+     },
+     {
+      "ok": true,
+      "text": "一共用了 4 行订单行的数据"
+     }
+    ],
+    "numbers": {
+     "failed": 0,
+     "no_value": {
+      "ambiguous": 0,
+      "no_rows": 0,
+      "unreadable": 0
+     },
+     "objects": 3,
+     "rows_used": 4,
+     "shared_keys": 0,
+     "with_value": 3
+    },
+    "output_type": "integer",
+    "problems": [],
+    "sample": null,
+    "seen": {
+     "datasets": {
+      "line_rows": 1,
+      "orders": 1
+     },
+     "failed": 0,
+     "objects": 3,
+     "with_value": 3
+    }
+   },
+   "type": "order"
+  }
+ ],
+ "history": [
+  200,
+  {
+   "history": [
+    {
+     "asked_at": "<time>",
+     "id": 9,
+     "question": "What is the total quantity?",
+     "status": "answered"
+    },
+    {
+     "asked_at": "<time>",
+     "id": 8,
+     "question": "每个产品的订单金额合计？",
+     "status": "answered"
+    },
+    {
+     "asked_at": "<time>",
+     "id": 7,
+     "question": "利润合计是多少？",
+     "status": "ontology_gap"
+    },
+    {
+     "asked_at": "<time>",
+     "id": 6,
+     "question": "有多少订单行？",
+     "status": "answered"
+    },
+    {
+     "asked_at": "<time>",
+     "id": 5,
+     "question": "双倍件数合计是多少？",
+     "status": "answered"
+    },
+    {
+     "asked_at": "<time>",
+     "id": 4,
+     "question": "件数合计加起来是多少？",
+     "status": "answered"
+    },
+    {
+     "asked_at": "<time>",
+     "id": 3,
+     "question": "每个客户的订单金额合计？",
+     "status": "answered"
+    },
+    {
+     "asked_at": "<time>",
+     "id": 2,
+     "question": "订单金额平均是多少？",
+     "status": "answered"
+    },
+    {
+     "asked_at": "<time>",
+     "id": 1,
+     "question": "订单金额合计是多少？",
+     "status": "answered"
+    }
+   ],
+   "left_out": [],
+   "model_ready": true,
+   "relations": [
+    {
+     "id": "line_order",
+     "name": "订单行属于订单"
+    }
+   ],
+   "types": [
+    {
+     "id": "line",
+     "name": "订单行"
+    },
+    {
+     "id": "order",
+     "name": "订单"
+    }
+   ],
+   "views": []
+  }
+ ],
+ "line_rows": [
+  200,
+  {
+   "columns": [
+    {
+     "distinct": 4,
+     "fan": null,
+     "fill_rate": 1.0,
+     "key_check": null,
+     "missing": 0,
+     "name": "line_id",
+     "near_key": null,
+     "possible_key": true,
+     "type": "text",
+     "values": {
+      "L1": 1,
+      "L2": 1,
+      "L3": 1,
+      "L4": 1
+     }
+    },
+    {
+     "distinct": 3,
+     "fan": null,
+     "fill_rate": 1.0,
+     "key_check": null,
+     "missing": 0,
+     "name": "order_id",
+     "near_key": null,
+     "possible_key": false,
+     "type": "text",
+     "values": {
+      "O1": 2,
+      "O2": 1,
+      "O3": 1
+     }
+    },
+    {
+     "distinct": 3,
+     "fan": null,
+     "fill_rate": 1.0,
+     "key_check": null,
+     "missing": 0,
+     "name": "product",
+     "near_key": null,
+     "possible_key": false,
+     "type": "text",
+     "values": {
+      "P1": 2,
+      "P2": 1,
+      "P3": 1
+     }
+    },
+    {
+     "distinct": 4,
+     "fan": null,
+     "fill_rate": 1.0,
+     "key_check": null,
+     "missing": 0,
+     "name": "qty",
+     "near_key": null,
+     "possible_key": true,
+     "type": "integer",
+     "values": {
+      "1": 1,
+      "2": 1,
+      "3": 1,
+      "5": 1
+     }
+    },
+    {
+     "distinct": 2,
+     "fan": null,
+     "fill_rate": 1.0,
+     "key_check": null,
+     "missing": 0,
+     "name": "customer",
+     "near_key": null,
+     "possible_key": false,
+     "type": "text",
+     "values": {
+      "C1": 3,
+      "C2": 1
+     }
+    }
+   ],
+   "current_version": 1,
+   "dropped": {},
+   "key_checks": [],
+   "name": "line_rows",
+   "no_change_updates": [],
+   "origin": "pipeline:订单行客户@run1",
+   "preview": {
+    "columns": [
+     "line_id",
+     "order_id",
+     "product",
+     "qty",
+     "customer"
+    ],
+    "limit": 50,
+    "page": 1,
+    "pages": 1,
+    "rows": [
+     [
+      "L1",
+      "O1",
+      "P1",
+      "2",
+      "C1"
+     ],
+     [
+      "L2",
+      "O1",
+      "P2",
+      "1",
+      "C1"
+     ],
+     [
+      "L3",
+      "O2",
+      "P1",
+      "5",
+      "C1"
+     ],
+     [
+      "L4",
+      "O3",
+      "P3",
+      "3",
+      "C2"
+     ]
+    ],
+    "total": 4
+   },
+   "readers": [],
+   "rows": 4,
+   "updated_at": "<time>",
+   "version": 1,
+   "version_at": "<time>",
+   "versions": [
+    {
+     "action": null,
+     "added": 4,
+     "added_keys": [],
+     "at": "<time>",
+     "blank_kept": null,
+     "changed": 0,
+     "changed_keys": [],
+     "current": true,
+     "file_rows": null,
+     "key_columns": null,
+     "mode": "new",
+     "origin": "pipeline:订单行客户@run1",
+     "pipeline": {
+      "definition_version": 1,
+      "id": "订单行客户",
+      "inputs": {
+       "lines": 1,
+       "orders": 1
+      },
+      "run": 1
+     },
+     "replaced_rows": null,
+     "rows": 4,
+     "same_as": null,
+     "source": null,
+     "unchanged": 0,
+     "version": 1,
+     "who": "Ann"
+    }
+   ],
+   "who": "Ann"
+  }
+ ],
+ "marked_world": {
+  "chart": [
+   200,
+   {
+    "chart": {
+     "bins": 10,
+     "fn": "sum",
+     "group": null,
+     "kind": "number",
+     "measure": "qty",
+     "order": null,
+     "top": null
+    },
+    "fn": "sum",
+    "group": null,
+    "measure": "qty",
+    "query": {
+     "filters": [],
+     "pivot": null,
+     "rows": null,
+     "type": "order_line",
+     "view": null
+    },
+    "rows": 4,
+    "rows_limited": false,
+    "standing": {
+     "confirmed": true,
+     "lines": [],
+     "reasons": [],
+     "why": null
+    },
+    "value": 11
+   }
+  ],
+  "count": [
+   200,
+   {
+    "answer": {
+     "total": 4
+    },
+    "asked_at": "<time>",
+    "data_as_of": [
+     {
+      "dataset": "line_amounts",
+      "imported_at": "<time>",
+      "version": 1
+     }
+    ],
+    "datasets": {
+     "line_amounts": 1
+    },
+    "definitions": [
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "objtype:order_line",
+      "kind": "type",
+      "name": "订单行",
+      "state": "confirmed",
+      "version": 2
+     }
+    ],
+    "id": 1,
+    "model": "test-model",
+    "path": "订单行",
+    "query": {
+     "group_by": null,
+     "measure": null,
+     "share": null,
+     "start": "order_line",
+     "via": [],
+     "where": []
+    },
+    "query_text": "SELECT count(o) AS 数量\nFROM (o:订单行)",
+    "question": "有多少订单行？",
+    "reasoning": "数一数",
+    "status": "answered",
+    "steps": [
+     {
+      "name": "理解问题",
+      "text": "数一数"
+     },
+     {
+      "name": "找对象类型",
+      "text": "订单行"
+     },
+     {
+      "name": "找关系",
+      "text": "这道题用不到关系"
+     },
+     {
+      "name": "改写成查询",
+      "query": {
+       "group_by": null,
+       "measure": null,
+       "share": null,
+       "start": "order_line",
+       "via": [],
+       "where": []
+      },
+      "text": "订单行"
+     },
+     {
+      "failed": false,
+      "name": "结果",
+      "text": "算出了结果"
+     }
+    ],
+    "types": [
+     {
+      "id": "order_line",
+      "name": "订单行"
+     }
+    ]
+   }
+  ],
+  "count_chart": [
+   200,
+   {
+    "chart": {
+     "bins": 10,
+     "fn": "count",
+     "group": "customer",
+     "kind": "bar",
+     "measure": null,
+     "order": null,
+     "top": null
+    },
+    "fn": "count",
+    "group": "customer",
+    "groups": [
+     {
+      "key": "C1",
+      "label": "C1",
+      "rows": 3,
+      "value": 3
+     },
+     {
+      "key": "C2",
+      "label": "C2",
+      "rows": 1,
+      "value": 1
+     }
+    ],
+    "groups_hidden": 0,
+    "hidden_groups": [],
+    "measure": null,
+    "query": {
+     "filters": [],
+     "pivot": null,
+     "rows": null,
+     "type": "order_line",
+     "view": null
+    },
+    "rows": 4,
+    "rows_hidden": 0,
+    "rows_limited": false,
+    "standing": {
+     "confirmed": true,
+     "lines": [],
+     "reasons": [],
+     "why": null
+    }
+   }
+  ],
+  "qty_by_customer": [
+   200,
+   {
+    "answer": {
+     "groups": [
+      [
+       "C2",
+       3,
+       1
+      ],
+      [
+       "C1",
+       2.6666666666666665,
+       3
+      ]
+     ],
+     "measure": {
+      "counted": 4,
+      "field": "qty",
+      "op": "average",
+      "skipped": 0,
+      "value": 2.75
+     },
+     "total_groups": 2,
+     "without_value": 0
+    },
+    "asked_at": "<time>",
+    "data_as_of": [
+     {
+      "dataset": "line_amounts",
+      "imported_at": "<time>",
+      "version": 1
+     }
+    ],
+    "datasets": {
+     "line_amounts": 1
+    },
+    "definitions": [
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "objtype:order_line",
+      "kind": "type",
+      "name": "订单行",
+      "state": "confirmed",
+      "version": 2
+     }
+    ],
+    "id": 3,
+    "model": "test-model",
+    "path": "订单行，按“customer”分组，算每组“qty”的平均",
+    "query": {
+     "group_by": [
+      {
+       "field": "customer",
+       "via": []
+      }
+     ],
+     "measure": {
+      "field": "qty",
+      "op": "average"
+     },
+     "share": null,
+     "start": "order_line",
+     "via": [],
+     "where": []
+    },
+    "query_text": "SELECT o.customer, avg(o.qty) AS 平均\nFROM (o:订单行)\nGROUP BY o.customer",
+    "question": "每个客户平均件数？",
+    "reasoning": "把金额加起来",
+    "status": "answered",
+    "steps": [
+     {
+      "name": "理解问题",
+      "text": "把金额加起来"
+     },
+     {
+      "name": "找对象类型",
+      "text": "订单行"
+     },
+     {
+      "name": "找关系",
+      "text": "这道题用不到关系"
+     },
+     {
+      "name": "改写成查询",
+      "query": {
+       "group_by": [
+        {
+         "field": "customer",
+         "via": []
+        }
+       ],
+       "measure": {
+        "field": "qty",
+        "op": "average"
+       },
+       "share": null,
+       "start": "order_line",
+       "via": [],
+       "where": []
+      },
+      "text": "订单行，按“customer”分组，算每组“qty”的平均"
+     },
+     {
+      "failed": false,
+      "name": "结果",
+      "text": "算出了结果"
+     }
+    ],
+    "types": [
+     {
+      "id": "order_line",
+      "name": "订单行"
+     }
+    ]
+   }
+  ],
+  "query": [
+   200,
+   {
+    "answer": {
+     "groups": [
+      [
+       "C1",
+       8,
+       3
+      ],
+      [
+       "C2",
+       3,
+       1
+      ]
+     ],
+     "measure": {
+      "counted": 4,
+      "field": "qty",
+      "op": "sum",
+      "skipped": 0,
+      "value": 11
+     },
+     "total_groups": 2,
+     "without_value": 0
+    },
+    "data_as_of": [
+     {
+      "dataset": "line_amounts",
+      "imported_at": "<time>",
+      "version": 1
+     }
+    ],
+    "datasets": {
+     "line_amounts": 1
+    },
+    "definitions": [
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "objtype:order_line",
+      "kind": "type",
+      "name": "订单行",
+      "state": "confirmed",
+      "version": 2
+     }
+    ],
+    "definitions_used": [],
+    "path": "订单行，按“customer”分组，算每组“qty”的合计",
+    "query": {
+     "group_by": [
+      {
+       "field": "customer",
+       "via": []
+      }
+     ],
+     "measure": {
+      "field": "qty",
+      "op": "sum"
+     },
+     "order": null,
+     "share": null,
+     "start": "order_line",
+     "top": null,
+     "via": [],
+     "where": []
+    },
+    "status": "answered",
+    "steps": [
+     {
+      "name": "理解问题",
+      "text": "模型没有写理解"
+     },
+     {
+      "name": "找对象类型",
+      "text": "订单行"
+     },
+     {
+      "name": "找关系",
+      "text": "这道题用不到关系"
+     },
+     {
+      "name": "改写成查询",
+      "query": {
+       "group_by": [
+        {
+         "field": "customer",
+         "via": []
+        }
+       ],
+       "measure": {
+        "field": "qty",
+        "op": "sum"
+       },
+       "order": null,
+       "share": null,
+       "start": "order_line",
+       "top": null,
+       "via": [],
+       "where": []
+      },
+      "text": "订单行，按“customer”分组，算每组“qty”的合计"
+     },
+     {
+      "failed": false,
+      "name": "结果",
+      "text": "算出了结果"
+     }
+    ],
+    "text": "SELECT o.customer, sum(o.qty) AS 合计\nFROM (o:订单行)\nGROUP BY o.customer",
+    "types": [
+     {
+      "id": "order_line",
+      "name": "订单行"
+     }
+    ]
+   }
+  ],
+  "sum_qty": [
+   200,
+   {
+    "answer": {
+     "measure": {
+      "counted": 4,
+      "field": "qty",
+      "op": "sum",
+      "skipped": 0,
+      "value": 11
+     },
+     "total": 4
+    },
+    "asked_at": "<time>",
+    "data_as_of": [
+     {
+      "dataset": "line_amounts",
+      "imported_at": "<time>",
+      "version": 1
+     }
+    ],
+    "datasets": {
+     "line_amounts": 1
+    },
+    "definitions": [
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "objtype:order_line",
+      "kind": "type",
+      "name": "订单行",
+      "state": "confirmed",
+      "version": 2
+     }
+    ],
+    "id": 2,
+    "model": "test-model",
+    "path": "订单行，把“qty”加起来",
+    "query": {
+     "group_by": null,
+     "measure": {
+      "field": "qty",
+      "op": "sum"
+     },
+     "share": null,
+     "start": "order_line",
+     "via": [],
+     "where": []
+    },
+    "query_text": "SELECT sum(o.qty) AS 合计\nFROM (o:订单行)",
+    "question": "件数合计是多少？",
+    "reasoning": "把金额加起来",
+    "status": "answered",
+    "steps": [
+     {
+      "name": "理解问题",
+      "text": "把金额加起来"
+     },
+     {
+      "name": "找对象类型",
+      "text": "订单行"
+     },
+     {
+      "name": "找关系",
+      "text": "这道题用不到关系"
+     },
+     {
+      "name": "改写成查询",
+      "query": {
+       "group_by": null,
+       "measure": {
+        "field": "qty",
+        "op": "sum"
+       },
+       "share": null,
+       "start": "order_line",
+       "via": [],
+       "where": []
+      },
+      "text": "订单行，把“qty”加起来"
+     },
+     {
+      "failed": false,
+      "name": "结果",
+      "text": "算出了结果"
+     }
+    ],
+    "types": [
+     {
+      "id": "order_line",
+      "name": "订单行"
+     }
+    ]
+   }
+  ]
+ },
+ "needed": {
+  "budget": {
+   "calls": 300,
+   "hours": 24,
+   "left": 299,
+   "used": 1
+  },
+  "can_run": {
+   "ok": true,
+   "why": null
+  },
+  "last_run": {
+   "at": "<time>",
+   "by": "Bob",
+   "calls": 1,
+   "finished_at": "<time>",
+   "id": 1,
+   "model": "test-model",
+   "note": null,
+   "planned": 1,
+   "prompt_version": "company_questions.v18",
+   "repeats": 1,
+   "stale_prompt": false,
+   "status": "done"
+  },
+  "limits": {
+   "questions": 30,
+   "repeats": 5
+  },
+  "questions": [
+   {
+    "confirmed_at": "<time>",
+    "confirmed_by": "Bob",
+    "expect": {
+     "kind": "number",
+     "value": 180
+    },
+    "id": 1,
+    "look": [],
+    "mine": false,
+    "note": null,
+    "question": "订单金额合计是多少？",
+    "result": {
+     "asked": 1,
+     "distinct": [
+      {
+       "number": 180,
+       "status": "answered",
+       "times": 1
+      }
+     ],
+     "expected": {
+      "kind": "number",
+      "value": 180
+     },
+     "outcome": "passes",
+     "right": 1
+    },
+    "self_confirmed": false,
+    "state": "confirmed",
+    "version": 2,
+    "written_at": "<time>",
+    "written_by": "Ann"
+   }
+  ],
+  "running": null,
+  "two_person": true
+ },
+ "needed_confirm": [
+  200,
+  {
+   "confirmed_at": "<time>",
+   "confirmed_by": "Bob",
+   "expect": {
+    "kind": "number",
+    "value": 180
+   },
+   "id": 1,
+   "look": [],
+   "mine": false,
+   "note": null,
+   "question": "订单金额合计是多少？",
+   "result": null,
+   "self_confirmed": false,
+   "state": "confirmed",
+   "version": 2,
+   "written_at": "<time>",
+   "written_by": "Ann"
+  }
+ ],
+ "needed_write": [
+  200,
+  {
+   "confirmed_at": null,
+   "confirmed_by": null,
+   "expect": {
+    "kind": "number",
+    "value": 180
+   },
+   "id": 1,
+   "look": [],
+   "mine": true,
+   "note": null,
+   "question": "订单金额合计是多少？",
+   "result": null,
+   "self_confirmed": false,
+   "state": "proposed",
+   "version": 1,
+   "written_at": "<time>",
+   "written_by": "Ann"
+  }
+ ],
+ "query": [
+  [
+   200,
+   {
+    "answer": {
+     "measure": {
+      "counted": 3,
+      "field": "amount",
+      "op": "sum",
+      "skipped": 0,
+      "value": 180
+     },
+     "total": 3
+    },
+    "data_as_of": [
+     {
+      "dataset": "orders",
+      "imported_at": "<time>",
+      "version": 1
+     }
+    ],
+    "datasets": {
+     "orders": 1
+    },
+    "definitions": [
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "objtype:order",
+      "kind": "type",
+      "name": "订单",
+      "state": "confirmed",
+      "version": 2
+     }
+    ],
+    "definitions_used": [],
+    "path": "订单，把“amount”加起来",
+    "query": {
+     "group_by": null,
+     "measure": {
+      "field": "amount",
+      "op": "sum"
+     },
+     "order": null,
+     "share": null,
+     "start": "order",
+     "top": null,
+     "via": [],
+     "where": []
+    },
+    "status": "answered",
+    "steps": [
+     {
+      "name": "理解问题",
+      "text": "模型没有写理解"
+     },
+     {
+      "name": "找对象类型",
+      "text": "订单"
+     },
+     {
+      "name": "找关系",
+      "text": "这道题用不到关系"
+     },
+     {
+      "name": "改写成查询",
+      "query": {
+       "group_by": null,
+       "measure": {
+        "field": "amount",
+        "op": "sum"
+       },
+       "order": null,
+       "share": null,
+       "start": "order",
+       "top": null,
+       "via": [],
+       "where": []
+      },
+      "text": "订单，把“amount”加起来"
+     },
+     {
+      "failed": false,
+      "name": "结果",
+      "text": "算出了结果"
+     }
+    ],
+    "text": "SELECT sum(o.amount) AS 合计\nFROM (o:订单)",
+    "types": [
+     {
+      "id": "order",
+      "name": "订单"
+     }
+    ]
+   }
+  ],
+  [
+   200,
+   {
+    "answer": {
+     "groups": [
+      [
+       "C2",
+       3,
+       1
+      ],
+      [
+       "C1",
+       2.6666666666666665,
+       3
+      ]
+     ],
+     "measure": {
+      "counted": 4,
+      "field": "qty",
+      "op": "average",
+      "skipped": 0,
+      "value": 2.75
+     },
+     "total_groups": 2,
+     "without_value": 0
+    },
+    "data_as_of": [
+     {
+      "dataset": "line_rows",
+      "imported_at": "<time>",
+      "version": 1
+     }
+    ],
+    "datasets": {
+     "line_rows": 1
+    },
+    "definitions": [
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "objtype:line",
+      "kind": "type",
+      "name": "订单行",
+      "state": "confirmed",
+      "version": 2
+     }
+    ],
+    "definitions_used": [],
+    "path": "订单行，按“customer”分组，算每组“qty”的平均",
+    "query": {
+     "group_by": [
+      {
+       "field": "customer",
+       "via": []
+      }
+     ],
+     "measure": {
+      "field": "qty",
+      "op": "average"
+     },
+     "order": null,
+     "share": null,
+     "start": "line",
+     "top": null,
+     "via": [],
+     "where": []
+    },
+    "status": "answered",
+    "steps": [
+     {
+      "name": "理解问题",
+      "text": "模型没有写理解"
+     },
+     {
+      "name": "找对象类型",
+      "text": "订单行"
+     },
+     {
+      "name": "找关系",
+      "text": "这道题用不到关系"
+     },
+     {
+      "name": "改写成查询",
+      "query": {
+       "group_by": [
+        {
+         "field": "customer",
+         "via": []
+        }
+       ],
+       "measure": {
+        "field": "qty",
+        "op": "average"
+       },
+       "order": null,
+       "share": null,
+       "start": "line",
+       "top": null,
+       "via": [],
+       "where": []
+      },
+      "text": "订单行，按“customer”分组，算每组“qty”的平均"
+     },
+     {
+      "failed": false,
+      "name": "结果",
+      "text": "算出了结果"
+     }
+    ],
+    "text": "SELECT l.customer, avg(l.qty) AS 平均\nFROM (l:订单行)\nGROUP BY l.customer",
+    "types": [
+     {
+      "id": "line",
+      "name": "订单行"
+     }
+    ]
+   }
+  ],
+  [
+   400,
+   {
+    "error": "订单 没有属性「利润」。它的属性：order_id、customer、amount、件数合计"
+   }
+  ],
+  [
+   200,
+   {
+    "answer": {
+     "measure": {
+      "counted": 4,
+      "field": "qty",
+      "op": "sum",
+      "skipped": 0,
+      "value": 11
+     },
+     "total": 4
+    },
+    "data_as_of": [
+     {
+      "dataset": "line_rows",
+      "imported_at": "<time>",
+      "version": 1
+     }
+    ],
+    "datasets": {
+     "line_rows": 1
+    },
+    "definitions": [
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "objtype:line",
+      "kind": "type",
+      "name": "订单行",
+      "state": "confirmed",
+      "version": 2
+     }
+    ],
+    "definitions_used": [],
+    "path": "订单行, adding up \"qty\"",
+    "query": {
+     "group_by": null,
+     "measure": {
+      "field": "qty",
+      "op": "sum"
+     },
+     "order": null,
+     "share": null,
+     "start": "line",
+     "top": null,
+     "via": [],
+     "where": []
+    },
+    "status": "answered",
+    "steps": [
+     {
+      "name": "Understand the question",
+      "text": "The model gave no reading of the question"
+     },
+     {
+      "name": "Find object types",
+      "text": "订单行"
+     },
+     {
+      "name": "Find relations",
+      "text": "This question needs no relation"
+     },
+     {
+      "name": "Write the query",
+      "query": {
+       "group_by": null,
+       "measure": {
+        "field": "qty",
+        "op": "sum"
+       },
+       "order": null,
+       "share": null,
+       "start": "line",
+       "top": null,
+       "via": [],
+       "where": []
+      },
+      "text": "订单行, adding up \"qty\""
+     },
+     {
+      "failed": false,
+      "name": "Result",
+      "text": "Worked out the result"
+     }
+    ],
+    "text": "SELECT sum(l.qty) AS total\nFROM (l:订单行)",
+    "types": [
+     {
+      "id": "line",
+      "name": "订单行"
+     }
+    ]
+   }
+  ],
+  [
+   200,
+   {
+    "answer": {
+     "measure": {
+      "counted": 3,
+      "field": "件数合计",
+      "op": "sum",
+      "skipped": 0,
+      "value": 11
+     },
+     "total": 3
+    },
+    "data_as_of": [
+     {
+      "dataset": "line_rows",
+      "imported_at": "<time>",
+      "version": 1
+     },
+     {
+      "dataset": "orders",
+      "imported_at": "<time>",
+      "version": 1
+     }
+    ],
+    "datasets": {
+     "line_rows": 1,
+     "orders": 1
+    },
+    "definitions": [
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "objtype:order",
+      "kind": "type",
+      "name": "订单",
+      "state": "confirmed",
+      "version": 2
+     },
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "derived:order:qty_sum",
+      "kind": "derived",
+      "name": "订单.件数合计",
+      "says": "订单的件数合计：每个订单，经过 订单行属于订单，订单行里的行，求和「qty」",
+      "state": "confirmed",
+      "type": "order",
+      "version": 2
+     }
+    ],
+    "definitions_used": [],
+    "path": "订单，把“件数合计”加起来",
+    "query": {
+     "group_by": null,
+     "measure": {
+      "field": "件数合计",
+      "op": "sum"
+     },
+     "order": null,
+     "share": null,
+     "start": "order",
+     "top": null,
+     "via": [],
+     "where": []
+    },
+    "status": "answered",
+    "steps": [
+     {
+      "name": "理解问题",
+      "text": "模型没有写理解"
+     },
+     {
+      "name": "找对象类型",
+      "text": "订单"
+     },
+     {
+      "name": "找关系",
+      "text": "这道题用不到关系"
+     },
+     {
+      "name": "改写成查询",
+      "query": {
+       "group_by": null,
+       "measure": {
+        "field": "件数合计",
+        "op": "sum"
+       },
+       "order": null,
+       "share": null,
+       "start": "order",
+       "top": null,
+       "via": [],
+       "where": []
+      },
+      "text": "订单，把“件数合计”加起来"
+     },
+     {
+      "failed": false,
+      "name": "结果",
+      "text": "算出了结果"
+     }
+    ],
+    "text": "SELECT sum(o.件数合计) AS 合计\nFROM (o:订单)",
+    "types": [
+     {
+      "id": "order",
+      "name": "订单"
+     }
+    ]
+   }
+  ]
+ ],
+ "run": {
+  "definition_version": 1,
+  "duration_ms": "<ms>",
+  "error": null,
+  "failures": {},
+  "finished_at": "<time>",
+  "id": 1,
+  "input_versions": {
+   "lines": 1,
+   "orders": 1
+  },
+  "nodes": [
+   {
+    "columns": [
+     "line_id",
+     "order_id",
+     "product",
+     "qty"
+    ],
+    "id": "l",
+    "reads": "表 lines",
+    "rows_in": [
+     4
+    ],
+    "rows_out": 4,
+    "type": "input"
+   },
+   {
+    "columns": [
+     "order_id",
+     "customer",
+     "amount"
+    ],
+    "id": "o",
+    "reads": "表 orders",
+    "rows_in": [
+     3
+    ],
+    "rows_out": 3,
+    "type": "input"
+   },
+   {
+    "columns": [
+     "line_id",
+     "order_id",
+     "product",
+     "qty",
+     "customer"
+    ],
+    "id": "j",
+    "join": {
+     "extra_rows": 0,
+     "fan_out": null,
+     "how": "left",
+     "left_blank": 0,
+     "left_rows": 4,
+     "left_unmatched": 0,
+     "matched_left": 4,
+     "near_matches": [],
+     "null_keys": "no_match",
+     "on": [
+      {
+       "left": "order_id",
+       "right": "order_id"
+      }
+     ],
+     "right_blank": 0,
+     "right_fan_out": null
+    },
+    "rows_in": [
+     4,
+     3
+    ],
+    "rows_out": 4,
+    "type": "join"
+   },
+   {
+    "columns": [
+     "line_id",
+     "order_id",
+     "product",
+     "qty",
+     "customer"
+    ],
+    "id": "out",
+    "output": {
+     "columns": [
+      {
+       "name": "line_id",
+       "origin": "lines.line_id",
+       "type": "text"
+      },
+      {
+       "name": "order_id",
+       "origin": "lines.order_id",
+       "type": "text"
+      },
+      {
+       "name": "product",
+       "origin": "lines.product",
+       "type": "text"
+      },
+      {
+       "name": "qty",
+       "origin": "lines.qty",
+       "type": "integer"
+      },
+      {
+       "name": "customer",
+       "origin": "orders.customer",
+       "type": "text"
+      }
+     ],
+     "dropped": [],
+     "duplicate_keys": null,
+     "empty_keys": 0,
+     "key": [
+      "line_id"
+     ]
+    },
+    "rows_in": [
+     4
+    ],
+    "rows_out": 4,
+    "type": "output"
+   }
+  ],
+  "outputs": [
+   {
+    "created_version": true,
+    "dataset": "line_rows",
+    "mode": "new",
+    "recheck_error": null,
+    "rows": 4,
+    "version": 1
+   }
+  ],
+  "started_at": "<time>",
+  "status": "success",
+  "who": "Ann"
+ },
+ "stored": {
+  "action_notify": [],
+  "action_record": [],
+  "ask_budget": [
+   {
+    "at": "<clock>",
+    "who": "user:2"
+   },
+   {
+    "at": "<clock>",
+    "who": "user:2"
+   },
+   {
+    "at": "<clock>",
+    "who": "user:2"
+   },
+   {
+    "at": "<clock>",
+    "who": "user:2"
+   },
+   {
+    "at": "<clock>",
+    "who": "user:2"
+   },
+   {
+    "at": "<clock>",
+    "who": "user:2"
+   },
+   {
+    "at": "<clock>",
+    "who": "user:2"
+   },
+   {
+    "at": "<clock>",
+    "who": "user:2"
+   },
+   {
+    "at": "<clock>",
+    "who": "user:2"
+   }
+  ],
+  "assistant_turn": [],
+  "check_result": [
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 1,
+    "element_id": "key:orders(order_id)",
+    "id": 1,
+    "null_key_rows": 0,
+    "query": "SELECT \"order_id\", COUNT(*) AS n FROM \"ds_1\" WHERE (\"order_id\" IS NOT NULL AND \"order_id\" <> '') GROUP BY \"order_id\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"order_id\"",
+    "rows_checked": 3,
+    "samples_json": [],
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 1,
+    "element_id": "key:orders(order_id)",
+    "id": 2,
+    "null_key_rows": 0,
+    "query": "SELECT \"order_id\", COUNT(*) AS n FROM \"ds_1\" WHERE (\"order_id\" IS NOT NULL AND \"order_id\" <> '') GROUP BY \"order_id\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"order_id\"",
+    "rows_checked": 3,
+    "samples_json": [],
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 3,
+    "element_id": "key:line_rows(line_id)",
+    "id": 3,
+    "null_key_rows": 0,
+    "query": "SELECT \"line_id\", COUNT(*) AS n FROM \"ds_3\" WHERE (\"line_id\" IS NOT NULL AND \"line_id\" <> '') GROUP BY \"line_id\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"line_id\"",
+    "rows_checked": 4,
+    "samples_json": [],
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 3,
+    "element_id": "key:line_rows(line_id)",
+    "id": 4,
+    "null_key_rows": 0,
+    "query": "SELECT \"line_id\", COUNT(*) AS n FROM \"ds_3\" WHERE (\"line_id\" IS NOT NULL AND \"line_id\" <> '') GROUP BY \"line_id\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"line_id\"",
+    "rows_checked": 4,
+    "samples_json": [],
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "relation_match",
+    "checked_at": "<time>",
+    "dataset_id": 3,
+    "element_id": "relation:line_order",
+    "id": 5,
+    "null_key_rows": 0,
+    "query": "CREATE TEMP TABLE rc_s AS SELECT \"order_id\" AS k0, COUNT(*) AS n FROM \"ds_3\" t WHERE (t.\"order_id\" IS NOT NULL AND t.\"order_id\" <> '') GROUP BY k0;\nCREATE TEMP TABLE rc_d AS SELECT \"order_id\" AS k0, COUNT(*) AS n FROM \"ds_1\" t WHERE (t.\"order_id\" IS NOT NULL AND t.\"order_id\" <> '') GROUP BY k0;\nCREATE INDEX temp.rc_d_k ON rc_d(k0);\nSELECT k0, n FROM rc_s WHERE NOT EXISTS (SELECT 1 FROM rc_d WHERE rc_d.k0 = rc_s.k0) ORDER BY n DESC, k0",
+    "rows_checked": 4,
+    "samples_json": {
+     "distinct_keys": 0,
+     "if_trimmed": 0,
+     "keys": []
+    },
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "relation_fanout",
+    "checked_at": "<time>",
+    "dataset_id": 1,
+    "element_id": "relation:line_order",
+    "id": 6,
+    "null_key_rows": 0,
+    "query": "CREATE TEMP TABLE rc_d AS SELECT \"order_id\" AS k0, COUNT(*) AS n FROM \"ds_1\" t WHERE (t.\"order_id\" IS NOT NULL AND t.\"order_id\" <> '') GROUP BY k0;\nSELECT k0, n FROM rc_d WHERE n > 1 ORDER BY n DESC, k0",
+    "rows_checked": 3,
+    "samples_json": {
+     "extra_rows": 0,
+     "keys": [],
+     "source_rows": 0
+    },
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "relation_match",
+    "checked_at": "<time>",
+    "dataset_id": 3,
+    "element_id": "relation:line_order",
+    "id": 7,
+    "null_key_rows": 0,
+    "query": "CREATE TEMP TABLE rc_s AS SELECT \"order_id\" AS k0, COUNT(*) AS n FROM \"ds_3\" t WHERE (t.\"order_id\" IS NOT NULL AND t.\"order_id\" <> '') GROUP BY k0;\nCREATE TEMP TABLE rc_d AS SELECT \"order_id\" AS k0, COUNT(*) AS n FROM \"ds_1\" t WHERE (t.\"order_id\" IS NOT NULL AND t.\"order_id\" <> '') GROUP BY k0;\nCREATE INDEX temp.rc_d_k ON rc_d(k0);\nSELECT k0, n FROM rc_s WHERE NOT EXISTS (SELECT 1 FROM rc_d WHERE rc_d.k0 = rc_s.k0) ORDER BY n DESC, k0",
+    "rows_checked": 4,
+    "samples_json": {
+     "distinct_keys": 0,
+     "if_trimmed": 0,
+     "keys": []
+    },
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "relation_fanout",
+    "checked_at": "<time>",
+    "dataset_id": 1,
+    "element_id": "relation:line_order",
+    "id": 8,
+    "null_key_rows": 0,
+    "query": "CREATE TEMP TABLE rc_d AS SELECT \"order_id\" AS k0, COUNT(*) AS n FROM \"ds_1\" t WHERE (t.\"order_id\" IS NOT NULL AND t.\"order_id\" <> '') GROUP BY k0;\nSELECT k0, n FROM rc_d WHERE n > 1 ORDER BY n DESC, k0",
+    "rows_checked": 3,
+    "samples_json": {
+     "extra_rows": 0,
+     "keys": [],
+     "source_rows": 0
+    },
+    "status": "passed",
+    "violations": 0
+   }
+  ],
+  "checked_number": [
+   {
+    "at": "<time>",
+    "by_name": "Bob",
+    "by_user_id": 3,
+    "component_id": "amount",
+    "component_json": {
+     "chart": {
+      "bins": 10,
+      "fn": "sum",
+      "group": null,
+      "kind": "number",
+      "measure": "amount",
+      "order": null,
+      "top": null
+     },
+     "id": "amount",
+     "query": {
+      "filters": [],
+      "pivot": null,
+      "rows": null,
+      "type": "order",
+      "view": null
+     },
+     "title": "订单金额"
+    },
+    "computed": 180.0,
+    "dashboard_id": 1,
+    "datasets_json": {
+     "orders": 1
+    },
+    "definitions_json": [
+     {
+      "id": "objtype:order",
+      "name": "订单",
+      "version": 2
+     }
+    ],
+    "id": 1,
+    "note": "财务报表",
+    "question_id": null,
+    "trusted": 180.0
+   },
+   {
+    "at": "<time>",
+    "by_name": "Bob",
+    "by_user_id": 3,
+    "component_id": "qty",
+    "component_json": {
+     "chart": {
+      "kind": "query"
+     },
+     "id": "qty",
+     "text": "SELECT sum(l.qty) FROM (l:订单行)",
+     "title": "件数（查询）"
+    },
+    "computed": 11.0,
+    "dashboard_id": 1,
+    "datasets_json": {
+     "line_rows": 1
+    },
+    "definitions_json": [
+     {
+      "id": "objtype:line",
+      "name": "订单行",
+      "version": 2
+     }
+    ],
+    "id": 2,
+    "note": "财务报表",
+    "question_id": null,
+    "trusted": 11.0
+   },
+   {
+    "at": "<time>",
+    "by_name": "Ann",
+    "by_user_id": 2,
+    "component_id": null,
+    "component_json": null,
+    "computed": 180.0,
+    "dashboard_id": null,
+    "datasets_json": {
+     "orders": 1
+    },
+    "definitions_json": [
+     {
+      "id": "objtype:order",
+      "name": "订单",
+      "version": 2
+     }
+    ],
+    "id": 3,
+    "note": "周报",
+    "question_id": 1,
+    "trusted": 180.0
+   }
+  ],
+  "column": [
+   {
+    "dataset_id": 1,
+    "distinct_count": 3,
+    "inferred_type": "text",
+    "missing_count": 0,
+    "name": "order_id",
+    "position": 0,
+    "value_counts_json": {
+     "O1": 1,
+     "O2": 1,
+     "O3": 1
+    }
+   },
+   {
+    "dataset_id": 1,
+    "distinct_count": 2,
+    "inferred_type": "text",
+    "missing_count": 0,
+    "name": "customer",
+    "position": 1,
+    "value_counts_json": {
+     "C1": 2,
+     "C2": 1
+    }
+   },
+   {
+    "dataset_id": 1,
+    "distinct_count": 3,
+    "inferred_type": "integer",
+    "missing_count": 0,
+    "name": "amount",
+    "position": 2,
+    "value_counts_json": {
+     "100": 1,
+     "30": 1,
+     "50": 1
+    }
+   },
+   {
+    "dataset_id": 2,
+    "distinct_count": 4,
+    "inferred_type": "text",
+    "missing_count": 0,
+    "name": "line_id",
+    "position": 0,
+    "value_counts_json": {
+     "L1": 1,
+     "L2": 1,
+     "L3": 1,
+     "L4": 1
+    }
+   },
+   {
+    "dataset_id": 2,
+    "distinct_count": 3,
+    "inferred_type": "text",
+    "missing_count": 0,
+    "name": "order_id",
+    "position": 1,
+    "value_counts_json": {
+     "O1": 2,
+     "O2": 1,
+     "O3": 1
+    }
+   },
+   {
+    "dataset_id": 2,
+    "distinct_count": 3,
+    "inferred_type": "text",
+    "missing_count": 0,
+    "name": "product",
+    "position": 2,
+    "value_counts_json": {
+     "P1": 2,
+     "P2": 1,
+     "P3": 1
+    }
+   },
+   {
+    "dataset_id": 2,
+    "distinct_count": 4,
+    "inferred_type": "integer",
+    "missing_count": 0,
+    "name": "qty",
+    "position": 3,
+    "value_counts_json": {
+     "1": 1,
+     "2": 1,
+     "3": 1,
+     "5": 1
+    }
+   },
+   {
+    "dataset_id": 3,
+    "distinct_count": 4,
+    "inferred_type": "text",
+    "missing_count": 0,
+    "name": "line_id",
+    "position": 0,
+    "value_counts_json": {
+     "L1": 1,
+     "L2": 1,
+     "L3": 1,
+     "L4": 1
+    }
+   },
+   {
+    "dataset_id": 3,
+    "distinct_count": 3,
+    "inferred_type": "text",
+    "missing_count": 0,
+    "name": "order_id",
+    "position": 1,
+    "value_counts_json": {
+     "O1": 2,
+     "O2": 1,
+     "O3": 1
+    }
+   },
+   {
+    "dataset_id": 3,
+    "distinct_count": 3,
+    "inferred_type": "text",
+    "missing_count": 0,
+    "name": "product",
+    "position": 2,
+    "value_counts_json": {
+     "P1": 2,
+     "P2": 1,
+     "P3": 1
+    }
+   },
+   {
+    "dataset_id": 3,
+    "distinct_count": 4,
+    "inferred_type": "integer",
+    "missing_count": 0,
+    "name": "qty",
+    "position": 3,
+    "value_counts_json": {
+     "1": 1,
+     "2": 1,
+     "3": 1,
+     "5": 1
+    }
+   },
+   {
+    "dataset_id": 3,
+    "distinct_count": 2,
+    "inferred_type": "text",
+    "missing_count": 0,
+    "name": "customer",
+    "position": 4,
+    "value_counts_json": {
+     "C1": 3,
+     "C2": 1
+    }
+   }
+  ],
+  "column_access": [],
+  "column_fan": [],
+  "column_mark": [],
+  "confirmation": [
+   {
+    "confirmed_at": "<time>",
+    "confirmed_by": "Bob",
+    "confirmed_by_user_id": 3,
+    "content_json": {
+     "definition_version": 1,
+     "description": "订单和订单行",
+     "name": "订单行客户",
+     "spec": {
+      "steps": [
+       {
+        "dataset": "lines",
+        "id": "l",
+        "type": "input"
+       },
+       {
+        "dataset": "orders",
+        "id": "o",
+        "type": "input"
+       },
+       {
+        "how": "left",
+        "id": "j",
+        "left": "l",
+        "on": [
+         {
+          "left": "order_id",
+          "right": "order_id"
+         }
+        ],
+        "right": "o",
+        "right_columns": [
+         "customer"
+        ],
+        "type": "join"
+       },
+       {
+        "from": "j",
+        "id": "out",
+        "key": {
+         "columns": [
+          "line_id"
+         ]
+        },
+        "name": "line_rows",
+        "type": "output"
+       }
+      ]
+     }
+    },
+    "dataset_versions_json": {
+     "lines": 1,
+     "orders": 1
+    },
+    "element_id": "pipeline:订单行客户",
+    "evidence_ref": "pipeline:订单行客户@d1",
+    "id": 1,
+    "proposed_by": "Ann",
+    "self_confirmed": 0,
+    "snapshot_json": {
+     "inputs": {
+      "lines": 1,
+      "orders": 1
+     },
+     "rows": {
+      "j": 4,
+      "l": 4,
+      "o": 3,
+      "out": 4
+     },
+     "stats": {
+      "j": [
+       {
+        "distinct": 4,
+        "length": [
+         2,
+         2
+        ],
+        "max": "L4",
+        "min": "L1",
+        "name": "line_id",
+        "nulls": 0,
+        "top": [
+         {
+          "rows": 1,
+          "value": "L1"
+         },
+         {
+          "rows": 1,
+          "value": "L2"
+         },
+         {
+          "rows": 1,
+          "value": "L3"
+         },
+         {
+          "rows": 1,
+          "value": "L4"
+         }
+        ],
+        "type": "text"
+       },
+       {
+        "distinct": 3,
+        "length": [
+         2,
+         2
+        ],
+        "max": "O3",
+        "min": "O1",
+        "name": "order_id",
+        "nulls": 0,
+        "top": [
+         {
+          "rows": 2,
+          "value": "O1"
+         },
+         {
+          "rows": 1,
+          "value": "O2"
+         },
+         {
+          "rows": 1,
+          "value": "O3"
+         }
+        ],
+        "type": "text"
+       },
+       {
+        "distinct": 3,
+        "length": [
+         2,
+         2
+        ],
+        "max": "P3",
+        "min": "P1",
+        "name": "product",
+        "nulls": 0,
+        "top": [
+         {
+          "rows": 2,
+          "value": "P1"
+         },
+         {
+          "rows": 1,
+          "value": "P2"
+         },
+         {
+          "rows": 1,
+          "value": "P3"
+         }
+        ],
+        "type": "text"
+       },
+       {
+        "distinct": 4,
+        "max": 5,
+        "mean": 2.75,
+        "min": 1,
+        "name": "qty",
+        "nulls": 0,
+        "type": "integer"
+       },
+       {
+        "distinct": 2,
+        "length": [
+         2,
+         2
+        ],
+        "max": "C2",
+        "min": "C1",
+        "name": "customer",
+        "nulls": 0,
+        "top": [
+         {
+          "rows": 3,
+          "value": "C1"
+         },
+         {
+          "rows": 1,
+          "value": "C2"
+         }
+        ],
+        "type": "text"
+       }
+      ],
+      "l": [
+       {
+        "distinct": 4,
+        "length": [
+         2,
+         2
+        ],
+        "max": "L4",
+        "min": "L1",
+        "name": "line_id",
+        "nulls": 0,
+        "top": [
+         {
+          "rows": 1,
+          "value": "L1"
+         },
+         {
+          "rows": 1,
+          "value": "L2"
+         },
+         {
+          "rows": 1,
+          "value": "L3"
+         },
+         {
+          "rows": 1,
+          "value": "L4"
+         }
+        ],
+        "type": "text"
+       },
+       {
+        "distinct": 3,
+        "length": [
+         2,
+         2
+        ],
+        "max": "O3",
+        "min": "O1",
+        "name": "order_id",
+        "nulls": 0,
+        "top": [
+         {
+          "rows": 2,
+          "value": "O1"
+         },
+         {
+          "rows": 1,
+          "value": "O2"
+         },
+         {
+          "rows": 1,
+          "value": "O3"
+         }
+        ],
+        "type": "text"
+       },
+       {
+        "distinct": 3,
+        "length": [
+         2,
+         2
+        ],
+        "max": "P3",
+        "min": "P1",
+        "name": "product",
+        "nulls": 0,
+        "top": [
+         {
+          "rows": 2,
+          "value": "P1"
+         },
+         {
+          "rows": 1,
+          "value": "P2"
+         },
+         {
+          "rows": 1,
+          "value": "P3"
+         }
+        ],
+        "type": "text"
+       },
+       {
+        "distinct": 4,
+        "max": 5,
+        "mean": 2.75,
+        "min": 1,
+        "name": "qty",
+        "nulls": 0,
+        "type": "integer"
+       }
+      ],
+      "o": [
+       {
+        "distinct": 3,
+        "length": [
+         2,
+         2
+        ],
+        "max": "O3",
+        "min": "O1",
+        "name": "order_id",
+        "nulls": 0,
+        "top": [
+         {
+          "rows": 1,
+          "value": "O1"
+         },
+         {
+          "rows": 1,
+          "value": "O2"
+         },
+         {
+          "rows": 1,
+          "value": "O3"
+         }
+        ],
+        "type": "text"
+       },
+       {
+        "distinct": 2,
+        "length": [
+         2,
+         2
+        ],
+        "max": "C2",
+        "min": "C1",
+        "name": "customer",
+        "nulls": 0,
+        "top": [
+         {
+          "rows": 2,
+          "value": "C1"
+         },
+         {
+          "rows": 1,
+          "value": "C2"
+         }
+        ],
+        "type": "text"
+       },
+       {
+        "distinct": 3,
+        "max": 100,
+        "mean": 60.0,
+        "min": 30,
+        "name": "amount",
+        "nulls": 0,
+        "type": "integer"
+       }
+      ],
+      "out": [
+       {
+        "distinct": 4,
+        "length": [
+         2,
+         2
+        ],
+        "max": "L4",
+        "min": "L1",
+        "name": "line_id",
+        "nulls": 0,
+        "top": [
+         {
+          "rows": 1,
+          "value": "L1"
+         },
+         {
+          "rows": 1,
+          "value": "L2"
+         },
+         {
+          "rows": 1,
+          "value": "L3"
+         },
+         {
+          "rows": 1,
+          "value": "L4"
+         }
+        ],
+        "type": "text"
+       },
+       {
+        "distinct": 3,
+        "length": [
+         2,
+         2
+        ],
+        "max": "O3",
+        "min": "O1",
+        "name": "order_id",
+        "nulls": 0,
+        "top": [
+         {
+          "rows": 2,
+          "value": "O1"
+         },
+         {
+          "rows": 1,
+          "value": "O2"
+         },
+         {
+          "rows": 1,
+          "value": "O3"
+         }
+        ],
+        "type": "text"
+       },
+       {
+        "distinct": 3,
+        "length": [
+         2,
+         2
+        ],
+        "max": "P3",
+        "min": "P1",
+        "name": "product",
+        "nulls": 0,
+        "top": [
+         {
+          "rows": 2,
+          "value": "P1"
+         },
+         {
+          "rows": 1,
+          "value": "P2"
+         },
+         {
+          "rows": 1,
+          "value": "P3"
+         }
+        ],
+        "type": "text"
+       },
+       {
+        "distinct": 4,
+        "max": 5,
+        "mean": 2.75,
+        "min": 1,
+        "name": "qty",
+        "nulls": 0,
+        "type": "integer"
+       },
+       {
+        "distinct": 2,
+        "length": [
+         2,
+         2
+        ],
+        "max": "C2",
+        "min": "C1",
+        "name": "customer",
+        "nulls": 0,
+        "top": [
+         {
+          "rows": 3,
+          "value": "C1"
+         },
+         {
+          "rows": 1,
+          "value": "C2"
+         }
+        ],
+        "type": "text"
+       }
+      ]
+     }
+    }
+   },
+   {
+    "confirmed_at": "<time>",
+    "confirmed_by": "Bob",
+    "confirmed_by_user_id": 3,
+    "content_json": {
+     "dataset": "orders",
+     "description": "",
+     "english_name": "order",
+     "key": [
+      "order_id"
+     ],
+     "name": "订单",
+     "properties": [
+      {
+       "column": "order_id",
+       "enum": false,
+       "name": "order_id",
+       "type": "text"
+      },
+      {
+       "column": "customer",
+       "enum": false,
+       "name": "customer",
+       "type": "text"
+      },
+      {
+       "column": "amount",
+       "enum": false,
+       "name": "amount",
+       "type": "integer"
+      }
+     ]
+    },
+    "dataset_versions_json": {
+     "orders": 1
+    },
+    "element_id": "objtype:order",
+    "evidence_ref": "check_result:2,dataset:orders@v1",
+    "id": 2,
+    "proposed_by": "Ann",
+    "self_confirmed": 0,
+    "snapshot_json": null
+   },
+   {
+    "confirmed_at": "<time>",
+    "confirmed_by": "Bob",
+    "confirmed_by_user_id": 3,
+    "content_json": {
+     "dataset": "line_rows",
+     "description": "",
+     "english_name": "line",
+     "key": [
+      "line_id"
+     ],
+     "name": "订单行",
+     "properties": [
+      {
+       "column": "line_id",
+       "enum": false,
+       "name": "line_id",
+       "type": "text"
+      },
+      {
+       "column": "order_id",
+       "enum": false,
+       "name": "order_id",
+       "type": "text"
+      },
+      {
+       "column": "customer",
+       "enum": false,
+       "name": "customer",
+       "type": "text"
+      },
+      {
+       "column": "product",
+       "enum": false,
+       "name": "product",
+       "type": "text"
+      },
+      {
+       "column": "qty",
+       "enum": false,
+       "name": "qty",
+       "type": "integer"
+      }
+     ]
+    },
+    "dataset_versions_json": {
+     "line_rows": 1
+    },
+    "element_id": "objtype:line",
+    "evidence_ref": "check_result:4,dataset:line_rows@v1",
+    "id": 3,
+    "proposed_by": "Ann",
+    "self_confirmed": 0,
+    "snapshot_json": null
+   },
+   {
+    "confirmed_at": "<time>",
+    "confirmed_by": "Bob",
+    "confirmed_by_user_id": 3,
+    "content_json": {
+     "cardinality": "many_to_one",
+     "description": "",
+     "english_name": "line_order",
+     "from": "line",
+     "from_column": "order_id",
+     "name": "订单行属于订单",
+     "to": "order",
+     "to_column": "order_id"
+    },
+    "dataset_versions_json": {
+     "line_rows": 1,
+     "orders": 1
+    },
+    "element_id": "relation:line_order",
+    "evidence_ref": "check_result:7,check_result:8,dataset:line_rows@v1,dataset:orders@v1",
+    "id": 4,
+    "proposed_by": "Ann",
+    "self_confirmed": 0,
+    "snapshot_json": null
+   },
+   {
+    "confirmed_at": "<time>",
+    "confirmed_by": "Bob",
+    "confirmed_by_user_id": 3,
+    "content_json": {
+     "conditions": [],
+     "description": "",
+     "english_name": "qty_sum",
+     "expression": null,
+     "fn": "sum",
+     "inputs": [],
+     "kind": "statistic",
+     "latest": null,
+     "measure": {
+      "column": "qty"
+     },
+     "name": "件数合计",
+     "output_type": "integer",
+     "path": [
+      "line_order"
+     ],
+     "type": "order",
+     "types": [
+      "order",
+      "line"
+     ]
+    },
+    "dataset_versions_json": {
+     "line_rows": 1,
+     "orders": 1
+    },
+    "element_id": "derived:order:qty_sum",
+    "evidence_ref": "dataset:orders@v1,dataset:line_rows@v1",
+    "id": 5,
+    "proposed_by": "Ann",
+    "self_confirmed": 0,
+    "snapshot_json": {
+     "trial": {
+      "examples": [
+       {
+        "object": "O1",
+        "value": "3"
+       },
+       {
+        "object": "O2",
+        "value": "5"
+       },
+       {
+        "object": "O3",
+        "value": "3"
+       }
+      ],
+      "lines": [
+       {
+        "ok": true,
+        "text": "3 个订单里，3 个算出了值，0 个没有值"
+       },
+       {
+        "ok": true,
+        "text": "一共用了 4 行订单行的数据"
+       }
+      ],
+      "numbers": {
+       "failed": 0,
+       "no_value": {
+        "ambiguous": 0,
+        "no_rows": 0,
+        "unreadable": 0
+       },
+       "objects": 3,
+       "rows_used": 4,
+       "shared_keys": 0,
+       "with_value": 3
+      },
+      "sample": null
+     }
+    }
+   },
+   {
+    "confirmed_at": "<time>",
+    "confirmed_by": "Bob",
+    "confirmed_by_user_id": 3,
+    "content_json": {
+     "conditions": [],
+     "description": "",
+     "english_name": "double_qty",
+     "expression": "qty * 2",
+     "fn": null,
+     "inputs": [
+      {
+       "column": "qty",
+       "type": "integer"
+      }
+     ],
+     "kind": "function",
+     "latest": null,
+     "measure": null,
+     "name": "双倍件数",
+     "output_type": "decimal",
+     "path": [],
+     "type": "line",
+     "types": [
+      "line"
+     ]
+    },
+    "dataset_versions_json": {
+     "line_rows": 1
+    },
+    "element_id": "derived:line:double_qty",
+    "evidence_ref": "dataset:line_rows@v1",
+    "id": 6,
+    "proposed_by": "Ann",
+    "self_confirmed": 0,
+    "snapshot_json": {
+     "trial": {
+      "examples": [
+       {
+        "object": "L1",
+        "value": "4"
+       },
+       {
+        "object": "L2",
+        "value": "2"
+       },
+       {
+        "object": "L3",
+        "value": "10"
+       },
+       {
+        "object": "L4",
+        "value": "6"
+       }
+      ],
+      "lines": [
+       {
+        "ok": true,
+        "text": "4 个订单行里，4 个算出了值，0 个没有值"
+       }
+      ],
+      "numbers": {
+       "failed": 0,
+       "no_value": {
+        "empty_input": 0
+       },
+       "objects": 4,
+       "rows_used": null,
+       "shared_keys": null,
+       "with_value": 4
+      },
+      "sample": {
+       "inputs": [
+        {
+         "column": "qty",
+         "value": "2"
+        }
+       ],
+       "label": "样本",
+       "result": "4"
+      }
+     }
+    }
+   }
+  ],
+  "current_dataset": [
+   {
+    "dataset_id": 3,
+    "name": "line_rows"
+   },
+   {
+    "dataset_id": 2,
+    "name": "lines"
+   },
+   {
+    "dataset_id": 1,
+    "name": "orders"
+   }
+  ],
+  "dashboard": [
+   {
+    "created_at": "<time>",
+    "expires_at": null,
+    "id": 1,
+    "name": "订单看板",
+    "owner": "Ann",
+    "owner_id": 2,
+    "refresh_seconds": 0,
+    "scope": "everyone",
+    "spec_json": {
+     "components": [
+      {
+       "chart": {
+        "bins": 10,
+        "fn": "sum",
+        "group": null,
+        "kind": "number",
+        "measure": "amount",
+        "order": null,
+        "top": null
+       },
+       "id": "amount",
+       "query": {
+        "filters": [],
+        "pivot": null,
+        "rows": null,
+        "type": "order",
+        "view": null
+       },
+       "title": "订单金额"
+      },
+      {
+       "chart": {
+        "kind": "query"
+       },
+       "id": "qty",
+       "text": "SELECT sum(l.qty) FROM (l:订单行)",
+       "title": "件数（查询）"
+      },
+      {
+       "chart": {
+        "kind": "query"
+       },
+       "id": "lines",
+       "text": "SELECT count(l) FROM (l:订单行)",
+       "title": "订单行数"
+      }
+     ],
+     "filters": [],
+     "params": []
+    },
+    "updated_at": "<time>",
+    "version": 1,
+    "visible_to_json": []
+   }
+  ],
+  "dashboard_last": [
+   {
+    "at": "<time>",
+    "component_id": "amount",
+    "dashboard_id": 1,
+    "picks": {},
+    "reader": 2,
+    "result_json": {
+     "chart": {
+      "bins": 10,
+      "fn": "sum",
+      "group": null,
+      "kind": "number",
+      "measure": "amount",
+      "order": null,
+      "top": null
+     },
+     "fn": "sum",
+     "group": null,
+     "measure": "amount",
+     "query": {
+      "filters": [],
+      "pivot": null,
+      "rows": null,
+      "type": "order",
+      "view": null
+     },
+     "rows": 3,
+     "rows_limited": false,
+     "standing": {
+      "confirmed": true,
+      "lines": [],
+      "reasons": [],
+      "why": null
+     },
+     "value": 180
+    }
+   }
+  ],
+  "data_source": [],
+  "dataset": [
+   {
+    "changes_json": {
+     "added": 3,
+     "changed": 0,
+     "unchanged": 0
+    },
+    "dropped_json": null,
+    "file_sha256": "837649bde251d7d86dd664aa857a20079e94051fdbd859eb18220525707289f2",
+    "id": 1,
+    "imported_at": "<time>",
+    "mode": "new",
+    "name": "orders",
+    "origin": "upload",
+    "rows_in": 3,
+    "rows_stored": 3,
+    "table_name": "ds_1",
+    "version": 1,
+    "who": "Ann",
+    "who_user_id": 2
+   },
+   {
+    "changes_json": {
+     "added": 4,
+     "changed": 0,
+     "unchanged": 0
+    },
+    "dropped_json": null,
+    "file_sha256": "bec58377d8b6733e1f8870de094b069462775d723dfd79f58fb986b58f17d027",
+    "id": 2,
+    "imported_at": "<time>",
+    "mode": "new",
+    "name": "lines",
+    "origin": "upload",
+    "rows_in": 4,
+    "rows_stored": 4,
+    "table_name": "ds_2",
+    "version": 1,
+    "who": "Ann",
+    "who_user_id": 2
+   },
+   {
+    "changes_json": {
+     "added": 4,
+     "changed": 0,
+     "pipeline": {
+      "definition_version": 1,
+      "id": "订单行客户",
+      "inputs": {
+       "lines": 1,
+       "orders": 1
+      },
+      "run": 1
+     },
+     "unchanged": 0
+    },
+    "dropped_json": null,
+    "file_sha256": "1e136b7f93b1192d1750f60e1d7eaab96b308f1f819e7ea395c4326a80719e8b",
+    "id": 3,
+    "imported_at": "<time>",
+    "mode": "new",
+    "name": "line_rows",
+    "origin": "pipeline:订单行客户@run1",
+    "rows_in": 4,
+    "rows_stored": 4,
+    "table_name": "ds_3",
+    "version": 1,
+    "who": "Ann",
+    "who_user_id": 2
+   }
+  ],
+  "ds_1": [
+   {
+    "amount": "100",
+    "customer": "C1",
+    "order_id": "O1"
+   },
+   {
+    "amount": "50",
+    "customer": "C1",
+    "order_id": "O2"
+   },
+   {
+    "amount": "30",
+    "customer": "C2",
+    "order_id": "O3"
+   }
+  ],
+  "ds_2": [
+   {
+    "line_id": "L1",
+    "order_id": "O1",
+    "product": "P1",
+    "qty": "2"
+   },
+   {
+    "line_id": "L2",
+    "order_id": "O1",
+    "product": "P2",
+    "qty": "1"
+   },
+   {
+    "line_id": "L3",
+    "order_id": "O2",
+    "product": "P1",
+    "qty": "5"
+   },
+   {
+    "line_id": "L4",
+    "order_id": "O3",
+    "product": "P3",
+    "qty": "3"
+   }
+  ],
+  "ds_3": [
+   {
+    "customer": "C1",
+    "line_id": "L1",
+    "order_id": "O1",
+    "product": "P1",
+    "qty": "2"
+   },
+   {
+    "customer": "C1",
+    "line_id": "L2",
+    "order_id": "O1",
+    "product": "P2",
+    "qty": "1"
+   },
+   {
+    "customer": "C1",
+    "line_id": "L3",
+    "order_id": "O2",
+    "product": "P1",
+    "qty": "5"
+   },
+   {
+    "customer": "C2",
+    "line_id": "L4",
+    "order_id": "O3",
+    "product": "P3",
+    "qty": "3"
+   }
+  ],
+  "element_dep": [
+   {
+    "depends_on": "dataset:lines",
+    "element_id": "pipeline:订单行客户"
+   },
+   {
+    "depends_on": "dataset:orders",
+    "element_id": "pipeline:订单行客户"
+   },
+   {
+    "depends_on": "pipeline:订单行客户",
+    "element_id": "dataset:line_rows"
+   },
+   {
+    "depends_on": "dataset:orders",
+    "element_id": "objtype:order"
+   },
+   {
+    "depends_on": "dataset:line_rows",
+    "element_id": "objtype:line"
+   },
+   {
+    "depends_on": "objtype:line",
+    "element_id": "relation:line_order"
+   },
+   {
+    "depends_on": "objtype:order",
+    "element_id": "relation:line_order"
+   },
+   {
+    "depends_on": "dataset:line_rows",
+    "element_id": "relation:line_order"
+   },
+   {
+    "depends_on": "dataset:orders",
+    "element_id": "relation:line_order"
+   },
+   {
+    "depends_on": "objtype:order",
+    "element_id": "derived:order:qty_sum"
+   },
+   {
+    "depends_on": "objtype:line",
+    "element_id": "derived:order:qty_sum"
+   },
+   {
+    "depends_on": "relation:line_order",
+    "element_id": "derived:order:qty_sum"
+   },
+   {
+    "depends_on": "dataset:orders",
+    "element_id": "derived:order:qty_sum"
+   },
+   {
+    "depends_on": "dataset:line_rows",
+    "element_id": "derived:order:qty_sum"
+   },
+   {
+    "depends_on": "objtype:line",
+    "element_id": "derived:line:double_qty"
+   },
+   {
+    "depends_on": "dataset:line_rows",
+    "element_id": "derived:line:double_qty"
+   }
+  ],
+  "element_state": [
+   {
+    "anchors_json": {
+     "definition_version": 1,
+     "inputs": {
+      "lines": 1,
+      "orders": 1
+     }
+    },
+    "cause": null,
+    "confirmed_at": "<time>",
+    "confirmed_by": "Bob",
+    "confirmed_by_user_id": 3,
+    "content_json": {
+     "definition_version": 1,
+     "description": "订单和订单行",
+     "name": "订单行客户",
+     "spec": {
+      "steps": [
+       {
+        "dataset": "lines",
+        "id": "l",
+        "type": "input"
+       },
+       {
+        "dataset": "orders",
+        "id": "o",
+        "type": "input"
+       },
+       {
+        "how": "left",
+        "id": "j",
+        "left": "l",
+        "on": [
+         {
+          "left": "order_id",
+          "right": "order_id"
+         }
+        ],
+        "right": "o",
+        "right_columns": [
+         "customer"
+        ],
+        "type": "join"
+       },
+       {
+        "from": "j",
+        "id": "out",
+        "key": {
+         "columns": [
+          "line_id"
+         ]
+        },
+        "name": "line_rows",
+        "type": "output"
+       }
+      ]
+     }
+    },
+    "element_id": "pipeline:订单行客户",
+    "evidence_ref": "pipeline:订单行客户@d1",
+    "proposed_by": "Ann",
+    "proposed_by_user_id": 2,
+    "reason": null,
+    "state": "confirmed",
+    "version": 2,
+    "via": null
+   },
+   {
+    "anchors_json": {
+     "dataset": "orders",
+     "version": 1
+    },
+    "cause": null,
+    "confirmed_at": "<time>",
+    "confirmed_by": "Bob",
+    "confirmed_by_user_id": 3,
+    "content_json": {
+     "dataset": "orders",
+     "description": "",
+     "english_name": "order",
+     "key": [
+      "order_id"
+     ],
+     "name": "订单",
+     "properties": [
+      {
+       "column": "order_id",
+       "enum": false,
+       "name": "order_id",
+       "type": "text"
+      },
+      {
+       "column": "customer",
+       "enum": false,
+       "name": "customer",
+       "type": "text"
+      },
+      {
+       "column": "amount",
+       "enum": false,
+       "name": "amount",
+       "type": "integer"
+      }
+     ]
+    },
+    "element_id": "objtype:order",
+    "evidence_ref": "check_result:2,dataset:orders@v1",
+    "proposed_by": "Ann",
+    "proposed_by_user_id": 2,
+    "reason": null,
+    "state": "confirmed",
+    "version": 2,
+    "via": null
+   },
+   {
+    "anchors_json": {
+     "dataset": "line_rows",
+     "version": 1
+    },
+    "cause": null,
+    "confirmed_at": "<time>",
+    "confirmed_by": "Bob",
+    "confirmed_by_user_id": 3,
+    "content_json": {
+     "dataset": "line_rows",
+     "description": "",
+     "english_name": "line",
+     "key": [
+      "line_id"
+     ],
+     "name": "订单行",
+     "properties": [
+      {
+       "column": "line_id",
+       "enum": false,
+       "name": "line_id",
+       "type": "text"
+      },
+      {
+       "column": "order_id",
+       "enum": false,
+       "name": "order_id",
+       "type": "text"
+      },
+      {
+       "column": "customer",
+       "enum": false,
+       "name": "customer",
+       "type": "text"
+      },
+      {
+       "column": "product",
+       "enum": false,
+       "name": "product",
+       "type": "text"
+      },
+      {
+       "column": "qty",
+       "enum": false,
+       "name": "qty",
+       "type": "integer"
+      }
+     ]
+    },
+    "element_id": "objtype:line",
+    "evidence_ref": "check_result:4,dataset:line_rows@v1",
+    "proposed_by": "Ann",
+    "proposed_by_user_id": 2,
+    "reason": null,
+    "state": "confirmed",
+    "version": 2,
+    "via": null
+   },
+   {
+    "anchors_json": {
+     "datasets": {
+      "line_rows": 1,
+      "orders": 1
+     },
+     "numbers": {
+      "extra_rows": 0,
+      "fan_keys": 0,
+      "many_repeats": 0,
+      "matched": 4,
+      "rows": 4,
+      "unmatched": 0
+     }
+    },
+    "cause": null,
+    "confirmed_at": "<time>",
+    "confirmed_by": "Bob",
+    "confirmed_by_user_id": 3,
+    "content_json": {
+     "cardinality": "many_to_one",
+     "description": "",
+     "english_name": "line_order",
+     "from": "line",
+     "from_column": "order_id",
+     "name": "订单行属于订单",
+     "to": "order",
+     "to_column": "order_id"
+    },
+    "element_id": "relation:line_order",
+    "evidence_ref": "check_result:7,check_result:8,dataset:line_rows@v1,dataset:orders@v1",
+    "proposed_by": "Ann",
+    "proposed_by_user_id": 2,
+    "reason": null,
+    "state": "confirmed",
+    "version": 2,
+    "via": null
+   },
+   {
+    "anchors_json": {
+     "datasets": {
+      "line_rows": 1,
+      "orders": 1
+     },
+     "failed": 0,
+     "objects": 3
+    },
+    "cause": null,
+    "confirmed_at": "<time>",
+    "confirmed_by": "Bob",
+    "confirmed_by_user_id": 3,
+    "content_json": {
+     "conditions": [],
+     "description": "",
+     "english_name": "qty_sum",
+     "expression": null,
+     "fn": "sum",
+     "inputs": [],
+     "kind": "statistic",
+     "latest": null,
+     "measure": {
+      "column": "qty"
+     },
+     "name": "件数合计",
+     "output_type": "integer",
+     "path": [
+      "line_order"
+     ],
+     "type": "order",
+     "types": [
+      "order",
+      "line"
+     ]
+    },
+    "element_id": "derived:order:qty_sum",
+    "evidence_ref": "dataset:orders@v1,dataset:line_rows@v1",
+    "proposed_by": "Ann",
+    "proposed_by_user_id": 2,
+    "reason": null,
+    "state": "confirmed",
+    "version": 2,
+    "via": null
+   },
+   {
+    "anchors_json": {
+     "datasets": {
+      "line_rows": 1
+     },
+     "failed": 0,
+     "objects": 4
+    },
+    "cause": null,
+    "confirmed_at": "<time>",
+    "confirmed_by": "Bob",
+    "confirmed_by_user_id": 3,
+    "content_json": {
+     "conditions": [],
+     "description": "",
+     "english_name": "double_qty",
+     "expression": "qty * 2",
+     "fn": null,
+     "inputs": [
+      {
+       "column": "qty",
+       "type": "integer"
+      }
+     ],
+     "kind": "function",
+     "latest": null,
+     "measure": null,
+     "name": "双倍件数",
+     "output_type": "decimal",
+     "path": [],
+     "type": "line",
+     "types": [
+      "line"
+     ]
+    },
+    "element_id": "derived:line:double_qty",
+    "evidence_ref": "dataset:line_rows@v1",
+    "proposed_by": "Ann",
+    "proposed_by_user_id": 2,
+    "reason": null,
+    "state": "confirmed",
+    "version": 2,
+    "via": null
+   }
+  ],
+  "llm_label": [],
+  "llm_review": [],
+  "log": [
+   {
+    "after_json": {
+     "role": "admin",
+     "username": "root"
+    },
+    "before_json": null,
+    "change": "user_created",
+    "element_id": "user:1",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "host"
+   },
+   {
+    "after_json": null,
+    "before_json": null,
+    "change": "login",
+    "element_id": "user:1",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "root"
+   },
+   {
+    "after_json": {
+     "role": "builder",
+     "username": "ann"
+    },
+    "before_json": null,
+    "change": "user_created",
+    "element_id": "user:2",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "root"
+   },
+   {
+    "after_json": null,
+    "before_json": null,
+    "change": "login",
+    "element_id": "user:2",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "ann"
+   },
+   {
+    "after_json": null,
+    "before_json": null,
+    "change": "password_changed",
+    "element_id": "user:2",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "ann"
+   },
+   {
+    "after_json": {
+     "role": "builder",
+     "username": "bob"
+    },
+    "before_json": null,
+    "change": "user_created",
+    "element_id": "user:3",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "root"
+   },
+   {
+    "after_json": null,
+    "before_json": null,
+    "change": "login",
+    "element_id": "user:3",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "bob"
+   },
+   {
+    "after_json": null,
+    "before_json": null,
+    "change": "password_changed",
+    "element_id": "user:3",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "bob"
+   },
+   {
+    "after_json": {
+     "dropped": {},
+     "file_sha256": "837649bde251d7d86dd664aa857a20079e94051fdbd859eb18220525707289f2",
+     "rows_in": 3,
+     "rows_stored": 3,
+     "version": 1
+    },
+    "before_json": null,
+    "change": "import v1: 3 rows in the file, 3 stored, 0 dropped",
+    "element_id": "dataset:orders",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": {
+     "dropped": {},
+     "file_sha256": "bec58377d8b6733e1f8870de094b069462775d723dfd79f58fb986b58f17d027",
+     "rows_in": 4,
+     "rows_stored": 4,
+     "version": 1
+    },
+    "before_json": null,
+    "change": "import v1: 4 rows in the file, 4 stored, 0 dropped",
+    "element_id": "dataset:lines",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": {
+     "anchors_json": "62 bytes, sha256 a96aee0a446d",
+     "confirmed_at": "<time>",
+     "confirmed_by": "Ann",
+     "content_json": "{\"definition_version\": 1, \"description\": \"订单和订单行\", \"name\": \"订单行客户\", \"spec\": {\"steps\": [{\"dataset\": \"lines\", \"id\": \"l\", \"type\": \"input\"}, {\"dataset\": \"orders\", \"id\": \"o\", \"type\": \"input\"}, {\"how\": \"left\", \"id\": \"j\", \"left\": \"l\", \"on\": [{\"left\": \"order_id\", \"right\": \"order_id\"}], \"right\": \"o\", \"right_columns\": [\"customer\"], \"type\": \"join\"}, {\"from\": \"j\", \"id\": \"out\", \"key\": {\"columns\": [\"line_id\"]}, \"name\": \"line_rows\", \"type\": \"output\"}]}}",
+     "evidence_ref": "pipeline:订单行客户@d1",
+     "state": "checked",
+     "version": 1
+    },
+    "before_json": null,
+    "change": "checked",
+    "element_id": "pipeline:订单行客户",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": {
+     "anchors_json": "62 bytes, sha256 a96aee0a446d",
+     "confirmed_at": "<time>",
+     "confirmed_by": "Bob",
+     "content_json": "{\"definition_version\": 1, \"description\": \"订单和订单行\", \"name\": \"订单行客户\", \"spec\": {\"steps\": [{\"dataset\": \"lines\", \"id\": \"l\", \"type\": \"input\"}, {\"dataset\": \"orders\", \"id\": \"o\", \"type\": \"input\"}, {\"how\": \"left\", \"id\": \"j\", \"left\": \"l\", \"on\": [{\"left\": \"order_id\", \"right\": \"order_id\"}], \"right\": \"o\", \"right_columns\": [\"customer\"], \"type\": \"join\"}, {\"from\": \"j\", \"id\": \"out\", \"key\": {\"columns\": [\"line_id\"]}, \"name\": \"line_rows\", \"type\": \"output\"}]}}",
+     "evidence_ref": "pipeline:订单行客户@d1",
+     "state": "confirmed",
+     "version": 2
+    },
+    "before_json": {
+     "anchors_json": "62 bytes, sha256 a96aee0a446d",
+     "confirmed_at": "<time>",
+     "confirmed_by": "Ann",
+     "content_json": "{\"definition_version\": 1, \"description\": \"订单和订单行\", \"name\": \"订单行客户\", \"spec\": {\"steps\": [{\"dataset\": \"lines\", \"id\": \"l\", \"type\": \"input\"}, {\"dataset\": \"orders\", \"id\": \"o\", \"type\": \"input\"}, {\"how\": \"left\", \"id\": \"j\", \"left\": \"l\", \"on\": [{\"left\": \"order_id\", \"right\": \"order_id\"}], \"right\": \"o\", \"right_columns\": [\"customer\"], \"type\": \"join\"}, {\"from\": \"j\", \"id\": \"out\", \"key\": {\"columns\": [\"line_id\"]}, \"name\": \"line_rows\", \"type\": \"output\"}]}}",
+     "evidence_ref": "pipeline:订单行客户@d1",
+     "state": "checked",
+     "version": 1
+    },
+    "change": "confirmed",
+    "element_id": "pipeline:订单行客户",
+    "time": "<time>",
+    "user_id": 3,
+    "via_token": null,
+    "who": "Bob"
+   },
+   {
+    "after_json": {
+     "dropped": {},
+     "file_sha256": "1e136b7f93b1192d1750f60e1d7eaab96b308f1f819e7ea395c4326a80719e8b",
+     "rows_in": 4,
+     "rows_stored": 4,
+     "version": 1
+    },
+    "before_json": null,
+    "change": "import v1: 4 rows in the file, 4 stored, 0 dropped",
+    "element_id": "dataset:line_rows",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": {
+     "outputs": [
+      "line_rows"
+     ],
+     "run": 1
+    },
+    "before_json": null,
+    "change": "run",
+    "element_id": "pipeline:订单行客户",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": {
+     "anchors_json": "50 bytes, sha256 33d827ee1ae4",
+     "confirmed_at": "<time>",
+     "confirmed_by": "Ann",
+     "content_json": "{\"dataset\": \"orders\", \"description\": \"\", \"english_name\": \"order\", \"key\": [\"order_id\"], \"name\": \"订单\", \"properties\": [{\"column\": \"order_id\", \"enum\": false, \"name\": \"order_id\", \"type\": \"text\"}, {\"column\": \"customer\", \"enum\": false, \"name\": \"customer\", \"type\": \"text\"}, {\"column\": \"amount\", \"enum\": false, \"name\": \"amount\", \"type\": \"integer\"}]}",
+     "evidence_ref": "check_result:1,dataset:orders@v1",
+     "state": "checked",
+     "version": 1
+    },
+    "before_json": null,
+    "change": "checked",
+    "element_id": "objtype:order",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": {
+     "anchors_json": "35 bytes, sha256 8d6761ab18a2",
+     "confirmed_at": "<time>",
+     "confirmed_by": "Bob",
+     "content_json": "{\"dataset\": \"orders\", \"description\": \"\", \"english_name\": \"order\", \"key\": [\"order_id\"], \"name\": \"订单\", \"properties\": [{\"column\": \"order_id\", \"enum\": false, \"name\": \"order_id\", \"type\": \"text\"}, {\"column\": \"customer\", \"enum\": false, \"name\": \"customer\", \"type\": \"text\"}, {\"column\": \"amount\", \"enum\": false, \"name\": \"amount\", \"type\": \"integer\"}]}",
+     "evidence_ref": "check_result:2,dataset:orders@v1",
+     "state": "confirmed",
+     "version": 2
+    },
+    "before_json": {
+     "anchors_json": "50 bytes, sha256 33d827ee1ae4",
+     "confirmed_at": "<time>",
+     "confirmed_by": "Ann",
+     "content_json": "{\"dataset\": \"orders\", \"description\": \"\", \"english_name\": \"order\", \"key\": [\"order_id\"], \"name\": \"订单\", \"properties\": [{\"column\": \"order_id\", \"enum\": false, \"name\": \"order_id\", \"type\": \"text\"}, {\"column\": \"customer\", \"enum\": false, \"name\": \"customer\", \"type\": \"text\"}, {\"column\": \"amount\", \"enum\": false, \"name\": \"amount\", \"type\": \"integer\"}]}",
+     "evidence_ref": "check_result:1,dataset:orders@v1",
+     "state": "checked",
+     "version": 1
+    },
+    "change": "confirmed",
+    "element_id": "objtype:order",
+    "time": "<time>",
+    "user_id": 3,
+    "via_token": null,
+    "who": "Bob"
+   },
+   {
+    "after_json": {
+     "anchors_json": "53 bytes, sha256 ebd9a7219084",
+     "confirmed_at": "<time>",
+     "confirmed_by": "Ann",
+     "content_json": "{\"dataset\": \"line_rows\", \"description\": \"\", \"english_name\": \"line\", \"key\": [\"line_id\"], \"name\": \"订单行\", \"properties\": [{\"column\": \"line_id\", \"enum\": false, \"name\": \"line_id\", \"type\": \"text\"}, {\"column\": \"order_id\", \"enum\": false, \"name\": \"order_id\", \"type\": \"text\"}, {\"column\": \"customer\", \"enum\": false, \"name\": \"customer\", \"type\": \"text\"}, {\"column\": \"product\", \"enum\": false, \"name\": \"product\", \"type\": \"text\"}, {\"column\": \"qty\", \"enum\": false, \"name\": \"qty\", \"type\": \"integer\"}]}",
+     "evidence_ref": "check_result:3,dataset:line_rows@v1",
+     "state": "checked",
+     "version": 1
+    },
+    "before_json": null,
+    "change": "checked",
+    "element_id": "objtype:line",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": {
+     "anchors_json": "38 bytes, sha256 a4e8e2454661",
+     "confirmed_at": "<time>",
+     "confirmed_by": "Bob",
+     "content_json": "{\"dataset\": \"line_rows\", \"description\": \"\", \"english_name\": \"line\", \"key\": [\"line_id\"], \"name\": \"订单行\", \"properties\": [{\"column\": \"line_id\", \"enum\": false, \"name\": \"line_id\", \"type\": \"text\"}, {\"column\": \"order_id\", \"enum\": false, \"name\": \"order_id\", \"type\": \"text\"}, {\"column\": \"customer\", \"enum\": false, \"name\": \"customer\", \"type\": \"text\"}, {\"column\": \"product\", \"enum\": false, \"name\": \"product\", \"type\": \"text\"}, {\"column\": \"qty\", \"enum\": false, \"name\": \"qty\", \"type\": \"integer\"}]}",
+     "evidence_ref": "check_result:4,dataset:line_rows@v1",
+     "state": "confirmed",
+     "version": 2
+    },
+    "before_json": {
+     "anchors_json": "53 bytes, sha256 ebd9a7219084",
+     "confirmed_at": "<time>",
+     "confirmed_by": "Ann",
+     "content_json": "{\"dataset\": \"line_rows\", \"description\": \"\", \"english_name\": \"line\", \"key\": [\"line_id\"], \"name\": \"订单行\", \"properties\": [{\"column\": \"line_id\", \"enum\": false, \"name\": \"line_id\", \"type\": \"text\"}, {\"column\": \"order_id\", \"enum\": false, \"name\": \"order_id\", \"type\": \"text\"}, {\"column\": \"customer\", \"enum\": false, \"name\": \"customer\", \"type\": \"text\"}, {\"column\": \"product\", \"enum\": false, \"name\": \"product\", \"type\": \"text\"}, {\"column\": \"qty\", \"enum\": false, \"name\": \"qty\", \"type\": \"integer\"}]}",
+     "evidence_ref": "check_result:3,dataset:line_rows@v1",
+     "state": "checked",
+     "version": 1
+    },
+    "change": "confirmed",
+    "element_id": "objtype:line",
+    "time": "<time>",
+    "user_id": 3,
+    "via_token": null,
+    "who": "Bob"
+   },
+   {
+    "after_json": {
+     "anchors_json": "148 bytes, sha256 3953ee4631cb",
+     "confirmed_at": "<time>",
+     "confirmed_by": "Ann",
+     "content_json": "{\"cardinality\": \"many_to_one\", \"description\": \"\", \"english_name\": \"line_order\", \"from\": \"line\", \"from_column\": \"order_id\", \"name\": \"订单行属于订单\", \"to\": \"order\", \"to_column\": \"order_id\"}",
+     "evidence_ref": "check_result:5,check_result:6,dataset:line_rows@v1,dataset:orders@v1",
+     "state": "checked",
+     "version": 1
+    },
+    "before_json": null,
+    "change": "checked",
+    "element_id": "relation:line_order",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": {
+     "anchors_json": "148 bytes, sha256 3953ee4631cb",
+     "confirmed_at": "<time>",
+     "confirmed_by": "Bob",
+     "content_json": "{\"cardinality\": \"many_to_one\", \"description\": \"\", \"english_name\": \"line_order\", \"from\": \"line\", \"from_column\": \"order_id\", \"name\": \"订单行属于订单\", \"to\": \"order\", \"to_column\": \"order_id\"}",
+     "evidence_ref": "check_result:7,check_result:8,dataset:line_rows@v1,dataset:orders@v1",
+     "state": "confirmed",
+     "version": 2
+    },
+    "before_json": {
+     "anchors_json": "148 bytes, sha256 3953ee4631cb",
+     "confirmed_at": "<time>",
+     "confirmed_by": "Ann",
+     "content_json": "{\"cardinality\": \"many_to_one\", \"description\": \"\", \"english_name\": \"line_order\", \"from\": \"line\", \"from_column\": \"order_id\", \"name\": \"订单行属于订单\", \"to\": \"order\", \"to_column\": \"order_id\"}",
+     "evidence_ref": "check_result:5,check_result:6,dataset:line_rows@v1,dataset:orders@v1",
+     "state": "checked",
+     "version": 1
+    },
+    "change": "confirmed",
+    "element_id": "relation:line_order",
+    "time": "<time>",
+    "user_id": 3,
+    "via_token": null,
+    "who": "Bob"
+   },
+   {
+    "after_json": {
+     "anchors_json": "70 bytes, sha256 d8be2049cd6e",
+     "confirmed_at": "<time>",
+     "confirmed_by": "Ann",
+     "content_json": "{\"conditions\": [], \"description\": \"\", \"english_name\": \"qty_sum\", \"expression\": null, \"fn\": \"sum\", \"inputs\": [], \"kind\": \"statistic\", \"latest\": null, \"measure\": {\"column\": \"qty\"}, \"name\": \"件数合计\", \"output_type\": \"integer\", \"path\": [\"line_order\"], \"type\": \"order\", \"types\": [\"order\", \"line\"]}",
+     "evidence_ref": "dataset:orders@v1,dataset:line_rows@v1",
+     "state": "checked",
+     "version": 1
+    },
+    "before_json": null,
+    "change": "checked",
+    "element_id": "derived:order:qty_sum",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": {
+     "anchors_json": "70 bytes, sha256 d8be2049cd6e",
+     "confirmed_at": "<time>",
+     "confirmed_by": "Bob",
+     "content_json": "{\"conditions\": [], \"description\": \"\", \"english_name\": \"qty_sum\", \"expression\": null, \"fn\": \"sum\", \"inputs\": [], \"kind\": \"statistic\", \"latest\": null, \"measure\": {\"column\": \"qty\"}, \"name\": \"件数合计\", \"output_type\": \"integer\", \"path\": [\"line_order\"], \"type\": \"order\", \"types\": [\"order\", \"line\"]}",
+     "evidence_ref": "dataset:orders@v1,dataset:line_rows@v1",
+     "state": "confirmed",
+     "version": 2
+    },
+    "before_json": {
+     "anchors_json": "70 bytes, sha256 d8be2049cd6e",
+     "confirmed_at": "<time>",
+     "confirmed_by": "Ann",
+     "content_json": "{\"conditions\": [], \"description\": \"\", \"english_name\": \"qty_sum\", \"expression\": null, \"fn\": \"sum\", \"inputs\": [], \"kind\": \"statistic\", \"latest\": null, \"measure\": {\"column\": \"qty\"}, \"name\": \"件数合计\", \"output_type\": \"integer\", \"path\": [\"line_order\"], \"type\": \"order\", \"types\": [\"order\", \"line\"]}",
+     "evidence_ref": "dataset:orders@v1,dataset:line_rows@v1",
+     "state": "checked",
+     "version": 1
+    },
+    "change": "confirmed",
+    "element_id": "derived:order:qty_sum",
+    "time": "<time>",
+    "user_id": 3,
+    "via_token": null,
+    "who": "Bob"
+   },
+   {
+    "after_json": {
+     "anchors_json": "57 bytes, sha256 8bfd8887cfc2",
+     "confirmed_at": "<time>",
+     "confirmed_by": "Ann",
+     "content_json": "{\"conditions\": [], \"description\": \"\", \"english_name\": \"double_qty\", \"expression\": \"qty * 2\", \"fn\": null, \"inputs\": [{\"column\": \"qty\", \"type\": \"integer\"}], \"kind\": \"function\", \"latest\": null, \"measure\": null, \"name\": \"双倍件数\", \"output_type\": \"decimal\", \"path\": [], \"type\": \"line\", \"types\": [\"line\"]}",
+     "evidence_ref": "dataset:line_rows@v1",
+     "state": "checked",
+     "version": 1
+    },
+    "before_json": null,
+    "change": "checked",
+    "element_id": "derived:line:double_qty",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": {
+     "anchors_json": "57 bytes, sha256 8bfd8887cfc2",
+     "confirmed_at": "<time>",
+     "confirmed_by": "Bob",
+     "content_json": "{\"conditions\": [], \"description\": \"\", \"english_name\": \"double_qty\", \"expression\": \"qty * 2\", \"fn\": null, \"inputs\": [{\"column\": \"qty\", \"type\": \"integer\"}], \"kind\": \"function\", \"latest\": null, \"measure\": null, \"name\": \"双倍件数\", \"output_type\": \"decimal\", \"path\": [], \"type\": \"line\", \"types\": [\"line\"]}",
+     "evidence_ref": "dataset:line_rows@v1",
+     "state": "confirmed",
+     "version": 2
+    },
+    "before_json": {
+     "anchors_json": "57 bytes, sha256 8bfd8887cfc2",
+     "confirmed_at": "<time>",
+     "confirmed_by": "Ann",
+     "content_json": "{\"conditions\": [], \"description\": \"\", \"english_name\": \"double_qty\", \"expression\": \"qty * 2\", \"fn\": null, \"inputs\": [{\"column\": \"qty\", \"type\": \"integer\"}], \"kind\": \"function\", \"latest\": null, \"measure\": null, \"name\": \"双倍件数\", \"output_type\": \"decimal\", \"path\": [], \"type\": \"line\", \"types\": [\"line\"]}",
+     "evidence_ref": "dataset:line_rows@v1",
+     "state": "checked",
+     "version": 1
+    },
+    "change": "confirmed",
+    "element_id": "derived:line:double_qty",
+    "time": "<time>",
+    "user_id": 3,
+    "via_token": null,
+    "who": "Bob"
+   },
+   {
+    "after_json": {
+     "expect": {
+      "kind": "number",
+      "value": 180
+     },
+     "note": null,
+     "question": "订单金额合计是多少？"
+    },
+    "before_json": null,
+    "change": "written",
+    "element_id": "needed:1",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": {
+     "expect": {
+      "kind": "number",
+      "value": 180
+     },
+     "note": null,
+     "question": "订单金额合计是多少？",
+     "state": "confirmed",
+     "version": 1
+    },
+    "before_json": {
+     "expect": {
+      "kind": "number",
+      "value": 180
+     },
+     "note": null,
+     "question": "订单金额合计是多少？",
+     "state": "proposed",
+     "version": 1
+    },
+    "change": "confirmed",
+    "element_id": "needed:1",
+    "time": "<time>",
+    "user_id": 3,
+    "via_token": null,
+    "who": "Bob"
+   },
+   {
+    "after_json": {
+     "calls": 1,
+     "questions": 1,
+     "stopped": false
+    },
+    "before_json": null,
+    "change": "run",
+    "element_id": "needed-run:1",
+    "time": "<time>",
+    "user_id": 3,
+    "via_token": null,
+    "who": "Bob"
+   }
+  ],
+  "needed_question": [
+   {
+    "basis_json": {
+     "datasets": {
+      "orders": 1
+     },
+     "definitions": {
+      "objtype:order": {
+       "name": "订单",
+       "version": 2
+      }
+     }
+    },
+    "confirmed_at": "<time>",
+    "confirmed_by": "Bob",
+    "confirmed_by_user_id": 3,
+    "expect_blocker": null,
+    "expect_kind": "number",
+    "expect_value": 180.0,
+    "expect_version": 2,
+    "id": 1,
+    "look_json": null,
+    "note": null,
+    "question": "订单金额合计是多少？",
+    "self_confirmed": 0,
+    "state": "confirmed",
+    "version": 2,
+    "written_at": "<time>",
+    "written_by": "Ann",
+    "written_by_user_id": 2
+   }
+  ],
+  "needed_result": [
+   {
+    "outcome": "passes",
+    "question": "订单金额合计是多少？",
+    "question_id": 1,
+    "result_json": {
+     "asked": 1,
+     "asks": [
+      {
+       "blocking": [],
+       "datasets": {
+        "orders": 1
+       },
+       "definitions": [
+        {
+         "id": "objtype:order",
+         "name": "订单",
+         "version": 2
+        }
+       ],
+       "model": "test-model",
+       "number": 180,
+       "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:订单)",
+       "reason": null,
+       "status": "answered"
+      }
+     ],
+     "distinct": [
+      {
+       "number": 180,
+       "status": "answered",
+       "times": 1
+      }
+     ],
+     "expected": {
+      "kind": "number",
+      "value": 180
+     },
+     "judged_against": {
+      "expect": {
+       "kind": "number",
+       "value": 180
+      },
+      "expect_version": 2,
+      "question": "订单金额合计是多少？"
+     },
+     "outcome": "passes",
+     "right": 1
+    },
+    "run_id": 1
+   }
+  ],
+  "needed_run": [
+   {
+    "by_name": "Bob",
+    "by_user_id": 3,
+    "calls": 1,
+    "finished_at": "<time>",
+    "id": 1,
+    "model": "test-model",
+    "note": null,
+    "owner": "<owner>",
+    "planned": 1,
+    "prompt_version": "company_questions.v18",
+    "repeats": 1,
+    "started_at": "<time>",
+    "status": "done"
+   }
+  ],
+  "notice": [],
+  "pipeline_run": [
+   {
+    "definition_version": 1,
+    "duration_ms": "<ms>",
+    "error": null,
+    "failures_json": {},
+    "finished_at": "<time>",
+    "id": 1,
+    "input_versions_json": {
+     "lines": 1,
+     "orders": 1
+    },
+    "nodes_json": [
+     {
+      "columns": [
+       "line_id",
+       "order_id",
+       "product",
+       "qty"
+      ],
+      "id": "l",
+      "reads": "表 lines",
+      "rows_in": [
+       4
+      ],
+      "rows_out": 4,
+      "type": "input"
+     },
+     {
+      "columns": [
+       "order_id",
+       "customer",
+       "amount"
+      ],
+      "id": "o",
+      "reads": "表 orders",
+      "rows_in": [
+       3
+      ],
+      "rows_out": 3,
+      "type": "input"
+     },
+     {
+      "columns": [
+       "line_id",
+       "order_id",
+       "product",
+       "qty",
+       "customer"
+      ],
+      "id": "j",
+      "join": {
+       "extra_rows": 0,
+       "fan_out": null,
+       "how": "left",
+       "left_blank": 0,
+       "left_rows": 4,
+       "left_unmatched": 0,
+       "matched_left": 4,
+       "near_matches": [],
+       "null_keys": "no_match",
+       "on": [
+        {
+         "left": "order_id",
+         "right": "order_id"
+        }
+       ],
+       "right_blank": 0,
+       "right_fan_out": null
+      },
+      "rows_in": [
+       4,
+       3
+      ],
+      "rows_out": 4,
+      "type": "join"
+     },
+     {
+      "columns": [
+       "line_id",
+       "order_id",
+       "product",
+       "qty",
+       "customer"
+      ],
+      "id": "out",
+      "output": {
+       "columns": [
+        {
+         "name": "line_id",
+         "origin": "lines.line_id",
+         "type": "text"
+        },
+        {
+         "name": "order_id",
+         "origin": "lines.order_id",
+         "type": "text"
+        },
+        {
+         "name": "product",
+         "origin": "lines.product",
+         "type": "text"
+        },
+        {
+         "name": "qty",
+         "origin": "lines.qty",
+         "type": "integer"
+        },
+        {
+         "name": "customer",
+         "origin": "orders.customer",
+         "type": "text"
+        }
+       ],
+       "dropped": [],
+       "duplicate_keys": null,
+       "empty_keys": 0,
+       "key": [
+        "line_id"
+       ]
+      },
+      "rows_in": [
+       4
+      ],
+      "rows_out": 4,
+      "type": "output"
+     }
+    ],
+    "outputs_json": [
+     {
+      "created_version": true,
+      "dataset": "line_rows",
+      "mode": "new",
+      "recheck_error": null,
+      "rows": 4,
+      "version": 1
+     }
+    ],
+    "pipeline_id": "pipeline:订单行客户",
+    "started_at": "<time>",
+    "status": "success",
+    "who": "Ann",
+    "who_user_id": 2
+   }
+  ],
+  "pipeline_version": [
+   {
+    "definition_json": {
+     "description": "订单和订单行",
+     "spec": {
+      "steps": [
+       {
+        "dataset": "lines",
+        "id": "l",
+        "type": "input"
+       },
+       {
+        "dataset": "orders",
+        "id": "o",
+        "type": "input"
+       },
+       {
+        "how": "left",
+        "id": "j",
+        "left": "l",
+        "on": [
+         {
+          "left": "order_id",
+          "right": "order_id"
+         }
+        ],
+        "right": "o",
+        "right_columns": [
+         "customer"
+        ],
+        "type": "join"
+       },
+       {
+        "from": "j",
+        "id": "out",
+        "key": {
+         "columns": [
+          "line_id"
+         ]
+        },
+        "name": "line_rows",
+        "type": "output"
+       }
+      ]
+     }
+    },
+    "pipeline_id": "pipeline:订单行客户",
+    "saved_at": "<time>",
+    "saved_by": "Ann",
+    "saved_by_user_id": 2,
+    "version": 1
+   }
+  ],
+  "qa_question": [
+   {
+    "answer_json": {
+     "answer": {
+      "measure": {
+       "counted": 3,
+       "field": "amount",
+       "op": "sum",
+       "skipped": 0,
+       "value": 180
+      },
+      "total": 3
+     },
+     "data_as_of": [
+      {
+       "dataset": "orders",
+       "imported_at": "<time>",
+       "version": 1
+      }
+     ],
+     "datasets": {
+      "orders": 1
+     },
+     "definitions": [
+      {
+       "confirmed_at": "<time>",
+       "confirmed_by": "Bob",
+       "id": "objtype:order",
+       "kind": "type",
+       "name": "订单",
+       "state": "confirmed",
+       "version": 2
+      }
+     ],
+     "hidden_columns": {
+      "order": []
+     },
+     "model": "test-model",
+     "named": [
+      "objtype:order"
+     ],
+     "path": "订单，把“amount”加起来",
+     "query": {
+      "group_by": null,
+      "measure": {
+       "field": "amount",
+       "op": "sum"
+      },
+      "share": null,
+      "start": "order",
+      "via": [],
+      "where": []
+     },
+     "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:订单)",
+     "reasoning": "把金额加起来",
+     "rules": {
+      "order": null
+     },
+     "status": "answered",
+     "steps": [
+      {
+       "name": "理解问题",
+       "text": "把金额加起来"
+      },
+      {
+       "name": "找对象类型",
+       "text": "订单"
+      },
+      {
+       "name": "找关系",
+       "text": "这道题用不到关系"
+      },
+      {
+       "name": "改写成查询",
+       "query": {
+        "group_by": null,
+        "measure": {
+         "field": "amount",
+         "op": "sum"
+        },
+        "share": null,
+        "start": "order",
+        "via": [],
+        "where": []
+       },
+       "text": "订单，把“amount”加起来"
+      },
+      {
+       "failed": false,
+       "name": "结果",
+       "text": "算出了结果"
+      }
+     ],
+     "types": [
+      {
+       "id": "order",
+       "name": "订单"
+      }
+     ]
+    },
+    "asked_at": "<time>",
+    "asked_by": "Ann",
+    "dataset_versions_json": {
+     "orders": 1
+    },
+    "definitions_json": [
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "objtype:order",
+      "kind": "type",
+      "name": "订单",
+      "state": "confirmed",
+      "version": 2
+     }
+    ],
+    "id": 1,
+    "question": "订单金额合计是多少？",
+    "status": "answered",
+    "types_json": [
+     {
+      "id": "order",
+      "name": "订单"
+     }
+    ],
+    "user_id": 2
+   },
+   {
+    "answer_json": {
+     "answer": {
+      "measure": {
+       "counted": 3,
+       "field": "amount",
+       "op": "average",
+       "skipped": 0,
+       "value": 60
+      },
+      "total": 3
+     },
+     "data_as_of": [
+      {
+       "dataset": "orders",
+       "imported_at": "<time>",
+       "version": 1
+      }
+     ],
+     "datasets": {
+      "orders": 1
+     },
+     "definitions": [
+      {
+       "confirmed_at": "<time>",
+       "confirmed_by": "Bob",
+       "id": "objtype:order",
+       "kind": "type",
+       "name": "订单",
+       "state": "confirmed",
+       "version": 2
+      }
+     ],
+     "hidden_columns": {
+      "order": []
+     },
+     "model": "test-model",
+     "named": [
+      "objtype:order"
+     ],
+     "path": "订单，算“amount”的平均",
+     "query": {
+      "group_by": null,
+      "measure": {
+       "field": "amount",
+       "op": "average"
+      },
+      "share": null,
+      "start": "order",
+      "via": [],
+      "where": []
+     },
+     "query_text": "SELECT avg(o.amount) AS 平均\nFROM (o:订单)",
+     "reasoning": "把金额加起来",
+     "rules": {
+      "order": null
+     },
+     "status": "answered",
+     "steps": [
+      {
+       "name": "理解问题",
+       "text": "把金额加起来"
+      },
+      {
+       "name": "找对象类型",
+       "text": "订单"
+      },
+      {
+       "name": "找关系",
+       "text": "这道题用不到关系"
+      },
+      {
+       "name": "改写成查询",
+       "query": {
+        "group_by": null,
+        "measure": {
+         "field": "amount",
+         "op": "average"
+        },
+        "share": null,
+        "start": "order",
+        "via": [],
+        "where": []
+       },
+       "text": "订单，算“amount”的平均"
+      },
+      {
+       "failed": false,
+       "name": "结果",
+       "text": "算出了结果"
+      }
+     ],
+     "types": [
+      {
+       "id": "order",
+       "name": "订单"
+      }
+     ]
+    },
+    "asked_at": "<time>",
+    "asked_by": "Ann",
+    "dataset_versions_json": {
+     "orders": 1
+    },
+    "definitions_json": [
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "objtype:order",
+      "kind": "type",
+      "name": "订单",
+      "state": "confirmed",
+      "version": 2
+     }
+    ],
+    "id": 2,
+    "question": "订单金额平均是多少？",
+    "status": "answered",
+    "types_json": [
+     {
+      "id": "order",
+      "name": "订单"
+     }
+    ],
+    "user_id": 2
+   },
+   {
+    "answer_json": {
+     "answer": {
+      "groups": [
+       [
+        "C1",
+        150,
+        2
+       ],
+       [
+        "C2",
+        30,
+        1
+       ]
+      ],
+      "measure": {
+       "counted": 3,
+       "field": "amount",
+       "op": "sum",
+       "skipped": 0,
+       "value": 180
+      },
+      "total_groups": 2,
+      "without_value": 0
+     },
+     "data_as_of": [
+      {
+       "dataset": "orders",
+       "imported_at": "<time>",
+       "version": 1
+      }
+     ],
+     "datasets": {
+      "orders": 1
+     },
+     "definitions": [
+      {
+       "confirmed_at": "<time>",
+       "confirmed_by": "Bob",
+       "id": "objtype:order",
+       "kind": "type",
+       "name": "订单",
+       "state": "confirmed",
+       "version": 2
+      }
+     ],
+     "hidden_columns": {
+      "order": []
+     },
+     "model": "test-model",
+     "named": [
+      "objtype:order"
+     ],
+     "path": "订单，按“customer”分组，算每组“amount”的合计",
+     "query": {
+      "group_by": [
+       {
+        "field": "customer",
+        "via": []
+       }
+      ],
+      "measure": {
+       "field": "amount",
+       "op": "sum"
+      },
+      "share": null,
+      "start": "order",
+      "via": [],
+      "where": []
+     },
+     "query_text": "SELECT o.customer, sum(o.amount) AS 合计\nFROM (o:订单)\nGROUP BY o.customer",
+     "reasoning": "把金额加起来",
+     "rules": {
+      "order": null
+     },
+     "status": "answered",
+     "steps": [
+      {
+       "name": "理解问题",
+       "text": "把金额加起来"
+      },
+      {
+       "name": "找对象类型",
+       "text": "订单"
+      },
+      {
+       "name": "找关系",
+       "text": "这道题用不到关系"
+      },
+      {
+       "name": "改写成查询",
+       "query": {
+        "group_by": [
+         {
+          "field": "customer",
+          "via": []
+         }
+        ],
+        "measure": {
+         "field": "amount",
+         "op": "sum"
+        },
+        "share": null,
+        "start": "order",
+        "via": [],
+        "where": []
+       },
+       "text": "订单，按“customer”分组，算每组“amount”的合计"
+      },
+      {
+       "failed": false,
+       "name": "结果",
+       "text": "算出了结果"
+      }
+     ],
+     "types": [
+      {
+       "id": "order",
+       "name": "订单"
+      }
+     ]
+    },
+    "asked_at": "<time>",
+    "asked_by": "Ann",
+    "dataset_versions_json": {
+     "orders": 1
+    },
+    "definitions_json": [
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "objtype:order",
+      "kind": "type",
+      "name": "订单",
+      "state": "confirmed",
+      "version": 2
+     }
+    ],
+    "id": 3,
+    "question": "每个客户的订单金额合计？",
+    "status": "answered",
+    "types_json": [
+     {
+      "id": "order",
+      "name": "订单"
+     }
+    ],
+    "user_id": 2
+   },
+   {
+    "answer_json": {
+     "answer": {
+      "measure": {
+       "counted": 3,
+       "field": "件数合计",
+       "op": "sum",
+       "skipped": 0,
+       "value": 11
+      },
+      "total": 3
+     },
+     "data_as_of": [
+      {
+       "dataset": "line_rows",
+       "imported_at": "<time>",
+       "version": 1
+      },
+      {
+       "dataset": "orders",
+       "imported_at": "<time>",
+       "version": 1
+      }
+     ],
+     "datasets": {
+      "line_rows": 1,
+      "orders": 1
+     },
+     "definitions": [
+      {
+       "confirmed_at": "<time>",
+       "confirmed_by": "Bob",
+       "id": "objtype:order",
+       "kind": "type",
+       "name": "订单",
+       "state": "confirmed",
+       "version": 2
+      },
+      {
+       "confirmed_at": "<time>",
+       "confirmed_by": "Bob",
+       "id": "derived:order:qty_sum",
+       "kind": "derived",
+       "name": "订单.件数合计",
+       "says": "订单的件数合计：每个订单，经过 订单行属于订单，订单行里的行，求和「qty」",
+       "state": "confirmed",
+       "type": "order",
+       "version": 2
+      }
+     ],
+     "hidden_columns": {
+      "order": []
+     },
+     "model": "test-model",
+     "named": [
+      "objtype:order",
+      "derived:order:qty_sum"
+     ],
+     "path": "订单，把“件数合计”加起来",
+     "query": {
+      "group_by": null,
+      "measure": {
+       "field": "件数合计",
+       "op": "sum"
+      },
+      "share": null,
+      "start": "order",
+      "via": [],
+      "where": []
+     },
+     "query_text": "SELECT sum(o.件数合计) AS 合计\nFROM (o:订单)",
+     "reasoning": "把金额加起来",
+     "rules": {
+      "order": null
+     },
+     "status": "answered",
+     "steps": [
+      {
+       "name": "理解问题",
+       "text": "把金额加起来"
+      },
+      {
+       "name": "找对象类型",
+       "text": "订单"
+      },
+      {
+       "name": "找关系",
+       "text": "这道题用不到关系"
+      },
+      {
+       "name": "改写成查询",
+       "query": {
+        "group_by": null,
+        "measure": {
+         "field": "件数合计",
+         "op": "sum"
+        },
+        "share": null,
+        "start": "order",
+        "via": [],
+        "where": []
+       },
+       "text": "订单，把“件数合计”加起来"
+      },
+      {
+       "failed": false,
+       "name": "结果",
+       "text": "算出了结果"
+      }
+     ],
+     "types": [
+      {
+       "id": "order",
+       "name": "订单"
+      }
+     ]
+    },
+    "asked_at": "<time>",
+    "asked_by": "Ann",
+    "dataset_versions_json": {
+     "line_rows": 1,
+     "orders": 1
+    },
+    "definitions_json": [
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "objtype:order",
+      "kind": "type",
+      "name": "订单",
+      "state": "confirmed",
+      "version": 2
+     },
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "derived:order:qty_sum",
+      "kind": "derived",
+      "name": "订单.件数合计",
+      "says": "订单的件数合计：每个订单，经过 订单行属于订单，订单行里的行，求和「qty」",
+      "state": "confirmed",
+      "type": "order",
+      "version": 2
+     }
+    ],
+    "id": 4,
+    "question": "件数合计加起来是多少？",
+    "status": "answered",
+    "types_json": [
+     {
+      "id": "order",
+      "name": "订单"
+     }
+    ],
+    "user_id": 2
+   },
+   {
+    "answer_json": {
+     "answer": {
+      "measure": {
+       "counted": 4,
+       "field": "双倍件数",
+       "op": "sum",
+       "skipped": 0,
+       "value": 22
+      },
+      "total": 4
+     },
+     "data_as_of": [
+      {
+       "dataset": "line_rows",
+       "imported_at": "<time>",
+       "version": 1
+      }
+     ],
+     "datasets": {
+      "line_rows": 1
+     },
+     "definitions": [
+      {
+       "confirmed_at": "<time>",
+       "confirmed_by": "Bob",
+       "id": "objtype:line",
+       "kind": "type",
+       "name": "订单行",
+       "state": "confirmed",
+       "version": 2
+      },
+      {
+       "confirmed_at": "<time>",
+       "confirmed_by": "Bob",
+       "id": "derived:line:double_qty",
+       "kind": "derived",
+       "name": "订单行.双倍件数",
+       "says": "订单行的双倍件数 = qty * 2",
+       "state": "confirmed",
+       "type": "line",
+       "version": 2
+      }
+     ],
+     "hidden_columns": {
+      "line": []
+     },
+     "model": "test-model",
+     "named": [
+      "objtype:line",
+      "derived:line:double_qty"
+     ],
+     "path": "订单行，把“双倍件数”加起来",
+     "query": {
+      "group_by": null,
+      "measure": {
+       "field": "双倍件数",
+       "op": "sum"
+      },
+      "share": null,
+      "start": "line",
+      "via": [],
+      "where": []
+     },
+     "query_text": "SELECT sum(l.双倍件数) AS 合计\nFROM (l:订单行)",
+     "reasoning": "把金额加起来",
+     "rules": {
+      "line": null
+     },
+     "status": "answered",
+     "steps": [
+      {
+       "name": "理解问题",
+       "text": "把金额加起来"
+      },
+      {
+       "name": "找对象类型",
+       "text": "订单行"
+      },
+      {
+       "name": "找关系",
+       "text": "这道题用不到关系"
+      },
+      {
+       "name": "改写成查询",
+       "query": {
+        "group_by": null,
+        "measure": {
+         "field": "双倍件数",
+         "op": "sum"
+        },
+        "share": null,
+        "start": "line",
+        "via": [],
+        "where": []
+       },
+       "text": "订单行，把“双倍件数”加起来"
+      },
+      {
+       "failed": false,
+       "name": "结果",
+       "text": "算出了结果"
+      }
+     ],
+     "types": [
+      {
+       "id": "line",
+       "name": "订单行"
+      }
+     ]
+    },
+    "asked_at": "<time>",
+    "asked_by": "Ann",
+    "dataset_versions_json": {
+     "line_rows": 1
+    },
+    "definitions_json": [
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "objtype:line",
+      "kind": "type",
+      "name": "订单行",
+      "state": "confirmed",
+      "version": 2
+     },
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "derived:line:double_qty",
+      "kind": "derived",
+      "name": "订单行.双倍件数",
+      "says": "订单行的双倍件数 = qty * 2",
+      "state": "confirmed",
+      "type": "line",
+      "version": 2
+     }
+    ],
+    "id": 5,
+    "question": "双倍件数合计是多少？",
+    "status": "answered",
+    "types_json": [
+     {
+      "id": "line",
+      "name": "订单行"
+     }
+    ],
+    "user_id": 2
+   },
+   {
+    "answer_json": {
+     "answer": {
+      "total": 4
+     },
+     "data_as_of": [
+      {
+       "dataset": "line_rows",
+       "imported_at": "<time>",
+       "version": 1
+      }
+     ],
+     "datasets": {
+      "line_rows": 1
+     },
+     "definitions": [
+      {
+       "confirmed_at": "<time>",
+       "confirmed_by": "Bob",
+       "id": "objtype:line",
+       "kind": "type",
+       "name": "订单行",
+       "state": "confirmed",
+       "version": 2
+      }
+     ],
+     "hidden_columns": {
+      "line": []
+     },
+     "model": "test-model",
+     "named": [
+      "objtype:line"
+     ],
+     "path": "订单行",
+     "query": {
+      "group_by": null,
+      "measure": null,
+      "share": null,
+      "start": "line",
+      "via": [],
+      "where": []
+     },
+     "query_text": "SELECT count(l) AS 数量\nFROM (l:订单行)",
+     "reasoning": "数一数",
+     "rules": {
+      "line": null
+     },
+     "status": "answered",
+     "steps": [
+      {
+       "name": "理解问题",
+       "text": "数一数"
+      },
+      {
+       "name": "找对象类型",
+       "text": "订单行"
+      },
+      {
+       "name": "找关系",
+       "text": "这道题用不到关系"
+      },
+      {
+       "name": "改写成查询",
+       "query": {
+        "group_by": null,
+        "measure": null,
+        "share": null,
+        "start": "line",
+        "via": [],
+        "where": []
+       },
+       "text": "订单行"
+      },
+      {
+       "failed": false,
+       "name": "结果",
+       "text": "算出了结果"
+      }
+     ],
+     "types": [
+      {
+       "id": "line",
+       "name": "订单行"
+      }
+     ]
+    },
+    "asked_at": "<time>",
+    "asked_by": "Ann",
+    "dataset_versions_json": {
+     "line_rows": 1
+    },
+    "definitions_json": [
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "objtype:line",
+      "kind": "type",
+      "name": "订单行",
+      "state": "confirmed",
+      "version": 2
+     }
+    ],
+    "id": 6,
+    "question": "有多少订单行？",
+    "status": "answered",
+    "types_json": [
+     {
+      "id": "line",
+      "name": "订单行"
+     }
+    ],
+    "user_id": 2
+   },
+   {
+    "answer_json": {
+     "data_as_of": [],
+     "datasets": {},
+     "definitions": [],
+     "hidden_columns": {},
+     "model": "test-model",
+     "named": [
+      "objtype:line",
+      "objtype:order"
+     ],
+     "query": {
+      "group_by": null,
+      "measure": {
+       "field": "profit",
+       "op": "sum"
+      },
+      "share": null,
+      "start": "order",
+      "via": [],
+      "where": []
+     },
+     "reason": "本体里的 订单 没有属性 profit，无法对它求和或求平均",
+     "reasoning": "把金额加起来",
+     "refusal": {
+      "in_scope": [
+       "订单行",
+       "订单"
+      ],
+      "kind": "not_in_scope",
+      "left_out": []
+     },
+     "rules": {},
+     "status": "ontology_gap",
+     "steps": [
+      {
+       "name": "理解问题",
+       "text": "把金额加起来"
+      },
+      {
+       "name": "找对象类型",
+       "text": "没有找到"
+      },
+      {
+       "name": "找关系",
+       "text": "这道题用不到关系"
+      },
+      {
+       "name": "改写成查询",
+       "query": {
+        "group_by": null,
+        "measure": {
+         "field": "profit",
+         "op": "sum"
+        },
+        "share": null,
+        "start": "order",
+        "via": [],
+        "where": []
+       },
+       "text": ""
+      },
+      {
+       "failed": true,
+       "name": "结果",
+       "text": "本体里的 订单 没有属性 profit，无法对它求和或求平均"
+      }
+     ],
+     "types": []
+    },
+    "asked_at": "<time>",
+    "asked_by": "Ann",
+    "dataset_versions_json": {},
+    "definitions_json": [],
+    "id": 7,
+    "question": "利润合计是多少？",
+    "status": "ontology_gap",
+    "types_json": [],
+    "user_id": 2
+   },
+   {
+    "answer_json": {
+     "answer": {
+      "groups": [
+       [
+        "P1",
+        150,
+        2
+       ],
+       [
+        "P2",
+        100,
+        1
+       ],
+       [
+        "P3",
+        30,
+        1
+       ]
+      ],
+      "measure": {
+       "counted": 3,
+       "field": "amount",
+       "op": "sum",
+       "skipped": 0,
+       "value": 180
+      },
+      "total_groups": 3,
+      "without_value": 0
+     },
+     "data_as_of": [
+      {
+       "dataset": "line_rows",
+       "imported_at": "<time>",
+       "version": 1
+      },
+      {
+       "dataset": "orders",
+       "imported_at": "<time>",
+       "version": 1
+      }
+     ],
+     "datasets": {
+      "line_rows": 1,
+      "orders": 1
+     },
+     "definitions": [
+      {
+       "confirmed_at": "<time>",
+       "confirmed_by": "Bob",
+       "id": "objtype:order",
+       "kind": "type",
+       "name": "订单",
+       "state": "confirmed",
+       "version": 2
+      },
+      {
+       "confirmed_at": "<time>",
+       "confirmed_by": "Bob",
+       "id": "objtype:line",
+       "kind": "type",
+       "name": "订单行",
+       "state": "confirmed",
+       "version": 2
+      },
+      {
+       "confirmed_at": "<time>",
+       "confirmed_by": "Bob",
+       "id": "relation:line_order",
+       "kind": "relation",
+       "name": "订单行属于订单",
+       "state": "confirmed",
+       "version": 2
+      }
+     ],
+     "hidden_columns": {
+      "line": [],
+      "order": []
+     },
+     "model": "test-model",
+     "named": [
+      "objtype:order",
+      "objtype:line",
+      "relation:line_order"
+     ],
+     "path": "订单 → 订单行，按“product”分组，算每组“amount”的合计",
+     "query": {
+      "group_by": [
+       {
+        "field": "product",
+        "via": [
+         "line_order"
+        ]
+       }
+      ],
+      "measure": {
+       "field": "amount",
+       "op": "sum"
+      },
+      "share": null,
+      "start": "order",
+      "via": [],
+      "where": []
+     },
+     "query_text": "SELECT l.product, sum(o.amount) AS 合计\nFROM (o:订单)<-[:订单行属于订单]-(l:订单行)\nGROUP BY l.product",
+     "reasoning": "把金额加起来",
+     "rules": {
+      "line": null,
+      "order": null
+     },
+     "status": "answered",
+     "steps": [
+      {
+       "name": "理解问题",
+       "text": "把金额加起来"
+      },
+      {
+       "name": "找对象类型",
+       "text": "订单、订单行"
+      },
+      {
+       "name": "找关系",
+       "text": "订单行属于订单"
+      },
+      {
+       "name": "改写成查询",
+       "query": {
+        "group_by": [
+         {
+          "field": "product",
+          "via": [
+           "line_order"
+          ]
+         }
+        ],
+        "measure": {
+         "field": "amount",
+         "op": "sum"
+        },
+        "share": null,
+        "start": "order",
+        "via": [],
+        "where": []
+       },
+       "text": "订单 → 订单行，按“product”分组，算每组“amount”的合计"
+      },
+      {
+       "failed": false,
+       "name": "结果",
+       "text": "算出了结果"
+      }
+     ],
+     "types": [
+      {
+       "id": "order",
+       "name": "订单"
+      },
+      {
+       "id": "line",
+       "name": "订单行"
+      }
+     ]
+    },
+    "asked_at": "<time>",
+    "asked_by": "Ann",
+    "dataset_versions_json": {
+     "line_rows": 1,
+     "orders": 1
+    },
+    "definitions_json": [
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "objtype:order",
+      "kind": "type",
+      "name": "订单",
+      "state": "confirmed",
+      "version": 2
+     },
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "objtype:line",
+      "kind": "type",
+      "name": "订单行",
+      "state": "confirmed",
+      "version": 2
+     },
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "relation:line_order",
+      "kind": "relation",
+      "name": "订单行属于订单",
+      "state": "confirmed",
+      "version": 2
+     }
+    ],
+    "id": 8,
+    "question": "每个产品的订单金额合计？",
+    "status": "answered",
+    "types_json": [
+     {
+      "id": "order",
+      "name": "订单"
+     },
+     {
+      "id": "line",
+      "name": "订单行"
+     }
+    ],
+    "user_id": 2
+   },
+   {
+    "answer_json": {
+     "answer": {
+      "measure": {
+       "counted": 4,
+       "field": "qty",
+       "op": "sum",
+       "skipped": 0,
+       "value": 11
+      },
+      "total": 4
+     },
+     "data_as_of": [
+      {
+       "dataset": "line_rows",
+       "imported_at": "<time>",
+       "version": 1
+      }
+     ],
+     "datasets": {
+      "line_rows": 1
+     },
+     "definitions": [
+      {
+       "confirmed_at": "<time>",
+       "confirmed_by": "Bob",
+       "id": "objtype:line",
+       "kind": "type",
+       "name": "订单行",
+       "state": "confirmed",
+       "version": 2
+      }
+     ],
+     "hidden_columns": {
+      "line": []
+     },
+     "model": "test-model",
+     "named": [
+      "objtype:line"
+     ],
+     "path": "订单行, adding up \"qty\"",
+     "query": {
+      "group_by": null,
+      "measure": {
+       "field": "qty",
+       "op": "sum"
+      },
+      "share": null,
+      "start": "line",
+      "via": [],
+      "where": []
+     },
+     "query_text": "SELECT sum(l.qty) AS total\nFROM (l:订单行)",
+     "reasoning": "把金额加起来",
+     "rules": {
+      "line": null
+     },
+     "status": "answered",
+     "steps": [
+      {
+       "name": "Understand the question",
+       "text": "把金额加起来"
+      },
+      {
+       "name": "Find object types",
+       "text": "订单行"
+      },
+      {
+       "name": "Find relations",
+       "text": "This question needs no relation"
+      },
+      {
+       "name": "Write the query",
+       "query": {
+        "group_by": null,
+        "measure": {
+         "field": "qty",
+         "op": "sum"
+        },
+        "share": null,
+        "start": "line",
+        "via": [],
+        "where": []
+       },
+       "text": "订单行, adding up \"qty\""
+      },
+      {
+       "failed": false,
+       "name": "Result",
+       "text": "Worked out the result"
+      }
+     ],
+     "types": [
+      {
+       "id": "line",
+       "name": "订单行"
+      }
+     ]
+    },
+    "asked_at": "<time>",
+    "asked_by": "Ann",
+    "dataset_versions_json": {
+     "line_rows": 1
+    },
+    "definitions_json": [
+     {
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "id": "objtype:line",
+      "kind": "type",
+      "name": "订单行",
+      "state": "confirmed",
+      "version": 2
+     }
+    ],
+    "id": 9,
+    "question": "What is the total quantity?",
+    "status": "answered",
+    "types_json": [
+     {
+      "id": "line",
+      "name": "订单行"
+     }
+    ],
+    "user_id": 2
+   }
+  ],
+  "refresh_run": [],
+  "row_rule": [],
+  "schedule": [],
+  "source_table": [],
+  "type_access": [],
+  "value_privacy": []
+ },
+ "upload": [
+  200,
+  {
+   "results": [
+    {
+     "changes": {
+      "added": 3,
+      "changed": 0,
+      "unchanged": 0
+     },
+     "created_version": true,
+     "file": "orders.csv",
+     "key_check": null,
+     "mode": "new",
+     "name": "orders",
+     "overwrites_action_rows": [],
+     "recheck_error": null,
+     "reused": false,
+     "rows": 3,
+     "same_as": null,
+     "version": 1
+    },
+    {
+     "changes": {
+      "added": 4,
+      "changed": 0,
+      "unchanged": 0
+     },
+     "created_version": true,
+     "file": "lines.csv",
+     "key_check": null,
+     "mode": "new",
+     "name": "lines",
+     "overwrites_action_rows": [],
+     "recheck_error": null,
+     "reused": false,
+     "rows": 4,
+     "same_as": null,
+     "version": 1
+    }
+   ]
+  }
+ ]
+}

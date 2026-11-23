@@ -106,6 +106,11 @@ class FanSumTests(AgentCase):
             self.refused_naming(ran, LINE_PIPELINE, PER_LINE)
             status, ran = ann.post('/api/workspace/query', {'text': 'SELECT avg(l.amount) FROM (l:订单行)'})
             self.refused_naming(ran, LINE_PIPELINE, PER_LINE / len(LINES))
+            self.assertIn('请到每件事只有一行的类型上去算', ran['error'])   # and where to work it out instead
+            status, ran = ann.post('/api/workspace/query', {'text': 'SELECT sum(l.amount) FROM (l:订单行)'}, headers={'Accept-Language': 'en'})
+            self.assertEqual(status, 400, ran)
+            self.assertEqual(ran['error'], f'"amount" was written by the pipeline "{LINE_PIPELINE}" after a join turned one row into several: the figure repeats, and adding it up would '
+                                           'count the same amount several times, so it is not worked out. Work it out on the type that has one row per thing (for example the one with one row per order)')
             # a count of the line objects is not a sum of the repeated figure: it is answered
             model.item = counts('order_line')
             status, body = ann.post('/api/workspace/ask', {'question': '有多少订单行？'})
