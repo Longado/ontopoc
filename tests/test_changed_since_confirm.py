@@ -264,7 +264,7 @@ class UndoTests(Team):
     def test_an_edit_undone_by_someone_else_is_confirmed_again_as_before(self):
         self.assertEqual(self.undo_facts('ann'), {kind: ('checked', 'confirmed', 'Bob') for kind in KINDS})
 
-    def test_putting_back_the_confirmed_words_while_the_data_moved_leaves_it_waiting_with_nobody_held(self):
+    def test_putting_back_the_confirmed_words_while_the_data_moved_leaves_it_waiting_and_frees_who_changed_it(self):
         with self.service() as (base, out):
             self.out = out
             team = self.team(base)
@@ -275,7 +275,8 @@ class UndoTests(Team):
             self.assertEqual(team['bob'].post('/api/workspace/datasets/upload', {'files': [moved]})[0], 200)
             self.assertEqual(self.put(team['cat'], 'type', {'name': '客户'})[0], 200)
             self.assertEqual(self.state_of('type'), 'checked')   # the data it was confirmed on is not the data now: someone looks again
-            self.assertEqual(self.confirm_kind(team['ann'], 'type')[0], 200)   # nothing it says now is Ann's: her words are gone
+            self.assertEqual(self.confirm_kind(team['ann'], 'type')[0], 403)   # she put it forward: the proposer rule stands as before
+            self.assertEqual(self.confirm_kind(team['cat'], 'type')[0], 200)   # nothing it says now is anyone's but what Bob confirmed
 
 
 class ConfirmedEditTests(Team):
@@ -365,16 +366,22 @@ class TwoBuildersTests(World):
             self.assertEqual(ann.post('/api/workspace/types/update', {**CUSTOMER, 'id': 'customer', 'version': now['version'], 'description': ''})[0], 200)
             self.assertEqual(shown(ann)['state'], 'confirmed')
 
-    def test_one_who_changed_it_alone_is_refused_with_who_else_may_confirm(self):
+    def test_the_one_who_put_it_forward_alone_reads_what_they_read_before_and_a_second_writer_the_sentence(self):
         with self.service() as (base, out):
             self.out = out
             team = self.two(base)
             ann, bob = team['ann'], team['bob']
             self.assertEqual(ann.post('/api/workspace/types', CUSTOMER)[0], 200)
-            status, body = ann.post('/api/workspace/types/confirm', {'id': 'customer', 'version': ann.get('/api/workspace/types/customer')[1]['version'],
-                                                                     'seen': ann.get('/api/workspace/types/customer')[1]['seen']})
+            shown = lambda client: client.get('/api/workspace/types/customer')[1]
+            confirm = lambda client: client.post('/api/workspace/types/confirm', {'id': 'customer', 'version': shown(client)['version'], 'seen': shown(client)['seen']})
+            self.assertEqual(confirm(ann), (403, {'error': '这一条是你自己提的，要另一位来确认'}))
+            self.assertIsNone(shown(ann)['held'])
+            now = shown(bob)
+            self.assertEqual(bob.post('/api/workspace/types/update', {**CUSTOMER, 'id': 'customer', 'version': now['version'], 'description': 'ZZ鲍勃的说明'})[0], 200)
+            status, body = confirm(ann)
             self.assertEqual(status, 403, body)
-            self.assertIn('Bob', body['error'])   # who may confirm it
+            for said in ('Ann', 'Bob', '第三位', '管理员可以加一位'):   # nobody else may confirm it: say so, and how to get one
+                self.assertIn(said, body['error'])
 
 
 class WhatOthersReadTests(Team):
@@ -489,7 +496,9 @@ class NeededTests(NeededCase):
             team = self.team(base)
             self.write(team['ann'], Q, number(5))
             self.change(team['cat'], expect=number(6))
-            self.assertIn(HELD_ZH, self.confirm(team['ann'], Q, status=403)['error'])
+            said = self.confirm(team['ann'], Q, status=403)['error']
+            for name in ('Ann', 'Cat', 'Bob'):   # who changed it, and who may confirm it
+                self.assertIn(name, said)
             self.confirm(team['cat'], Q, status=403)
             self.assertEqual(self.confirm(team['bob'], Q)['state'], 'confirmed')
 
@@ -516,3 +525,11 @@ class NeededTests(NeededCase):
             self.assertEqual(self.change(team['cat'], expect=number(6))['state'], 'proposed')
             back = self.change(team['cat'], expect=number(5))
             self.assertEqual((back['state'], back['confirmed_by']), ('confirmed', 'Bob'))
+
+
+class WhatTheRuleCoversTests(NeededCase):
+    def test_the_rule_covers_the_team_workspaces_definitions_and_not_pipelines_or_the_early_screens_relations(self):
+        from ontology_poc_generator.workspace_store import tracked
+        covered = ['objtype:order', 'enum:order:状态码', 'relation:order_customer', 'objview:有效订单', 'objaction:改交付天数', 'derived:customer:cancelled_orders']
+        self.assertEqual([tracked(e) for e in covered], [True] * len(covered))
+        self.assertEqual([tracked(e) for e in ('pipeline:客户合计', 'relation:run-1:订单_客户', 'view:run-1:有效订单', 'property:run-1:订单.金额')], [False] * 4)

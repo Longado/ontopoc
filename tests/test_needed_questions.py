@@ -233,8 +233,10 @@ class OutcomeTests(NeededCase):
             found = self.item(ann, Q_ALL)
             self.assertEqual(ann.post(f'{NEEDED}/update', {'id': found['id'], 'version': found['version'], 'expect': number(len(ORDERS))})[0], 200)
             self.confirm(bob, Q_ALL)
-            shown = bob.get('/api/workspace/types/order')[1]   # 订单 gets a new description: it stays confirmed, at a new version
+            shown = bob.get('/api/workspace/types/order')[1]   # 订单 gets a new description, which Bob confirms: confirmed again, at a new version
             self.assertEqual(ann.post('/api/workspace/types/update', {**ORDER, 'id': 'order', 'version': shown['version'], 'description': '一张订单'})[0], 200)
+            shown = bob.get('/api/workspace/types/order')[1]
+            self.assertEqual(bob.post('/api/workspace/types/confirm', {'id': 'order', 'version': shown['version'], 'seen': shown['seen']})[0], 200)
             self.assertEqual(bob.get('/api/workspace/types/order')[1]['state'], 'confirmed')
             moved = self.results(self.run_list(bob))[Q_ALL]
             self.assertEqual(moved['outcome'], 'needs_look')

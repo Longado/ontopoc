@@ -32,14 +32,15 @@ class PilotWithOtherNames(pilot.PilotFoundation):
         ann = team['ann']
         line = self.line(ann)
         status, body = ann.post('/api/workspace/types/derived/update', {**pilot.VALID_AMOUNT, 'version': line['version'], 'other_names': ['有效订单总额']})
-        self.assertEqual((status, body.get('state')), (200, 'confirmed'), body)
+        self.assertEqual((status, body.get('state')), (200, 'checked'), body)   # new other names wait for a second person, as any change does
         now = ann.get('/api/workspace/types/order')[1]
         others = {'customer_id': ['客户号'], 'status_code': ['已取消标记']}
         props = [{'column': p['column'], **({'enum': True} if p['enum'] else {}), **({'other_names': others[p['column']]} if p['column'] in others else {})} for p in now['properties'] if p['column'] != 'order_id']
         status, body = ann.post('/api/workspace/types/update', {**pilot.ORDER, 'id': 'order', 'version': now['version'], 'properties': props, 'other_names': ['销售单']})
-        self.assertEqual((status, body.get('state')), (200, 'confirmed'), body)
+        self.assertEqual((status, body.get('state')), (200, 'checked'), body)
         view = self.view(ann)
         self.assertEqual(ann.post('/api/workspace/types/views/update', {**pilot.VIEW, 'id': '有效订单', 'version': view['version'], 'other_names': ['好订单']})[0], 200)
+        reconfirm(self, team['bob'])
         return team
 
     def ask(self, client, model, question, reply):
@@ -47,6 +48,19 @@ class PilotWithOtherNames(pilot.PilotFoundation):
         status, body = client.post('/api/workspace/ask', {'question': question})
         self.assertEqual(status, 200, body)
         return body
+
+
+def reconfirm(case, bob):
+    """Bob, who changed none of it, confirms again what Ann's other names sent back, and what stands on it: the order type, the relation, the view, the derived property."""
+    shown = bob.get('/api/workspace/types/order')[1]
+    case.assertEqual(bob.post('/api/workspace/types/confirm', {'id': 'order', 'version': shown['version'], 'seen': shown['seen']})[0], 200)
+    relation = bob.get('/api/workspace/relations/order_customer')[1]
+    if relation['state'] != 'confirmed':
+        case.assertEqual(bob.post('/api/workspace/relations/confirm', {'id': 'order_customer', 'version': relation['version'], 'seen': relation['check']['signature']})[0], 200)
+    view = case.view(bob)
+    case.assertEqual(bob.post('/api/workspace/types/views/confirm', {'id': '有效订单', 'version': view['version'], 'seen': view['seen']})[0], 200)
+    line = case.line(bob)
+    case.assertEqual(bob.post('/api/workspace/types/derived/confirm', {'type': 'customer', 'english_name': 'valid_amount', 'version': line['version'], 'seen': line['seen']})[0], 200)
 
 
 class AcceptanceCaseTests(PilotWithOtherNames):
@@ -158,7 +172,7 @@ class SavedBeforeTests(unittest.TestCase, DemoAsker):
             self.assertEqual((body['status'], sorted(u['definition'] for u in body['unmet'])), ('definition_unmet', ['Cancelled', 'Valid orders']))
             view = next(v for v in admin.call('GET', '/api/workspace/types/order/views')[1]['views'] if v['name'] == 'Valid orders')
             status, body = admin.call('POST', '/api/workspace/types/views/update', {'id': 'Valid orders', 'version': view['version'], 'type': 'order', 'filters': view['filters'], 'description': 'changed'})
-            self.assertEqual((status, body.get('state')), (200, 'confirmed'), body)
+            self.assertEqual((status, body.get('state')), (200, 'checked'), body)   # saved; a new description waits for a second person, as any change does
             status, body = admin.call('POST', '/api/workspace/types/meanings', {'id': 'order', 'column': 'status_code', 'values': [{'value': '1', 'label': 'Paid', 'other_names': ['已付款', '付清']}]})
             self.assertEqual(status, 409, body)
             self.assertIn('有效订单', body['error'])
