@@ -16,7 +16,6 @@ import os
 from pathlib import Path
 import re
 import sqlite3
-import time
 import unittest
 
 from tests.test_fan_sum import LINE_PIPELINE, LINE_SPEC, ORDERS, PIPELINES, FanSumTests, asks, counts
@@ -143,13 +142,7 @@ class UnmarkedTests(FanSumTests):
             seen['needed_write'] = ann.post('/api/workspace/needed', {'question': '订单金额合计是多少？', 'expect': {'kind': 'number', 'value': 180}})
             found = next(q for q in bob.get('/api/workspace/needed')[1]['questions'])
             seen['needed_confirm'] = bob.post('/api/workspace/needed/confirm', {'id': found['id'], 'version': found['version']})
-            body = bob.post('/api/workspace/needed/run', {'repeats': 1})[1]
-            for _ in range(500):
-                if body.get('running') is None:
-                    break
-                time.sleep(0.02)
-                body = bob.get('/api/workspace/needed')[1]
-            seen['needed'] = body
+            seen['needed'] = self.run_needed(bob)
             seen['history'] = ann.get('/api/workspace/ask')
             seen['stored'] = stored(out)
         # the repeated-amount world: its amount carries the mark (or, on main, nothing); what is said about its other columns is main's

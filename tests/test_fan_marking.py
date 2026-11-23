@@ -10,7 +10,6 @@ distort is refused (sum, average, median, percentiles, a histogram, a statistics
 person who may open pipelines is told which pipeline; the refusal says nothing of rows or columns the asker may not see."""
 import json
 import sqlite3
-import time
 import unittest
 
 from tests.test_fan_sum import FAN_NOTE, LINES, ORDERS, PIPELINES, FanSumTests, asks
@@ -327,12 +326,7 @@ class MarkingTests(FanSumTests):
             self.refused(ann, 'SELECT sum(l.amount) FROM (l:订单行)')
 
     def needed(self, bob, question):
-        body = bob.post('/api/workspace/needed/run', {'repeats': 1})[1]
-        for _ in range(500):
-            if body.get('running') is None:
-                break
-            time.sleep(0.02)
-            body = bob.get('/api/workspace/needed')[1]
+        body = self.run_needed(bob)
         return next(q for q in body['questions'] if q['question'] == question)['result']
 
 

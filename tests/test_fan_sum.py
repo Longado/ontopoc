@@ -67,6 +67,19 @@ class FanSumTests(AgentCase):
         self.assertEqual((status, run.get('status')), (200, 'success'), run)
         return run
 
+    def run_needed(self, client, repeats=1):
+        """Start a run of the questions we need and wait until the list says it is done: by the clock (two minutes), not by a count of polls, so a slow machine
+        waits longer instead of reading the list while the run still goes; a run that never ends fails here, by name."""
+        status, body = client.post('/api/workspace/needed/run', {'repeats': repeats})
+        self.assertEqual(status, 200, body)
+        deadline = time.monotonic() + 120
+        while body.get('running') is not None:
+            if time.monotonic() > deadline:
+                self.fail(f'the run of the questions we need did not finish: {body.get("running")}')
+            time.sleep(0.02)
+            body = client.get('/api/workspace/needed')[1]
+        return body
+
     def confirm_pipeline(self, bob, name):
         shown = bob.get(f'{PIPELINES}/{quote(name)}')[1]
         status, body = bob.post(f'{PIPELINES}/confirm', {'id': name, 'version': shown['version'], 'seen': {'inputs': shown['inputs_now']}})
@@ -246,13 +259,7 @@ class FanSumTests(AgentCase):
             self.assertEqual(status, 200, made)
             found = next(q for q in bob.get('/api/workspace/needed')[1]['questions'] if q['question'] == question)
             self.assertEqual(bob.post('/api/workspace/needed/confirm', {'id': found['id'], 'version': found['version']})[0], 200)
-            status, body = bob.post('/api/workspace/needed/run', {'repeats': 1})
-            self.assertEqual(status, 200, body)
-            for _ in range(500):
-                if body.get('running') is None:
-                    break
-                time.sleep(0.02)
-                body = bob.get('/api/workspace/needed')[1]
+            body = self.run_needed(bob)
             result = next(q for q in body['questions'] if q['question'] == question)['result']
             self.assertEqual((result['outcome'], result['distinct']), ('no_answer', [{'number': None, 'status': 'query_limit', 'times': 1}]), result)   # never "passes" on 280
             self.assertIn(LINE_PIPELINE, result['reason'])
