@@ -31,9 +31,9 @@ QUERY_TEXTS = [   # written queries: numbers, refusals and the new shapes
     "SELECT o.status_code, count(o) FROM (o:Order) GROUP BY o.status_code", 'SELECT month(o.order_date), sum(o.amount) FROM (o:Order) GROUP BY month(o.order_date)',
     "SELECT count(o) FROM (o:Order) WHERE o.amount BETWEEN 9 AND 1", 'SELECT count(o) FROM (o:Order) WHERE o.nope = 1', 'SELECT o FROM (o:Order)',
     "SELECT count(o) FROM (o:Order) WHERE o.order_date < 'yesterday'", 'SELECT GRAPH FROM (o:Order) LIMIT 3', 'SELECT LIST.amount FROM (o:Order)', 'SELECT count(o) FROM (o:Order) WHERE o.status_code = 1 OR o.amount > 3',
+    "SELECT count(o) FROM (o:Order) WHERE o.order_date < 'today'",   # a quoted 'today' is text, as it always was: only the bare word is the date it runs on
 ]
 QUERY_NEW = ['SELECT LIST o FROM (o:Order)', "SELECT ONE o FROM (o:Order) WHERE o.order_id = 'O0001'", 'SELECT count(o) FROM (o:Order) WHERE o.order_date < today',
-             "SELECT count(o) FROM (o:Order) WHERE o.order_date < 'today'",
              "SELECT LIST o.amount FROM (o:Order) WHERE o.status_code <> 'Cancelled' LIMIT 3"]
 
 
