@@ -392,7 +392,7 @@ def element_state_writes(conn, changes: list[tuple], versions: dict[str, int] | 
             self_confirmed = state == 'confirmed' and proposer_id is not None and proposer_id == actor_id
             if self_confirmed and two['active']:
                 raise SelfConfirmation(tr('这一条是你自己提的，要另一位来确认', 'You put this forward yourself, so someone else must confirm it'))
-            if state == 'confirmed' and before is not None and actor_id is not None and actor_id in changers(conn, before) and two['active']:   # the callers say who and how to get out first (object_types.write_confirmation)
+            if state == 'confirmed' and before is not None and tracked(element_id) and not may_confirm(conn, before, actor_id):   # the callers say who and how to get out first (object_types.write_confirmation)
                 raise SelfConfirmation(tr('这一条在上次确认之后你改过，要另一位来确认', 'You changed this since it was last confirmed, so someone else must confirm it'))
             record, was = next_record(conn, element_id, before, content, state, actor_id)
             if was is not None:
