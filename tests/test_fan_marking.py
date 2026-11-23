@@ -3,8 +3,9 @@
 The mark is decided by structure, not by comparing totals: a column that comes from one side of a join is marked as soon as one row of that side was copied onto
 more than one output row, whatever the values are (a total can come out right by accident: 100 twice and -100 twice add up to the same as once each, while
 every group and the average are wrong). The mark follows the column through the later steps of the pipeline (cast, calculated column, fill, filter, union) and
-into a pipeline that reads it; only a step that provably goes back to one row per row of that side takes it off (a dedupe on that side's key, or an aggregate
-grouped by it with max, min or count distinct). It is read on the version a number reads: a later clean run is answered again. Every aggregate that repeats
+into a pipeline that reads it. It comes off by measurement: while the join's hidden row columns are there, the output is measured again, and the mark goes only
+when no row of that side is on more than one output row; where a step loses them (an aggregate), only a grouping by exactly that side's join key, measured unique
+on that side, with max, min or count distinct takes it off. It is read on the version a number reads: a later clean run is answered again. Every aggregate that repeats
 distort is refused (sum, average, median, percentiles, a histogram, a statistics table); a count of objects, a count distinct, a min and a max are not. Only a
 person who may open pipelines is told which pipeline; the refusal says nothing of rows or columns the asker may not see."""
 import json
@@ -108,10 +109,11 @@ class MarkingTests(FanSumTests):
             self.assertEqual(self.marks(ann, 'per_order'), {'order_id': None, 'amount': None, 'summed': FAN_NOTE})   # the max is one order's amount; the sum per order adds the copies
             self.answered(ann, 'SELECT sum(p.amount) FROM (p:每单)', 180)
             self.refused(ann, 'SELECT sum(p.summed) FROM (p:每单)')
-        # a filter that happens to leave one line per order proves nothing: the mark stays
+        # the mark comes off by measurement: a filter that leaves every order on one line leaves no copy, and the true 180 is answered
         with self.service() as (base, out):
             ann = self.world(base, spec(transform({'op': 'filter', 'where': {'column': 'line_id', 'cmp': 'ne', 'value': 'L2'}}), last='t'), line_type('amount'))['ann']
-            self.refused(ann, 'SELECT sum(l.amount) FROM (l:订单行)')
+            self.assertEqual(self.marks(ann)['amount'], None)
+            self.answered(ann, 'SELECT sum(l.amount) FROM (l:订单行)', 180)
 
     def test_a_pipeline_that_reads_a_marked_column_keeps_the_mark_and_the_refusal_names_the_pipeline_whose_join_repeated_it(self):
         copy = {'steps': [{'id': 'i', 'type': 'input', 'dataset': 'line_amounts'}, {'id': 'out', 'type': 'output', 'from': 'i', 'name': 'line_copy', 'key': {'columns': ['line_id']}}]}
