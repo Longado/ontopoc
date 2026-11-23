@@ -188,5 +188,40 @@ class AgainstMain(unittest.TestCase):
         self.assertGreaterEqual(sum(which), 2 * (len(one.DEMO_PAIRS) + 12))
 
 
+class Prompts(unittest.TestCase):
+    """What the model is told with the switch on: the whole prompt it is told with it off, word for word and in the same place, and after it a short addition
+    for lists, lookups and today. The request differs only by which properties name one object of each type (`identified_by`: names, never a value)."""
+    EXTRA = 700   # characters the addition may take, at most
+
+    class Recording(one.Scripted):
+        def complete_json(self, *, system_prompt, user_prompt, timeout_seconds=None):
+            self.systems.append(system_prompt)
+            return super().complete_json(system_prompt=system_prompt, user_prompt=user_prompt, timeout_seconds=timeout_seconds)
+
+    def test_with_the_switch_on_the_model_is_told_what_it_is_told_off_and_then_a_short_addition(self):
+        one.setUpModule()
+        self.addCleanup(one.tearDownModule)
+        with Seeded() as demo:
+            demo.model.__class__ = self.Recording
+            demo.model.systems, demo.model.requests = [], []
+            for lang in ('zh-CN', 'en'):
+                who = demo.admin(lang)
+                for writes, reply in (('json', one.item(one.SUM_AMOUNT, one.VALID_INCLUDE)), ('query', WRITTEN('SELECT sum(o.amount) FROM (o:Order)', views=['Valid orders']))):
+                    with self.subTest(lang=lang, writes=writes):
+                        told = []
+                        for flag in (False, True):
+                            demo.model.replies = [reply]
+                            with mock.patch.object(workspace_questions, 'ROW_ANSWERS', flag):
+                                self.assertEqual(who.call('POST', '/api/workspace/ask', {'question': '有效订单的总金额是多少？', 'writes': writes})[0], 200)
+                            told.append((demo.model.systems[-1], demo.model.requests[-1]))
+                        (off, off_request), (on, on_request) = told
+                        self.assertTrue(on.startswith(off), on[len(os.path.commonprefix([on, off])) - 200:len(os.path.commonprefix([on, off])) + 200])
+                        self.assertLessEqual(len(on) - len(off), self.EXTRA)
+                        self.assertIn('today', on[len(off):])
+                        for t in on_request['ontology']['object_types']:
+                            self.assertEqual(t.pop('identified_by'), ['order_id'])
+                        self.assertEqual(on_request, off_request)
+
+
 if __name__ == '__main__':
     unittest.main()
