@@ -349,6 +349,40 @@ class ListBesideANumber(Sample):
             self.assertIsNone(answer_number(lookup))   # one object is no number
 
 
+class QueryText(Sample):
+    """query_text is written by code from the query that was run, never taken from what the model wrote: run again as a written query, it gives the same answer."""
+
+    def test_query_text_is_the_query_that_ran(self):
+        plain = {'start': 'order', 'where': [], 'via': [], 'group_by': None, 'share': None, 'measure': None}
+        urgent = {'field': '紧急程度', 'equals': '加急'}
+        urgent_used = [{'id': 'orders.紧急程度=加急', 'direction': 'include', 'basis': '加急'}]
+        by_urgency = [{'id': f'orders.紧急程度={l}', 'direction': 'mention', 'basis': '紧急程度'} for l in ('普通', '加急')]
+        replies = [
+            ('订单有哪些？', {**plain, 'list': {}}, []), ('订单有哪些？', {**plain, 'list': True}, []), ('加急订单有哪些？', {**plain, 'where': [urgent], 'list': {'properties': ['orders.金额']}}, urgent_used),
+            ('订单有哪些？', {'start': 'order', 'where': [], 'list': {'limit': 5}}, []), ('订单的金额合计？', {**plain, 'measure': {'field': '金额', 'op': 'sum'}, 'list': {}}, []),
+            ('订单的金额合计？', {**plain, 'measure': {'field': '金额', 'op': 'sum'}, 'list': True}, []),
+            ('各紧急程度的订单？', {**plain, 'group_by': ['紧急程度'], 'list': {'properties': ['金额']}}, by_urgency),
+            ('订单的金额合计？', {**plain, 'measure': {'field': '金额', 'op': 'sum'}, 'lookup': {'订单号': 'DD20260003'}}, []),
+            ('订单 DD20260003？', {'start': 'order', 'lookup': {'订单号': 'DD20260003'}}, []), ('订单 DD20260003？', {**plain, 'lookup': {'订单号': 'DD20260003'}}, []),
+            ('承诺日期早于今天的订单有哪些？', {**plain, 'where': [{'field': '承诺日期', 'less_than': 'today'}], 'list': True}, []),
+            ('承诺日期早于今天的订单有多少？', {**plain, 'where': [{'field': '承诺日期', 'less_than': 'today'}]}, []),
+        ]
+        model = Scripted('not json')
+        with self.service(gateway=model) as (base, out), mock.patch.object(workspace_questions, '_today', lambda: ('2026-06-15', 'UTC+08:00')):
+            ann = self.setup(base, view=False)['ann']
+            for asked, query, used in replies:
+                with self.subTest(query=query):
+                    body = self.ask(ann, model, asked, item(query, used))
+                    self.assertEqual(body['status'], 'answered', body)
+                    status, again = self.query(ann, body['query_text'])
+                    self.assertEqual((status, again['answer']), (200, body['answer']), body['query_text'])
+                    self.assertEqual(body['query'], query)   # the model's query is kept as it wrote it
+            summed = self.ask(ann, model, '订单的金额合计？', item({**plain, 'measure': {'field': '金额', 'op': 'sum'}}))
+            for extra in ({'list': {}}, {'list': True}, {'lookup': {'订单号': 'DD20260003'}}):
+                self.assertEqual(self.ask(ann, model, '订单的金额合计？', item({**plain, 'measure': {'field': '金额', 'op': 'sum'}, **extra}))['query_text'], summed['query_text'])
+            self.assertTrue(self.ask(ann, model, '订单有哪些？', item({**plain, 'list': True}))['query_text'].startswith('SELECT LIST o\n'))
+
+
 class Privacy(Sample):
     """What a person who may not see a row, a column or a definition is told, compared as whole responses with what they would be told if it did not exist."""
 
