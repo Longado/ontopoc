@@ -1154,7 +1154,7 @@ def run_text(conn, user: dict | None, text, params=None, beside: bool = False, r
         result = _run_compiled(conn, user, sc, query, beside=beside, page=page or 1, today=parsed['today']) if rows else _run_compiled(conn, user, sc, query, beside=beside)
         if result['status'] == 'query_limit':   # what the writer wrote and the engine cannot run (a bound that is no number or date): theirs to fix, said as such
             raise QaRefused(result['reason'])
-        result['text'] = to_text(query, query_catalog(sc), rows) if rows else to_text(query, query_catalog(sc))
+        result['text'] = to_text(query, query_catalog(sc), rows, today='today' in result) if rows else to_text(query, query_catalog(sc))
     if user is not None and user['role'] == 'viewer':
         result = _strip_rows(result)
     return result
@@ -1314,10 +1314,10 @@ def _answered_in_text(conn, gateway, user: dict | None, question: str, sc: dict)
         item = {'status': 'query_limit', 'reason': tr('模型写的查询读不了', 'The query the model wrote cannot be read'), 'reasoning': reasoning}
         return {**_finish(conn, user, sc, parts, item, []), **said, 'written': text}
     result = _run_compiled(conn, user, sc, query, question, views, beside=True, today=ROW_ANSWERS and reads_today(text))
-    return {**result, **said, 'written': text, **({'query_text': to_text(query, query_catalog(sc), rows=True) if ROW_ANSWERS else to_text(query, query_catalog(sc))} if result['status'] in ('answered', 'no_data') else {})}
+    return {**result, **said, 'written': text, **({'query_text': to_text(query, query_catalog(sc), rows=True, today='today' in result) if ROW_ANSWERS else to_text(query, query_catalog(sc))} if result['status'] in ('answered', 'no_data') else {})}
 
 
-def _query_text_of(sc: dict, query) -> str | None:
+def _query_text_of(sc: dict, query, today: bool = False) -> str | None:
     """The query a Q&A answer ran, as OntoPoc Query text in the asker's names, or None when the text would not run as the same query. A field the model wrote as
     "table.column" is written as the column of the type it is read on."""
     if not isinstance(query, dict) or not isinstance(query.get('start'), str) or query['start'] not in sc['types']:
@@ -1368,7 +1368,7 @@ def _query_text_of(sc: dict, query) -> str | None:
         if ROW_ANSWERS and isinstance(q.get('list'), dict):   # a list names its properties as a person may write them
             q['list'] = {**q['list'], 'properties': [plain(start, f) for f in q['list'].get('properties') or []]}
         if ROW_ANSWERS:
-            text = to_text(q, catalog, rows=True)
+            text = to_text(q, catalog, rows=True, today=today)   # today: it ran with 'today' read as the date
             return text if compile_query(text, catalog, rows=True) == canonical_query(q, rows=True) else None
         text = to_text(q, catalog)
         return text if compile_query(text, catalog) == canonical_query(q) else None
@@ -1442,7 +1442,7 @@ def ask(conn, gateway, user: dict | None, question, writes='json', keep: bool = 
         else:
             result = _answered(conn, gateway, user, question, sc)
             ran = result.pop('ran', None)   # with ROW_ANSWERS: the query that was run (a list or lookup let be beside a number is not in it), not what the model wrote
-            text = _query_text_of(sc, ran if ran is not None else result.get('query')) if result['status'] in ('answered', 'no_data') else None
+            text = _query_text_of(sc, ran if ran is not None else result.get('query'), today='today' in result) if result['status'] in ('answered', 'no_data') else None
             if text:   # the question as a query a person can read, check and edit (docs/QUERY.md)
                 result['query_text'] = text
     if user is not None and user['role'] == 'viewer':

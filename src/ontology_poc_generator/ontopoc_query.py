@@ -719,9 +719,10 @@ def _shown_name(table: dict, key: str) -> str:
     return name if sum(1 for v in table.values() if (v.get('name') or None) == name) == 1 and name not in table else key
 
 
-def to_text(query: dict, catalog: dict, rows: bool = False) -> str:
+def to_text(query: dict, catalog: dict, rows: bool = False, today: bool = False) -> str:
     """The structured query as OntoPoc Query text (compile_query of it gives canonical(query) back). QueryError when it names what the catalog lacks. `rows`: a
-    list is written SELECT LIST, a lookup SELECT ONE, and the range bound today as the word today."""
+    list is written SELECT LIST, a lookup SELECT ONE. `today` (with rows): the query ran with its range bound 'today' read as the date, so that bound is written
+    as the bare word; otherwise a 'today' is text and is written quoted, as it was."""
     q = canonical(query, rows)
     if q['start'] not in catalog['types']:
         raise _no_type(catalog, str(q['start']), None)
@@ -798,7 +799,7 @@ def to_text(query: dict, catalog: dict, rows: bool = False) -> str:
         head_line = 'SELECT GRAPH' if graph is not None else f'SELECT {", ".join([*(dim_text(*d) for d in dims), f"{agg} AS {alias}"])}'
     lines = [head_line, f'FROM {", ".join(chains)}']
     conds = [f'{start_var}.{_ident(str(k))} = {_literal(v)}' for k, v in (lookup or {}).items()]
-    bound = lambda v: TODAY if rows and v == TODAY else str(v) if re.fullmatch(r'-?\d+(\.\d+)?', str(v)) else _literal(v)
+    bound = lambda v: TODAY if rows and today and v == TODAY else str(v) if re.fullmatch(r'-?\d+(\.\d+)?', str(v)) else _literal(v)
     for w in q['where']:
         ranged = [k for k in COMPARE.values() if isinstance(w, dict) and k in w]
         if not isinstance(w, dict) or not isinstance(w.get('field'), str) or not ('equals' in w or 'not_equals' in w or ranged):
