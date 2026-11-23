@@ -108,7 +108,10 @@ class PipelineServerTests(SigningTestCase):
             item = next(i for i in bob.get('/api/workspace/queue')[1]['items'] if i['element'] == 'objtype:customer_total')
             line = next(l for l in item['lines'] if note in l['text'])
             self.assertEqual((line['ok'], line['text']), (False, f'“合计”{note}（只提醒，不拦着确认）'))
-            chart = ann.post('/api/workspace/explore/chart', {'query': {'type': 'customer_total'}, 'chart': {'kind': 'number', 'measure': '合计', 'fn': 'sum'}})[1]
+            status, refused = ann.post('/api/workspace/explore/chart', {'query': {'type': 'customer_total'}, 'chart': {'kind': 'number', 'measure': '合计', 'fn': 'sum'}})
+            self.assertEqual(status, 400, refused)   # adding the repeated figure up again is refused, naming the pipeline (tests/test_fan_sum.py)
+            self.assertIn('管道“客户合计”', refused['error'])
+            chart = ann.post('/api/workspace/explore/chart', {'query': {'type': 'customer_total'}, 'chart': {'kind': 'number', 'measure': '合计', 'fn': 'max'}})[1]
             self.assertIn(f'“合计”{note}', [l['line'] for l in chart['standing']['lines']])
             plain = ann.post('/api/workspace/explore/chart', {'query': {'type': 'customer_total'}, 'chart': {'kind': 'bar', 'group': '客户编号', 'fn': 'count'}})[1]
             self.assertNotIn(note, ' '.join(l['line'] for l in plain['standing']['lines']))   # a chart that does not read the column does not carry it
