@@ -174,7 +174,7 @@ class WhichOnes(Sample):
             status, written = self.query(team['vera'], "SELECT ONE m FROM (m:处置措施) WHERE m.措施编号 = 'M-17'")
             self.assertEqual((status, written['answer']['objects']['rows']), (200, objects['rows']), written)
 
-    def test_a_lookup_must_give_the_whole_key_and_takes_no_view(self):
+    def test_a_lookup_must_give_the_whole_key(self):
         model = Scripted(item({'start': 'measure', 'lookup': {'订单号': 'DD20260017'}}))
         with self.service(gateway=model) as (base, out):
             team = self.setup(base)
@@ -183,8 +183,34 @@ class WhichOnes(Sample):
             self.assertIn('措施编号', body['error'])
             body = self.ask(team['ann'], model, 'DD20260017 的措施？', item({'start': 'measure', 'lookup': {'订单号': 'DD20260017'}}))
             self.assertEqual(body['status'], 'query_limit')
-            body = self.ask(team['ann'], model, '高风险加急订单里的 DD20260003？', item({'start': 'order', 'lookup': {'订单号': 'DD20260003'}}, VIEW_USED))
-            self.assertEqual(body['status'], 'query_limit')   # the view is not dropped: the lookup is not answered
+            body = self.ask(team['ann'], model, '加急的 DD20260003？', item({'start': 'order', 'lookup': {'订单号': 'DD20260003'}}, [{'id': 'orders.紧急程度=加急', 'direction': 'include', 'basis': '加急'}]))
+            self.assertEqual(body['status'], 'query_limit')   # a meaning is not a condition a lookup can apply: it is not answered, and the meaning is not dropped
+
+    def test_a_lookup_with_a_view_named_applies_the_view_and_an_object_outside_it_answers_as_a_key_nobody_has(self):
+        inside, outside, missing = URGENT_HIGH[0], next(r['订单号'] for r in ORDER_ROWS if r['订单号'] not in URGENT_HIGH), 'DD20269999'
+        lookup = lambda key, used=VIEW_USED: item({'start': 'order', 'lookup': {'订单号': key}}, used)
+        model = Scripted(lookup(inside))
+        with self.service(gateway=model) as (base, out):
+            team = self.setup(base)
+            for who in ('ann', 'vera'):
+                asks = {'json': lambda key: self.ask(team[who], model, f'高风险加急订单里的 {key}？', lookup(key)),
+                        'text': lambda key: self.ask(team[who], model, f'高风险加急订单里的 {key}？', {'text': f"SELECT ONE o FROM (o:订单) WHERE o.订单号 = '{key}'", 'views': [VIEW['name']]}, writes='query')}
+                for how, ask in asks.items():
+                    with self.subTest(who=who, how=how):
+                        found = ask(inside)
+                        self.assertEqual((found['status'], found['answer']['total'], keys(found)), ('answered', 1, [inside]), found)
+                        self.assertIn(VIEW['name'], found['path'])   # the line under it names the view
+                        self.assertIn(('view', VIEW['name']), [(d['kind'], d['name']) for d in found['definitions']])
+                        hidden, nobody = ask(outside), ask(missing)
+                        self.assertEqual(hidden['status'], 'no_data', hidden)
+                        self.assertIn(VIEW['name'], hidden['path'])
+                        self.assertEqual(without_moments(hidden).replace(outside, 'KEY'), without_moments(nobody).replace(missing, 'KEY'))
+                        reopened = team[who].get(f'/api/workspace/ask/{found["id"]}')[1]
+                        self.assertEqual((reopened['again'], keys(reopened)), (True, [inside]), reopened)
+                plain = self.ask(team[who], model, f'订单 {outside}？', lookup(outside, []))
+                self.assertEqual((plain['status'], keys(plain)), ('answered', [outside]), plain)   # without the view, the object is there
+                unsaid = self.ask(team[who], model, f'高风险加急订单里的 {outside}？', lookup(outside, []))
+                self.assertEqual(unsaid['status'], 'definition_unmet', unsaid)   # the question names the view and the model did not read it: refused, as for a number
 
     def test_a_list_pages_by_its_key_and_a_page_of_more_than_fifty_is_refused(self):
         with self.service(gateway=Scripted('not json')) as (base, out):
