@@ -1470,6 +1470,12 @@ def _again(conn, user: dict | None, record: dict, question: str, page) -> dict:
     definitions they may see now. What it read now replaces what it read then (status, answer, the line under it, the definitions); a refusal now is said."""
     sc = scope(conn, user)
     query, used = record.get('query'), record.get('definitions_used') or []
+    views_used = {u['id'] for u in clean_used(used)}
+    blockers = _blockers(conn, user, question)   # what a fresh ask of the question is refused by, and a view the model read that is not confirmed now
+    blockers += [{**line, 'because': _causes(conn, element_row(conn, line['id']), user)} for line in _unsettled(conn, user)
+                 if line['kind'] == 'view' and line['name'] in views_used and all(b['id'] != line['id'] for b in blockers)]
+    if blockers:   # refused as a fresh ask would be, never worked out on what is not confirmed
+        return {**_refused_unsettled(blockers), 'definitions': [], 'types': [], 'datasets': {}, 'steps': [{'name': tr('核对定义', 'Check definitions'), 'text': tr('问题里提到的定义还没有确认，没有去问模型', 'A definition the question mentions is not confirmed, so the model was not asked'), 'failed': True}]}
     if not isinstance(query, dict) or query.get('start') not in sc['types']:
         return {'status': 'refused', 'reason': tr('这条回答用到的对象类型你现在不能用了，所以不再显示它。', 'You can no longer use the object type this answer used, so it is no longer shown.')}
     if _rows_kind(query) == 'lookup' and not any(u['id'] in sc['views'] for u in clean_used(used)):   # no view: only the rows with its key are read
