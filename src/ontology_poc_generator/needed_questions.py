@@ -53,7 +53,7 @@ from ontology_poc_generator.lang import tr
 from ontology_poc_generator.object_types import element_row
 from ontology_poc_generator.ontology_questions import QUESTION_PROMPT_VERSION
 from ontology_poc_generator.workspace_questions import HELD_BACK as GATE, QaRefused, _clean_question, ask
-from ontology_poc_generator.workspace_store import current_dataset, fingerprint, log_line, now_text, writers_in_log
+from ontology_poc_generator.workspace_store import current_dataset, fingerprint, log_line, now_text, record_shape, writers_in_log
 
 MAX_QUESTIONS = 30
 MAX_REPEATS = 5
@@ -124,8 +124,19 @@ def _content(row: dict) -> str:
     return json.dumps([row['question'], row['expect_kind'], row['expect_value'] if row['expect_kind'] == 'number' else None, row['expect_blocker']], ensure_ascii=False)
 
 
+def _parsed(text) -> dict | None:
+    """The record when it is well formed (workspace_store.record_shape, with what an expectation keeps of what was confirmed); None otherwise: who changed it is not known."""
+    kept = record_shape(text)
+    if kept is None or not isinstance(kept.get('confirmed', ''), str):
+        return None
+    was = kept.get('was')
+    if was is not None and not (isinstance(was, dict) and all(k in was for k in _WAS)):
+        return None
+    return kept
+
+
 def _kept(row: dict) -> dict | None:
-    kept = json.loads(row['changed_json']) if row.get('changed_json') else None
+    kept = _parsed(row.get('changed_json'))
     return kept if kept is not None and kept.get('of') == fingerprint(_content(row)) else None
 
 
@@ -134,7 +145,7 @@ def _changers(conn, row: dict) -> set[int]:
     kept = _kept(row)
     if kept is not None:
         return set(kept.get('by') or [])
-    stale = json.loads(row['changed_json']) if row.get('changed_json') else {}
+    stale = _parsed(row.get('changed_json')) or {}
     return set(stale.get('by') or []) | writers_in_log(conn, f'needed:{row["id"]}', ('written', 'changed'))
 
 
@@ -159,7 +170,7 @@ def _held(conn, row: dict) -> str | None:
            else tr(f'请没有改过它的{other}来确认（现在没有这样的建设者，管理员可以加一位）', f'ask {other} who did not change it to confirm it (there is no such builder now; an admin can add one)'))
     if confirmed:
         out += tr('，或把它改回上次确认的样子', ', or put back what was last confirmed')
-    return tr(f'{said}。出路：{out}。', f'{said}. The way out: {out}.')
+    return tr(f'{said}。出路：{out}。', f'{said}. {"Ways out" if confirmed else "The way out"}: {out}.')
 
 
 # --- reading ----------------------------------------------------------------------------------------------------------------------------------------------
@@ -437,10 +448,10 @@ def update(conn, user: dict | None, payload: dict) -> dict:
             record, was = _next_record(conn, row, {'question': question, 'expect_kind': kind, 'expect_value': value, 'expect_blocker': blocker}, _uid(user))
             if was is not None:   # what it should give is again what was last confirmed, and an edit is what sent it back: confirmed again as it was
                 back = True
-                conn.execute('UPDATE needed_question SET question = ?, expect_kind = ?, expect_value = ?, expect_blocker = ?, note = ?, state = ?, version = version + 1, expect_version = ?, '
+                conn.execute('UPDATE needed_question SET question = ?, expect_kind = ?, expect_value = ?, expect_blocker = ?, note = ?, state = ?, version = version + 1, expect_version = expect_version + 1, '
                              'written_by = ?, written_by_user_id = ?, written_at = ?, confirmed_by = ?, confirmed_by_user_id = ?, confirmed_at = ?, self_confirmed = ?, basis_json = ?, look_json = ?, '
                              'changed_json = ? WHERE id = ?',
-                             (question, kind, value, blocker, note, was['state'], was['expect_version'], was['written_by'], was['written_by_user_id'], was['written_at'], was['confirmed_by'],
+                             (question, kind, value, blocker, note, was['state'], was['written_by'], was['written_by_user_id'], was['written_at'], was['confirmed_by'],
                               was['confirmed_by_user_id'], was['confirmed_at'], was['self_confirmed'], was['basis_json'], was['look_json'], record, row['id']))
             else:
                 conn.execute('UPDATE needed_question SET question = ?, expect_kind = ?, expect_value = ?, expect_blocker = ?, note = ?, state = ?, version = version + 1, '

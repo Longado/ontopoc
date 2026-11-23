@@ -16,7 +16,7 @@ import json
 
 from ontology_poc_generator.object_types import (
     ACTION_PREFIX, DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, TypeRefused,
-    _by_value, _confirmers, _content, _label, _type_problems, counted_ahead, dataset_columns, element_row, keep_count, limited_on, unconfirmed_producers)
+    _by_value, _confirmers, _content, held_note, _label, _type_problems, counted_ahead, dataset_columns, element_row, keep_count, limited_on, unconfirmed_producers)
 from ontology_poc_generator.review_queue import IN_QUEUE, _item, confirm_item, queue
 from ontology_poc_generator.workspace_store import SelfConfirmation, current_dataset, log_line
 
@@ -66,8 +66,9 @@ def _why_not_theirs(conn, row: dict, user: dict | None) -> str | None:
         return tr('你受行规则或列的限制，看不到全部数据：要不受限制的建设者来确认', 'A row rule or a column limit keeps you from seeing all the data: a builder without the limit must confirm')
     if user is not None and user['role'] == 'viewer':
         return tr('你是只读成员，不能确认', 'You are a read-only member and cannot confirm')
-    if not _confirmers(conn, row, user)[0]:
-        return tr('这一项是你提的或你改过的，要另一位建设者确认', 'You put this forward or changed it, so another builder must confirm it')
+    can, others = _confirmers(conn, row, user)
+    if not can:   # who holds it and the ways out, as the item's own route says it
+        return held_note(conn, row, others) or tr('这一项是你提的或你改过的，要另一位建设者确认', 'You put this forward or changed it, so another builder must confirm it')
     return None
 
 

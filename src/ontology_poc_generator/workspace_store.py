@@ -443,10 +443,39 @@ def fingerprint(content_json: str | None) -> str | None:
     return hashlib.sha256(content_json.encode()).hexdigest()[:16] if content_json else None
 
 
+def _ids(value) -> bool:
+    return isinstance(value, list) and all(isinstance(v, int) and not isinstance(v, bool) for v in value)
+
+
+_WAS = ('content_json', 'evidence_ref', 'confirmed_by', 'confirmed_at', 'anchors_json', 'proposed_by', 'confirmed_by_user_id', 'proposed_by_user_id')
+
+
+def record_shape(text) -> dict | None:
+    """The record as an object with `by` a list of account ids and `of` a fingerprint (or null), or None: not JSON, not an object, or not that shape."""
+    try:
+        kept = json.loads(text) if isinstance(text, str) and text else None
+    except ValueError:
+        return None
+    return kept if isinstance(kept, dict) and _ids(kept.get('by')) and isinstance(kept.get('of'), (str, type(None))) else None
+
+
+def parse_record(text) -> dict | None:
+    """A kept record of who changed a definition, or None when there is none or it is not well formed (record_shape, and a `was` with what putting it back needs): a
+    record that cannot be read is no record, and then who changed it is not known."""
+    kept = record_shape(text)
+    if kept is None:
+        return None
+    was = kept.get('was')
+    if was is not None and not (isinstance(was, dict) and all(k in was for k in _WAS) and isinstance(was['content_json'], str)
+                                and isinstance(was.get('deps'), list) and isinstance(was.get('reads'), dict)):
+        return None
+    return kept
+
+
 def _kept_record(row: dict) -> dict | None:
-    """The record of who changed it, when it describes the content as it stands; None when there is none (a file from before it was kept) or when the content was
-    changed without it (older code writing to this file): then it is not trusted."""
-    kept = json.loads(row['changed_json']) if row.get('changed_json') else None
+    """The record of who changed it, when it is well formed and describes the content as it stands; None when there is none (a file from before it was kept), when it
+    cannot be read, or when the content was changed without it (older code writing to this file): then it is not trusted."""
+    kept = parse_record(row.get('changed_json'))
     return kept if kept is not None and kept.get('of') == fingerprint(row.get('content_json')) else None
 
 
@@ -466,7 +495,7 @@ def changers(conn, row: dict) -> set[int]:
     kept = _kept_record(row)
     if kept is not None:
         return set(kept.get('by') or [])
-    stale = json.loads(row['changed_json']) if row.get('changed_json') else {}
+    stale = parse_record(row.get('changed_json')) or {}
     return set(stale.get('by') or []) | writers_in_log(conn, row['element_id'])
 
 
@@ -486,7 +515,23 @@ def last_confirmed_content(conn, element_id: str) -> str | None:
     return found[0] if found else None
 
 
-_WAS = ('content_json', 'evidence_ref', 'confirmed_by', 'confirmed_at', 'anchors_json', 'proposed_by', 'confirmed_by_user_id', 'proposed_by_user_id')
+def reads_now(conn, roots) -> dict[str, list]:
+    """Everything a definition reads, directly or through what those read, with what identifies it now: a definition's state and version (every change, every move to
+    needs another look and every confirmation gives it a new version), a dataset's current version. Columns are covered by their dataset's version."""
+    seen: dict[str, list] = {}
+    stack = list(roots)
+    while stack:
+        node = stack.pop()
+        if node in seen or node.startswith('column:'):
+            continue
+        if node.startswith('dataset:'):
+            held = conn.execute('SELECT dataset_id FROM current_dataset WHERE name = ?', (node[len('dataset:'):],)).fetchone()
+            seen[node] = ['dataset', held[0] if held else None]
+        else:
+            held = conn.execute('SELECT state, version FROM element_state WHERE element_id = ?', (node,)).fetchone()
+            seen[node] = list(held) if held else [None, None]
+        stack += [d for (d,) in conn.execute('SELECT depends_on FROM element_dep WHERE element_id = ? ORDER BY depends_on', (node,))]
+    return seen
 
 
 def next_record(conn, element_id: str, before: dict | None, content: str | None, state: str, actor_id: int | None) -> tuple[str | None, dict | None]:
@@ -503,7 +548,8 @@ def next_record(conn, element_id: str, before: dict | None, content: str | None,
     by = changers(conn, before) if before else set()
     if before is None or content != before['content_json']:
         if before is not None and before['state'] == 'confirmed':
-            was = {**{k: before[k] for k in _WAS}, 'deps': [d for (d,) in conn.execute('SELECT depends_on FROM element_dep WHERE element_id = ? ORDER BY depends_on', (element_id,))]}
+            deps = [d for (d,) in conn.execute('SELECT depends_on FROM element_dep WHERE element_id = ? ORDER BY depends_on', (element_id,))]
+            was = {**{k: before[k] for k in _WAS}, 'deps': deps, 'reads': reads_now(conn, deps)}   # what it read when the edit set it aside, to compare when it is put back
         if content is not None and content == last_confirmed_content(conn, element_id):
             by = set()
         elif actor_id is not None:
@@ -513,23 +559,22 @@ def next_record(conn, element_id: str, before: dict | None, content: str | None,
 
 
 def _stands_as_confirmed(conn, element_id: str, was: dict) -> bool:
-    """Whether nothing but the edit sent it back: the datasets it was last confirmed on are still at those versions, and everything it read then is confirmed now."""
+    """Whether it would still be confirmed today had the edit never happened: the datasets it was last confirmed on are still at those versions, and everything it
+    reads, directly or through what those read, is exactly as it was when the edit set it aside (no change, no move to needs another look, no new confirmation, no
+    new data version) and confirmed. Anything else, or anything not known, is no: then a person looks again."""
     found = conn.execute('SELECT dataset_versions_json FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1', (element_id,)).fetchone()
-    for name, version in (json.loads(found[0]) if found and found[0] else {}).items():
+    try:
+        versions = json.loads(found[0]) if found and found[0] else {}
+    except ValueError:
+        return False
+    for name, version in (versions.items() if isinstance(versions, dict) else ()):
         now = current_dataset(conn, name)
         if now is None or now['version'] != version:
             return False
-    for dep in was.get('deps') or []:
-        if dep.startswith('column:'):
-            continue
-        if dep.startswith('dataset:'):   # the pipelines that write it
-            if conn.execute("SELECT 1 FROM element_dep d LEFT JOIN element_state s ON s.element_id = d.depends_on WHERE d.element_id = ? AND (s.state IS NULL OR s.state != 'confirmed')", (dep,)).fetchone():
-                return False
-            continue
-        held = conn.execute('SELECT state FROM element_state WHERE element_id = ?', (dep,)).fetchone()
-        if held is None or held[0] != 'confirmed':
-            return False
-    return True
+    then = was.get('reads')
+    if not isinstance(then, dict) or reads_now(conn, was.get('deps') or []) != then:
+        return False
+    return all(mark[0] in ('confirmed', 'dataset') and mark[1] is not None for mark in then.values())
 
 
 def restore_if_back(conn, element_id: str, was: dict) -> bool:
@@ -550,7 +595,8 @@ def restore_if_back(conn, element_id: str, was: dict) -> bool:
 
 def drop_was(conn, element_id: str) -> None:
     """Something other than an edit sent it back (a person sent it back): putting its content back no longer confirms it again by itself."""
-    conn.execute("UPDATE element_state SET changed_json = json_remove(changed_json, '$.was') WHERE element_id = ? AND changed_json IS NOT NULL", (element_id,))
+    conn.execute("UPDATE element_state SET changed_json = json_remove(changed_json, '$.was') WHERE element_id = ? AND json_valid(changed_json) AND json_type(changed_json) = 'object'",
+                 (element_id,))
 
 
 def set_element_states(conn, changes: list[tuple]) -> dict[str, dict]:

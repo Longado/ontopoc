@@ -1330,7 +1330,7 @@ def held_note(conn, row: dict, free: list[str] | None = None) -> str | None:
         out = tr(f'请没有改过它的{other}来确认（现在没有这样的建设者，管理员可以加一位）', f'ask {other} who did not change it to confirm it (there is no such builder now; an admin can add one)')
     if confirmed:
         out += tr('，或把它改回上次确认的版本', ', or put back the version that was last confirmed')
-    return tr(f'{said}。出路：{out}。', f'{said}. The way out: {out}.')
+    return tr(f'{said}。出路：{out}。', f'{said}. {"Ways out" if confirmed else "The way out"}: {out}.')
 
 
 def _state_view(conn, row: dict, user: dict | None, ahead: dict | None = None, saved_only: bool = False) -> dict:
