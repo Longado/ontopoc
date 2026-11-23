@@ -306,7 +306,8 @@ class ListBesideANumber(Sample):
     rows come with it."""
 
     def without(self, body):
-        return without_moments({k: v for k, v in body.items() if k != 'query'})
+        """The response without what echoes the model's query (kept as it wrote it) and without query_text (see QueryText)."""
+        return without_moments({k: [{n: v for n, v in s.items() if n != 'query'} for s in v] if k == 'steps' else v for k, v in body.items() if k not in ('query', 'query_text')})
 
     def test_a_list_or_lookup_beside_a_sum_a_share_a_grouping_or_a_ranking_is_let_be(self):
         urgent = [{'field': '紧急程度', 'equals': '加急'}]
