@@ -319,14 +319,14 @@ class ConfirmedEditTests(Team):
                     self.assertEqual(self.confirm_kind(team['cat'], kind)[0], 200, kind)   # Cat changed nothing of it
         self.assertEqual(facts, [(kind, 'checked') for kind, _ in edits])
 
-    def test_a_pipeline_keeps_its_own_rule(self):
-        """Not changed here: a signed-in edit of a confirmed pipeline's description keeps it confirmed, as before."""
+    def test_a_pipelines_description_counts_as_a_change_of_the_pipeline(self):
+        """The Leader's ruling: a pipeline is a definition, and a new description is a change of it as a new step is (tests/test_changed_since_acceptance.py)."""
         with self.service() as (base, out):
             self.out = out
             team = self.team(base)
             self.world(team)
             self.assertEqual(self.edit(team['cat'], 'pipeline', 'description', 'ZZ卡改的')[0], 200)
-            self.assertEqual(self.states_now()['pipeline'], 'confirmed')
+            self.assertEqual(self.states_now()['pipeline'], 'checked')
 
 
 class TwoBuildersTests(World):

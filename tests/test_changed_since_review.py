@@ -269,7 +269,9 @@ class StandingTests(Team):
             self.assertEqual(bob.get('/api/workspace/agent/standing?id=objtype%3Acustomer')[1]['confirmed_by'], 'Bob')
 
 
-class NeededReviewTests(NeededCase):
+class NeededTeam(NeededCase):
+    """Ann, Bob and Cat (builders) and Vera (a viewer) on the questions we need."""
+
     def team(self, base, valid=True):
         team = super().team(base, valid)
         from tests.test_access import Client
@@ -286,6 +288,8 @@ class NeededReviewTests(NeededCase):
         self.assertEqual(status, 200, body)
         return body
 
+
+class NeededReviewTests(NeededTeam):
     def versions(self, out):
         conn = sqlite3.connect(out / 'workspace.sqlite')
         try:
