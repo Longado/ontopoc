@@ -625,7 +625,8 @@ def _ask_said(conn, result: dict) -> dict:
     answered = result['status'] in ANSWERED
     return {'status': result['status'], 'number': _plain(answer_number(result)) if answered else None, 'reason': None if answered else result.get('reason'),
             'blocking': _blocking(conn, result) if result['status'] in GATE else [], 'query_text': result.get('query_text'), 'datasets': dict(result.get('datasets') or {}),
-            'definitions': [{'id': d['id'], 'name': d['name'], 'version': d['version']} for d in result.get('definitions') or []], 'model': result.get('model')}
+            'definitions': [{'id': d['id'], 'name': d['name'], 'version': d['version']} for d in result.get('definitions') or []], 'model': result.get('model'),
+            **({'not_measured': {k: v for k, v in result['refusal'].items() if k != 'kind'}} if (result.get('refusal') or {}).get('kind') == 'not_measured' else {})}
 
 
 def _class(expect: dict | None, a: dict) -> str:
@@ -693,6 +694,9 @@ def judge(conn, row: dict, asks: list[dict]) -> dict:
     if 'wrong' in classes:
         moved = _moved(conn, row['basis'])
         return {**out, 'outcome': 'needs_look' if moved else 'differs', 'moved': moved}
+    stale = next((a['not_measured'] for a in asks if a.get('not_measured')), None)
+    if stale:   # read a version written before copies were measured: the expectation was never checked against measured data, so it goes back for a look
+        return {**out, 'outcome': 'needs_look', 'moved': [{'kind': 'dataset', 'name': stale['dataset'], 'from': stale['version'], 'to': stale['version'], 'not_measured': True}]}
     if gate is not None:   # refused by the gate, not the way expected: what blocks it; never "differs"
         return {**out, 'outcome': 'refused', 'reason': gate['reason'], 'blocking': gate['blocking']}
     return {**out, 'outcome': 'no_answer', 'reason': none['reason']}

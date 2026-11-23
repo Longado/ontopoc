@@ -64,9 +64,13 @@ CREATE TABLE IF NOT EXISTS value_privacy (
 -- what a pipeline's output column was made from, kept with the dataset it wrote: 'unsent' (made from a column kept from the model), 'ai' (made from a model's answer)
 CREATE TABLE IF NOT EXISTS column_mark (
     dataset_id INTEGER NOT NULL REFERENCES dataset(id), column_name TEXT NOT NULL, mark TEXT NOT NULL CHECK (mark IN ('unsent', 'ai')), PRIMARY KEY (dataset_id, column_name, mark));
--- an output column of a pipeline whose figure was worked out over a join that made several rows of one (a sum or a count of a column the join repeated): FAN_NOTE says so
+-- an output column of a pipeline whose value a join copied onto several rows (directly, or through what was made from it): FAN_NOTE says so; origin is the pipeline
+-- whose join copied it (NULL in a file written before it was kept: the pipeline that wrote the version)
 CREATE TABLE IF NOT EXISTS column_fan (
-    dataset_id INTEGER NOT NULL REFERENCES dataset(id), column_name TEXT NOT NULL, PRIMARY KEY (dataset_id, column_name));
+    dataset_id INTEGER NOT NULL REFERENCES dataset(id), column_name TEXT NOT NULL, origin TEXT, PRIMARY KEY (dataset_id, column_name));
+-- a version a pipeline wrote whose copies were measured (column_fan holds what was copied). A version a pipeline with a join wrote that is not here was written
+-- before copies were measured, or from an input that was: not_measured refuses what copies would change on it. A file from before has none: it can only refuse more
+CREATE TABLE IF NOT EXISTS column_fan_measured (dataset_id INTEGER PRIMARY KEY REFERENCES dataset(id));
 CREATE TABLE IF NOT EXISTS row_rule (
     id INTEGER PRIMARY KEY AUTOINCREMENT, type_id TEXT NOT NULL, column_name TEXT NOT NULL, value TEXT NOT NULL, user_ids_json TEXT NOT NULL, user_attr TEXT);
 CREATE TABLE IF NOT EXISTS action_record (
@@ -182,7 +186,7 @@ def open_workspace(path) -> sqlite3.Connection:
                           ('element_state', 'cause'), ('element_state', 'via'), ('confirmation', 'snapshot_json'), ('llm_review', 'distinct_rows'), ('llm_review', 'detail_json'),
                           ('api_token', 'scope'), ('api_token', 'expires_at'), ('action_record', 'undo_of'), ('action_record', 'op'),
                           ('data_source', 'tls'), ('data_source', 'ca_pem'), ('refresh_run', 'error_public'), ('schedule', 'created_by_user_id'), ('user', 'attrs_json'), ('row_rule', 'user_attr'),
-                          ('needed_question', 'expect_blocker'), ('needed_run', 'owner'), ('element_state', 'changed_json'), ('needed_question', 'changed_json')):
+                          ('needed_question', 'expect_blocker'), ('needed_run', 'owner'), ('element_state', 'changed_json'), ('needed_question', 'changed_json'), ('column_fan', 'origin')):
         if column not in {r[1] for r in conn.execute(f'PRAGMA table_info({table})')}:   # a file made before the column existed
             conn.execute(f'ALTER TABLE {table} ADD COLUMN {column} {"INTEGER" if column in ("dataset_id", "null_key_rows", "distinct_rows", "undo_of") or column.endswith("user_id") else "TEXT"}')
     if 'expect_version' not in {r[1] for r in conn.execute('PRAGMA table_info(needed_question)')}:   # counts each new expectation and each confirmation of one: a result belongs to one
@@ -704,8 +708,91 @@ def fan_note() -> str:
 
 
 def fan_marks(conn, dataset_id: int) -> set[str]:
-    """The columns of this version of a dataset that a pipeline wrote from a figure a join repeated (FAN_NOTE)."""
-    return {c for (c,) in conn.execute('SELECT column_name FROM column_fan WHERE dataset_id = ?', (dataset_id,))}
+    """The number columns of this version of a dataset that a pipeline wrote from a figure a join repeated: the ones FAN_NOTE is shown on. A name or a code a join
+    copied is marked too (fan_origins: what refuses reads that), but the note stays with what a person adds up."""
+    return {c for (c,) in conn.execute('SELECT f.column_name FROM column_fan f JOIN "column" c ON c.dataset_id = f.dataset_id AND c.name = f.column_name '
+                                       "WHERE f.dataset_id = ? AND c.inferred_type IN ('integer', 'decimal')", (dataset_id,))}
+
+
+def fan_origins(conn, dataset_id: int) -> dict[str, str]:
+    """{column: the pipeline whose join copied it} for the columns of fan_marks; empty when there are none."""
+    rows = conn.execute('SELECT column_name, origin FROM column_fan WHERE dataset_id = ? ORDER BY column_name', (dataset_id,)).fetchall()
+    if not rows:
+        return {}
+    origin, changes = conn.execute('SELECT origin, changes_json FROM dataset WHERE id = ?', (dataset_id,)).fetchone()
+    writer = ((json.loads(changes) if changes else {}).get('pipeline') or {}).get('id') or (origin or '').removeprefix('pipeline:').rpartition('@')[0] or origin
+    return {column: marked or writer for column, marked in rows}
+
+
+def shown_pipeline(conn, pipeline: str | None, user: dict | None) -> str | None:
+    """The pipeline's name for a person who may open it; None for anyone else."""
+    from ontology_poc_generator.object_types import element_row   # these modules read this one: imported where it is used
+    from ontology_poc_generator.workspace_pipelines import pipeline_id, pipeline_visible
+    row = element_row(conn, pipeline_id(pipeline)) if pipeline else None
+    return pipeline if row is not None and pipeline_visible(conn, row, user) else None
+
+
+def fan_pipelines(conn, dataset_id: int, user: dict | None) -> dict[str, str | None]:
+    """{column: the pipeline whose join copied it, or None for a person who may not open that pipeline} for every marked column of this version, of any type."""
+    out, seen = {}, {}
+    for column, pipeline in fan_origins(conn, dataset_id).items():
+        if pipeline not in seen:
+            seen[pipeline] = shown_pipeline(conn, pipeline, user)
+        out[column] = seen[pipeline]
+    return out
+
+
+def input_versions(conn, versions: dict) -> list[int]:
+    """The ids of the dataset versions a run read ({name: version}; a view's entry is not a dataset)."""
+    return [r[0] for name, version in (versions or {}).items() if isinstance(version, int)
+            for r in conn.execute('SELECT id FROM dataset WHERE name = ? AND version = ?', (name, version)).fetchall()]
+
+
+def not_measured(conn, dataset_id: int, seen: frozenset = frozenset()) -> str | None:
+    """The pipeline to run again when this version was written by a pipeline before its copies were measured: one with a join (or whose run left no steps to tell),
+    or one that read a version that was not measured. The one named is the first to run again: an input's, when the current version of an input is not measured
+    either. None for an upload, a measured version, and a pipeline without a join over measured inputs."""
+    row = conn.execute('SELECT changes_json FROM dataset WHERE id = ?', (dataset_id,)).fetchone()
+    pipeline = ((json.loads(row[0]) if row and row[0] else {}) or {}).get('pipeline')
+    if not pipeline or dataset_id in seen or conn.execute('SELECT 1 FROM column_fan_measured WHERE dataset_id = ?', (dataset_id,)).fetchone():
+        return None
+    seen = seen | {dataset_id}
+    read = pipeline.get('inputs') or {}
+    nodes = conn.execute('SELECT nodes_json FROM pipeline_run WHERE id = ?', (pipeline.get('run'),)).fetchone()
+    joins = nodes is None or not nodes[0] or any(n.get('type') == 'join' for n in json.loads(nodes[0]))
+    if not joins and not any(not_measured(conn, d, seen) for d in input_versions(conn, read)):
+        return None
+    for name in read:   # an input still not measured now is the one to run first
+        now = current_dataset(conn, name)
+        upstream = not_measured(conn, now['id'], seen) if now else None
+        if upstream:
+            return upstream
+    return pipeline.get('id')
+
+
+def not_measured_refusal(dataset: str, pipeline: str | None) -> str:
+    """Why every aggregate but a count, a count distinct, a min and a max is refused on a version not measured, and what to do. Nothing is said of rows."""
+    if not pipeline:   # a person who may not open pipelines: neither what is behind the type nor a step they cannot take
+        return tr('这些数据是在检查重复之前由管道写出的：没有量过关联有没有把一行变成几行，所以现在不拿它的数来统计（计数、去重计数、最大、最小照常）。请建设者把写它的管道重新运行一次',
+                  'This data was written by a pipeline before repeats were measured: nobody measured whether a join turned one row into several, so its figures are not '
+                  'worked out now (a count, a distinct count, a max and a min still are). Ask a builder to run the pipeline that writes it again once')
+    return tr(f'“{dataset}”这一版是在检查重复之前写出的：没有量过关联有没有把一行变成几行，所以现在不拿它的数来统计（计数、去重计数、最大、最小照常）。请把管道“{pipeline}”重新运行一次',
+              f'This version of "{dataset}" was written before repeats were measured: nobody measured whether a join turned one row into several, so its figures are not '
+              f'worked out now (a count, a distinct count, a max and a min still are). Have the pipeline "{pipeline}" run again once')
+
+
+REPEAT_SAFE = ('count', 'count_distinct', 'min', 'max')   # what copies of a value do not change: every other aggregate of a column in fan_marks is refused
+
+
+def fan_refusal(column: str, pipeline: str | None, fn: str) -> str:
+    """Why an aggregate (a sum, an average, a median, a percentile, a distribution) of a column in fan_marks is not worked out, and where to work it out instead.
+    Refused, never corrected: which copies of the figure are the same one is the pipeline's to say, not the question's. `pipeline` None: the asker may not open it,
+    so it is not named. Nothing is said of rows: a person limited to some rows gets the same sentence."""
+    how = tr('加起来', 'adding it up') if fn == 'sum' else tr('求平均', 'averaging it') if fn in ('avg', 'average') else tr('拿来统计', 'working it out')
+    who = tr(f'管道“{pipeline}”', f'the pipeline "{pipeline}"') if pipeline else tr('一个管道', 'a pipeline')
+    return tr(f'“{column}”是{who}关联后写出的数：关联把一行变成了几行，这个数重复了，{how}会把同一笔算好几次，所以不算。请到每件事只有一行的类型上去算（例如每个订单一行的那个类型）',
+              f'"{column}" was written by {who} after a join turned one row into several: the figure repeats, and {how} would count the same amount several times, '
+              f'so it is not worked out. Work it out on the type that has one row per thing (for example the one with one row per order)')
 
 
 def current_dataset(conn, name: str) -> dict | None:

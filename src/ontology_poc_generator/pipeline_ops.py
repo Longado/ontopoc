@@ -6,7 +6,13 @@ was false, a value that cannot be converted is counted and listed, a code that n
 
 A column is {'name', 'type'} with, where it has them, 'origin' ("dataset.column", which is how a code column is recognised after a join), 'badge' ('new' or
 'replaced' in the transform that made it), 'hidden' (the row-identity columns a join adds so that a later sum can say what it counted twice; no person writes them
-and no output carries them) and 'fan' (the hidden columns that identify the source row of this column's value).
+and no output carries them) and 'fan' (the hidden columns that identify the source row of this column's value). Two more say whether a figure was copied onto
+several rows: 'rep', the join sides (the names of their hidden columns, or UPSTREAM:<pipeline> for a column an earlier pipeline marked) whose rows this value was
+copied from, which every column made from it inherits (carry); and 'key_of', on a column that holds a side's join key, [side, which pair of the join's `on`, how
+many pairs]. Whether a side's rows are still copied is measured, not inferred from the kind of step: while its hidden row column is there, the run counts it again
+(pipelines._repeated); an aggregate, which loses it, turns each side into a side of its own (`<side>@<table>><column>`) whose state the run settles as the
+aggregate runs (`resolve`): copied, unless no row of the side was copied in its input, or it is grouped by exactly that side's join key, measured unique on that
+side, with min, max or count distinct.
 """
 from __future__ import annotations
 
@@ -59,21 +65,37 @@ def _q(name: str) -> str:
 def new_context(meanings: dict | None = None, codes=frozenset(), unsent=frozenset(), ai=frozenset(), fan=frozenset()) -> dict:
     """What the operators may ask the workspace: meanings {"dataset.column": {label: [codes]}} (confirmed ones only), codes {"dataset.column"} (columns that are
     code lists, confirmed or not), unsent {"dataset.column"} (columns whose values a builder keeps from the model, or that a pipeline wrote from such columns), ai
-    {"dataset.column"} (columns a pipeline wrote from what a model answered), fan {"dataset.column"} (columns a pipeline wrote from a figure a join repeated), and `used`, which the operators fill with the meanings they read."""
-    return {'meanings': meanings or {}, 'codes': set(codes), 'unsent': set(unsent), 'ai': set(ai), 'fan': set(fan), 'used': set()}
+    {"dataset.column"} (columns a pipeline wrote from what a model answered), fan {"dataset.column": the pipeline whose join repeated it} (columns of the current version
+of a dataset a pipeline wrote from a figure a join repeated), and `used`, which the operators fill with the meanings they read."""
+    return {'meanings': meanings or {}, 'codes': set(codes), 'unsent': set(unsent), 'ai': set(ai), 'fan': dict(fan) if isinstance(fan, dict) else dict.fromkeys(fan),
+            'used': set()}
 
 
 FLAGS = ('unsent', 'ai')   # what a column made from other columns inherits: not to be sent to the model, written by the model
 
 
-UPSTREAM = '__upstream'   # in `fan_agg`: the column was already worked out over a repeated join in the pipeline that wrote its dataset
+UPSTREAM = '__upstream'   # in `fan_agg`: the column was already worked out over a repeated join in the pipeline that wrote its dataset; in `rep`, UPSTREAM:<that pipeline>
+SURVIVE_REPEATS = ('min', 'max', 'count_distinct')   # what a copy of a row does not change, inside one group
 
 
 def carry(*sources: dict) -> dict:
-    """The marks a column made from these columns inherits: the flags of FLAGS, and `fan_agg`, the names of the aggregations (over a column a join repeated) it comes from;
-    which of them really counted a row twice is known only once the run has measured it."""
+    """The marks a column made from these columns inherits: the flags of FLAGS, `fan_agg`, the names of the aggregations (over a column a join repeated) it comes from
+    (which of them really counted a row twice is known only once the run has measured it), and `rep`, the join sides whose rows its value was copied from."""
     aggs = sorted({n for c in sources for n in c.get('fan_agg', ())})
-    return {**{k: True for k in FLAGS if any(c.get(k) for c in sources)}, **({'fan_agg': aggs} if aggs else {})}
+    reps = sorted({t for c in sources for t in c.get('rep', ())})
+    return {**{k: True for k in FLAGS if any(c.get(k) for c in sources)}, **({'fan_agg': aggs} if aggs else {}), **({'rep': reps} if reps else {})}
+
+
+def exact_key(group_cols: list[dict], side: str) -> bool:
+    """Whether these columns are exactly that side's join key: every pair of its `on`, and nothing else."""
+    pairs = {(pair, n) for c in group_cols for s_, pair, n in c.get('key_of', ()) if s_ == side}
+    n = next(iter(pairs))[1] if pairs else 0
+    return bool(pairs) and len(group_cols) == n and {pair for pair, _ in pairs} == set(range(n)) and all(any(s_ == side for s_, _, _ in c.get('key_of', ())) for c in group_cols)
+
+
+def live(side: str) -> bool:
+    """A side measured on its hidden row column (not an aggregate's settled side, not a mark from an earlier pipeline)."""
+    return '@' not in side and not side.startswith(f'{UPSTREAM}:')
 
 
 def visible(columns: list[dict]) -> list[dict]:
@@ -489,14 +511,38 @@ def _aggregate(op, src, columns, ctx, label):
     selects = [_q(c['name']) for c in group_cols] + [f'{a["sql"]} AS {_q(a["name"])}' for a in aggs]
     params = [p for a in aggs for p in a['params']]
     group_by = f' GROUP BY {", ".join(_q(c["name"]) for c in group_cols)}' if group_cols else ''
-    out_columns = [{'name': c['name'], 'type': c['type'], **({'origin': c['origin']} if c.get('origin') else {}), **carry(c)} for c in group_cols] + \
-                  [{'name': a['name'], 'type': a['type'], 'badge': 'new', **_fanned(a), 'aggregation': {'fn': a['fn'], 'column': a['col']['name'] if a['col'] else None, 'exact': a['fn'] in PERCENTILE}} for a in aggs]
+    settle = {}   # the sides of the output columns this aggregate settles when it runs: {new side: (side in its input, the function, or None for a group column)}
+
+    def settled(column: dict, fn: str | None) -> dict:
+        sides = [] if fn is None and len(group_cols) == 1 else column.get('rep', ())   # grouped by one column alone: each of its values is on one output row
+        kept = []
+        for t in sides:
+            if t.startswith(f'{UPSTREAM}:'):   # an earlier pipeline's mark: nothing here can measure it away
+                kept.append(t)
+                continue
+            new = f'{t}@{src}>{column["name"]}'
+            settle[new] = (t, fn)
+            kept.append(new)
+        return {**{k: v for k, v in column.items() if k != 'rep'}, **({'rep': sorted(set(kept))} if kept else {})}
+    out_columns = [settled({'name': c['name'], 'type': c['type'], **({'origin': c['origin']} if c.get('origin') else {}), **carry(c)}, None) for c in group_cols] + \
+                  [settled({'name': a['name'], 'type': a['type'], 'badge': 'new', **_fanned(a), 'aggregation': {'fn': a['fn'], 'column': a['col']['name'] if a['col'] else None, 'exact': a['fn'] in PERCENTILE}},
+                           a['fn']) for a in aggs]
+
+    def resolve(conn, src, facts):
+        """{new side: copied}: copied when its side was copied in the input (measured on the hidden row column while it is there, else as settled before) and
+        the grouping does not go back to one row per row of it."""
+        out = {}
+        for new, (side, fn) in settle.items():
+            before = facts['copied'](conn, src, side)
+            back = exact_key(group_cols, side) and facts['unique'].get(side) is True and (fn is None or fn in SURVIVE_REPEATS)
+            out[new] = before and not back
+        return out
 
     def measure(conn, src, out):
         doubled = [d for a in aggs for d in _double_counted(conn, src, group_cols, a)]
         return {'groups': _count(conn, out), 'double_counted': doubled, 'affected': _count(conn, src),
                 'text': tr('空值不计入；一组里全是空值的，结果为空（计数除外）', 'Empty values are not counted; a group with only empty values has an empty result (except Count)') + (tr(f'。有 {len(doubled)} 项统计把同一行算了不止一次', f'. {len(doubled)} calculations count the same row more than once') if doubled else '')}
-    return {'columns': out_columns, 'select': f'SELECT {", ".join(selects)} FROM {src}{group_by}', 'params': params, 'measure': measure}
+    return {'columns': out_columns, 'select': f'SELECT {", ".join(selects)} FROM {src}{group_by}', 'params': params, 'measure': measure, 'resolve': resolve}
 
 
 def _fanned(agg: dict) -> dict:
