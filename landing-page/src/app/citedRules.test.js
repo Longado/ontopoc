@@ -81,3 +81,20 @@ test("a citation's whole sentence comes with the quoted part marked, by the same
   assert.equal(citeSource({ name: "door-spec.md", where: "paragraph 2" }), "From “door-spec.md”, paragraph 2:");
   setLocale("zh");
 });
+
+test("a half-filled citation holds back every kind of rule, and a type sent back by a definition change does not say the data changed", async () => {
+  const half = { document: "document:abc", passage: "", quote: "x" };
+  for (const rule of [{ column: "金额", check: "gt", value: "0" }, { column: "金额", check: "between", low: "1", high: "2" }, { column: "下单日期", check: "not_before", other: "发货时间" },
+    { column: "fault", check: "not_empty" }, { column: "lock_state", check: "in_codes" }]) {
+    assert.equal(ruleReady(rule), true, rule.check);
+    assert.equal(ruleReady({ ...rule, cite: half }), false, rule.check);
+  }
+  const { stateLine } = await import("./typeModel.js");
+  const item = { state: "needs_look", confirmed_by: "Bob", confirmed_at: null, confirmed_on: { door_events: 1 } };
+  setLocale("en");
+  assert.match(stateLine({ ...item, cause: "data" }, "type"), /data has changed/);
+  assert.doesNotMatch(stateLine({ ...item, cause: "definition" }, "type"), /data/);
+  assert.match(stateLine({ ...item, cause: "definition" }, "type"), /definition/);
+  setLocale("zh");
+  assert.doesNotMatch(stateLine({ ...item, cause: "definition" }, "type"), /数据变了/);
+});

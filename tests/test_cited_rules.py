@@ -9,7 +9,7 @@ of a building's door controller and a specification whose three sentences demand
 - A rule may be "report only": its broken rows are counted and listed (with the quote when cited) but never stop the type from being confirmed and never
   make a question refuse. The default is "must hold", as every rule was before.
 - A conflict finding: two conditional rules on the same column whose conditions can hold together (no column required equal to two values) and whose required
-  values differ. Each finding shows both rules, both quotes and how many rows meet both conditions now, on the type's page and in the review queue. It does
+  values share none (no value meets both). Each finding shows both rules, both quotes and how many rows meet both conditions now, on the type's page and in the review queue. It does
   not block confirming; it is listed until a rule changes or a note "known: asked <who>" is confirmed by a second person."""
 import base64
 import csv
@@ -354,6 +354,13 @@ class CitedDocumentMovesTests(CitedCase):
         self.assertNotIn('quote', self.page()['rules'][0]['cite'])
         self.bob.post('/api/workspace/documents/confirm', {'id': newer['id'], 'version': newer['version']})
         self.assertNotIn('quote', self.page()['rules'][0]['cite'])   # written against the old words: the rule is cited again by saving it
+        self.assertFalse(self.page()['can_confirm'])   # the document stands again, but not with the words the rule quotes
+        from ontology_poc_generator.batch_confirm import _plan
+        from ontology_poc_generator.object_types import element_row
+        conn = self.db()
+        planned = _plan(conn, [element_row(conn, 'objtype:door_event')], None)[0]   # a group's plan does not offer it either
+        self.assertFalse(planned['ready'])
+        self.assertIn('door-spec.md', planned['why_not'])
         self.assertEqual(self.ann.post('/api/workspace/types/update', {**case_type([when('1', cite=self.cite('1'))]), 'id': 'door_event', 'version': self.page()['version']})[0], 200)
         self.assertEqual(self.page()['rules'][0]['cite']['quote'], QUOTES['1'])
         status, body = self.confirm_type()
@@ -405,6 +412,145 @@ class CitedDocumentMovesTests(CitedCase):
         self.assertNotIn('stale', page['rules'][0]['cite'])
 
 
+class RoundFiveTests(CitedCase):
+    """Acceptance's send-back of 3a520845 and the Leader's rulings."""
+
+    def viewer_walk(self, cited: bool) -> dict:
+        """What the viewer is served of a confirmed type with two report-only rules that disagree, the cited document kept for builders (or no citation)."""
+        self.start(builders_only=True)
+        rules = [when(v, cite=self.cite(v) if cited else None, report_only=True, conditions=c) for v, c in
+                 (('1', (('fault', 'power_loss'),)), ('4', (('fault', 'power_loss'), ('mode', 'maintenance'))))]
+        self.assertEqual(self.ann.post('/api/workspace/types', case_type(rules))[0], 200)
+        status, body = self.confirm_type()
+        self.assertEqual(status, 200, body)
+        from tests.test_types_without_rules import blank_times
+        seen = {}
+        for headers in ({}, EN):
+            for path in ('/api/workspace/types/door_event', '/api/workspace/types', '/api/workspace/agent/definitions', '/api/workspace/agent/standing'):
+                seen[f'{path} {headers}'] = self.vera.get(path, headers=headers)
+        return blank_times(json.loads(json.dumps(seen, ensure_ascii=False)))
+
+    def test_the_viewers_payload_is_byte_identical_with_and_without_a_citation_they_may_not_read(self):
+        cited = self.viewer_walk(True)
+        self.doCleanups()
+        plain = self.viewer_walk(False)
+        self.assertEqual(len(cited['/api/workspace/types/door_event {}'][1]['conflicts']), 1)
+        self.assertEqual(json.dumps(cited, ensure_ascii=False, sort_keys=True), json.dumps(plain, ensure_ascii=False, sort_keys=True))
+
+    def test_a_rule_sentence_for_an_agent_writes_no_value_of_a_column_whose_values_are_not_sent(self):
+        self.start()
+        rules = [when('1', report_only=True), {'column': 'mode', 'check': 'not_empty'}, when(one_of=['4', '6'], conditions=(('mode', 'night'),), report_only=True)]
+        self.assertEqual(self.ann.post('/api/workspace/types', case_type(rules))[0], 200)
+        status, body = self.confirm_type()
+        self.assertEqual(status, 200, body)
+        from ontology_poc_generator.agent_access import skill_files
+        def readouts():
+            t = next(t for t in self.ann.get('/api/workspace/agent/definitions')[1]['types'] if t['id'] == 'door_event')
+            text = next(v for v in skill_files(self.db(), None).values() if 'door_event' in v and '## 属性' in v)
+            return t, text
+        t, _ = readouts()
+        self.assertEqual(t['reported_rules'], ['当“fault”是 power_loss 时，“门锁状态”要是 1（只报告）', '当“mode”是 night 时，“门锁状态”要是 4、6 之一（只报告）'])
+        self.assertEqual(self.ann.post('/api/workspace/types/privacy', {'id': 'door_event', 'column': 'fault', 'hide_values': True})[0], 200)
+        self.assertEqual(self.ann.post('/api/workspace/types/privacy', {'id': 'door_event', 'column': 'lock_state', 'hide_values': True})[0], 200)
+        t, text = readouts()
+        self.assertEqual(t['reported_rules'], ['当“fault”是某个固定的值时，“门锁状态”要是某个固定的值（只报告）', '当“mode”是 night 时，“门锁状态”要是一组固定的值之一（只报告）'])
+        self.assertEqual(t['value_rules'], ['“mode”不能为空'])
+        for said in (json.dumps(t, ensure_ascii=False), text):
+            for value in ('power_loss', '4、6', '要是 1'):
+                self.assertNotIn(value, said)
+        t_en = next(t for t in self.ann.get('/api/workspace/agent/definitions', headers=EN)[1]['types'] if t['id'] == 'door_event')
+        self.assertEqual(t_en['reported_rules'], ['When "fault" is a fixed value, "门锁状态" must be a fixed value (report only)', 'When "mode" is night, "门锁状态" must be one of a fixed list (report only)'])
+        self.assertIn('当“fault”是 power_loss 时', json.dumps(self.page(), ensure_ascii=False))   # a person still reads the rule in full
+
+    def test_a_rule_on_a_column_kept_from_a_person_is_not_in_their_agent_readout(self):
+        self.start()
+        self.assertEqual(self.ann.post('/api/workspace/types', case_type([when('1', report_only=True), {'column': 'mode', 'check': 'not_empty'}]))[0], 200)
+        status, body = self.confirm_type()
+        self.assertEqual(status, 200, body)
+        ann_id = next(u['id'] for u in self.admin.get('/api/users')[1]['users'] if u['username'] == 'ann')
+        self.assertEqual(self.admin.post('/api/workspace/column-access', {'type': 'door_event', 'column': 'fault', 'visible_to': [ann_id]})[0], 200)
+        t = next(t for t in self.bob.get('/api/workspace/agent/definitions')[1]['types'] if t['id'] == 'door_event')
+        self.assertNotIn('reported_rules', t)
+        self.assertEqual(t['value_rules'], ['“mode”不能为空'])
+
+    def test_after_a_send_back_and_a_new_confirmation_the_viewers_log_says_only_that_the_definition_changed(self):
+        self.start(builders_only=True)
+        self.assertEqual(self.ann.post('/api/workspace/types', case_type([when('1', cite=self.cite('1'), report_only=True)]))[0], 200)
+        self.assertEqual(self.confirm_type()[0], 200)
+        status, back = self.bob.post('/api/workspace/documents/send-back', {'id': self.doc['id'], 'version': self.doc['version'], 'reason': '版本旧了'})
+        self.assertEqual(status, 200, back)
+        self.assertEqual(self.state(), ('needs_look', '定义改了'))   # the words every change of a definition shows: nothing points to a citation
+        self.assertEqual(self.bob.post('/api/workspace/documents/confirm', {'id': back['id'], 'version': back['version']})[0], 200)
+        self.assertEqual(self.confirm_type()[0], 200)
+        lines = [e for e in self.vera.get('/api/workspace/types/door_event/log')[1]['log'] if e['change'] == 'needs_look']
+        self.assertEqual([e['reason'] for e in lines], ['定义改了'])
+        self.assertIn('door-spec.md', next(e['reason'] for e in self.bob.get('/api/workspace/types/door_event/log')[1]['log'] if e['change'] == 'needs_look'))
+
+    def test_a_removed_document_is_never_named_to_a_viewer(self):
+        self.start()
+        self.assertEqual(self.ann.post('/api/workspace/types', case_type([when('1', cite=self.cite('1'), report_only=True)]))[0], 200)
+        self.assertEqual(self.confirm_type()[0], 200)
+        self.assertEqual(self.bob.post('/api/workspace/documents/remove', {'id': self.doc['id'], 'version': self.doc['version'], 'reason': '作废'})[0], 200)
+        self.assertEqual(self.ann.post('/api/workspace/types/update', {**case_type([when('1', report_only=True)]), 'id': 'door_event', 'version': self.page()['version']})[0], 200)
+        self.assertEqual(self.confirm_type()[0], 200)
+        self.assertNotIn('door-spec', json.dumps(self.vera.get('/api/workspace/types/door_event/log')[1], ensure_ascii=False))
+        self.assertIn('door-spec', json.dumps(self.bob.get('/api/workspace/types/door_event/log')[1], ensure_ascii=False))
+
+    def test_rules_that_differ_only_in_order_are_the_same_rule(self):
+        self.start()
+        for rules in ([when(one_of=['1', '4']), when(one_of=['4', '1'])], [when('1'), when(one_of=['1'])],
+                      [when('1', conditions=(('fault', 'power_loss'), ('mode', 'day'))), when('1', conditions=(('mode', 'day'), ('fault', 'power_loss')))],
+                      [when('1'), when('1', report_only=True)]):
+            status, body = self.ann.post('/api/workspace/types', case_type(rules))
+            self.assertEqual(status, 400, (rules, body))
+            self.assertIn('写了两次', body['error'])
+
+    def test_a_confirmed_note_does_not_come_back_after_a_rule_changes_and_changes_back(self):
+        self.start()
+        self.assertEqual(self.ann.post('/api/workspace/types', case_type(self.power_loss_rules(report_only=True)))[0], 200)
+        key = self.page()['conflicts'][0]['key']
+        self.assertEqual(self.ann.post('/api/workspace/types/conflict-note', {'id': 'door_event', 'key': key, 'asked': '王工'})[0], 200)
+        self.assertEqual(self.bob.post('/api/workspace/types/conflict-note/confirm', {'id': 'door_event', 'key': key})[0], 200)
+        self.assertEqual(len(self.page()['conflicts']), 2)
+        rules = self.power_loss_rules(report_only=True)
+        changed = [when('1', cite=self.cite('1'), report_only=True, conditions=(('fault', 'power_loss'), ('mode', 'day'))), *rules[1:]]
+        for version in (changed, rules):
+            self.assertEqual(self.ann.post('/api/workspace/types/update', {**case_type(version), 'id': 'door_event', 'version': self.page()['version']})[0], 200)
+        back = next(c for c in self.page()['conflicts'] if c['key'] == key)   # the same pair again: listed, with no note
+        self.assertIsNone(back['note'])
+        self.assertEqual(len(self.page()['conflicts']), 3)
+
+    def test_a_viewer_does_not_read_the_writers_sentence_on_a_note(self):
+        self.start()
+        self.assertEqual(self.ann.post('/api/workspace/types', case_type([when('1', report_only=True), when('4', report_only=True, conditions=(('fault', 'power_loss'), ('mode', 'maintenance')))]))[0], 200)
+        self.assertEqual(self.confirm_type()[0], 200)
+        key = self.page()['conflicts'][0]['key']
+        self.assertEqual(self.ann.post('/api/workspace/types/conflict-note', {'id': 'door_event', 'key': key, 'asked': '王工'})[0], 200)
+        note = self.vera.get('/api/workspace/types/door_event')[1]['conflicts'][0]['note']
+        self.assertNotIn('held', note)
+        self.assertFalse(note['may_confirm'])
+        self.assertIn('held', self.page(self.ann)['conflicts'][0]['note'])
+
+    def test_a_report_only_rule_is_never_a_problem_in_the_queue_or_the_list(self):
+        self.start()
+        self.assertEqual(self.ann.post('/api/workspace/types', case_type(self.power_loss_rules(report_only=True)))[0], 200)
+        meanings = next(p for p in self.page()['properties'] if p['column'] == 'lock_state')['meanings']
+        self.assertEqual(self.bob.post('/api/workspace/types/confirm', {'id': 'door_event', 'column': 'lock_state', 'version': meanings['version'], 'seen': meanings['seen']})[0], 200)
+        item = next(i for i in self.bob.get('/api/workspace/queue')[1]['items'] if i['kind'] == 'type')   # read from the kept count: no data row is read
+        self.assertTrue(item['can_confirm'], item)
+        rule_lines = [l for l in item['lines'] if '要是' in l['text']]
+        self.assertEqual(len(rule_lines), 3)
+        self.assertTrue(all(l['ok'] for l in rule_lines), rule_lines)
+        listed = next(t for t in self.bob.get('/api/workspace/types')[1]['types'] if t['id'] == 'door_event')
+        self.assertTrue(listed['can_confirm'])
+
+    def test_the_rules_note_says_a_report_only_rule_does_not_stop_confirming(self):
+        self.start()
+        self.assertEqual(self.ann.post('/api/workspace/types', case_type([when('1', report_only=True)]))[0], 200)
+        self.assertIn('只报告', self.page()['rules_note'])
+        self.assertIn('report only', self.page(headers=EN)['rules_note'])
+
+
 class RoundThreeTests(CitedCase):
     """The doc-answers quote rules shared by citations (one function), the citation's whole sentence with the quote marked, the agent's readout of rules that
     only report, and a type whose rules all only report read as confirmed before its rules are counted."""
@@ -421,7 +567,7 @@ class RoundThreeTests(CitedCase):
         self.assertEqual(c['sentence'][c['mark'][0]:c['mark'][1]], QUOTES['4'])
         self.assertEqual(c['sentence'], 'DS-2 控制器失去供电时，lock_state 应保持为 4，维持掉电前的位置。')
 
-    def test_citations_use_the_doc_answers_quote_check_and_a_repeated_quote_is_refused(self):
+    def test_citations_use_the_doc_answers_quote_check_and_one_quote_may_justify_two_rules(self):
         self.start()
         from unittest import mock
         from ontology_poc_generator import document_answers
@@ -430,10 +576,8 @@ class RoundThreeTests(CitedCase):
         self.assertEqual(status, 400, body)
         self.assertIn('至少要有 4 个字母、汉字或数字', body['error'])
         status, body = self.ann.post('/api/workspace/types', case_type([when('1', cite=self.cite('1')), {'column': 'fault', 'check': 'not_empty', 'cite': self.cite('1')}]))
-        self.assertEqual(status, 400, body)
-        self.assertIn('重复', body['error'])
-        status, body = self.ann.post('/api/workspace/types', case_type([when('1', cite=self.cite('1'))]), headers=EN)
-        self.assertEqual(status, 200, body)
+        self.assertEqual(status, 200, body)   # one requirement sentence may justify two rules (Leader, round 5)
+        self.assertEqual([r['cite']['quote'] for r in self.page()['rules']], [QUOTES['1']] * 2)
 
     def test_the_agent_readout_lists_rules_that_only_report_under_their_own_heading(self):
         self.start()
@@ -537,8 +681,8 @@ class ConflictLogicTests(unittest.TestCase):
         self.assertEqual(self.found(self.rule([('A', 'a')], '1'), self.rule([('A', 'a')], '2')), [(0, 1)])
         self.assertEqual(self.found(self.rule([('A', 'a')], '1'), self.rule([('B', 'b')], '2')), [(0, 1)])   # other columns: both can hold on one row
         self.assertEqual(self.found(self.rule([('A', 'a'), ('B', 'b')], '1'), self.rule([('A', 'a'), ('C', 'c')], '2')), [(0, 1)])
-        self.assertEqual(self.found(self.rule([('A', 'a')], '1'), self.rule([('A', 'a')], one_of=['1', '2'])), [(0, 1)])   # the required values differ
-        self.assertEqual(self.found(self.rule([('A', 'a')], one_of=['2', '1']), self.rule([('A', 'a')], one_of=['1'])), [(0, 1)])
+        self.assertEqual(self.found(self.rule([('A', 'a')], '1'), self.rule([('A', 'a')], one_of=['2', '3'])), [(0, 1)])   # no value meets both
+        self.assertEqual(self.found(self.rule([('A', 'a')], one_of=['2', '1']), self.rule([('A', 'a')], one_of=['3'])), [(0, 1)])
         merged = value_rules.conflicts([self.rule([('A', 'a')], '1'), self.rule([('B', 'b'), ('A', 'a')], '2')])[0][2]
         self.assertEqual(merged, [{'column': 'A', 'equals': 'a'}, {'column': 'B', 'equals': 'b'}])
 
@@ -547,6 +691,8 @@ class ConflictLogicTests(unittest.TestCase):
         self.assertEqual(self.found(self.rule([('A', 'a'), ('B', 'b')], '1'), self.rule([('B', 'c')], '2')), [])
         self.assertEqual(self.found(self.rule([('A', 'a')], '1'), self.rule([('B', 'b')], '1')), [])   # the same value
         self.assertEqual(self.found(self.rule([('A', 'a')], one_of=['1', '2']), self.rule([('A', 'a')], one_of=['2', '1'])), [])   # the same list
+        self.assertEqual(self.found(self.rule([('A', 'a')], '1'), self.rule([('A', 'a')], one_of=['1', '2'])), [])   # one list is narrower: 1 meets both (Leader, round 5)
+        self.assertEqual(self.found(self.rule([('A', 'a')], one_of=['3', '7']), self.rule([('A', 'a')], one_of=['7'])), [])
         self.assertEqual(self.found(self.rule([('A', 'a')], '1'), self.rule([('A', 'a')], '2', column='Y')), [])   # another column
         self.assertEqual(self.found(self.rule([('A', 'a')], '1'), {'column': 'X', 'check': 'not_empty'}), [])   # only conditional rules have a required value
 
