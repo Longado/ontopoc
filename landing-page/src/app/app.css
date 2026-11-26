@@ -2425,3 +2425,5 @@ td .check, .table-wrap label.check { white-space: nowrap; }
 .doc-passages { padding-left: 1.25rem; }
 .doc-passages li { margin-bottom: 0.6rem; }
 .doc-passages li p { margin: 0.15rem 0 0; white-space: pre-wrap; }
+.doc-reason { display: grid; gap: 0.35rem; max-width: 28rem; margin-top: 0.35rem; }
+.doc-removed { padding-left: 1.25rem; }

@@ -16,12 +16,19 @@ export function docFileProblem(file) {
 }
 
 /** One document in the list: its state, a line of what it holds, who put it forward or confirmed it, and who can confirm it while it waits. */
-export function documentLine(d) {
+export function documentLine(d, { mayBuild = false } = {}) {
   const meta = [t("documents.passages", { count: d.passages }), t("documents.version", { version: d.version }), ...(d.builders_only ? [t("documents.buildersOnly")] : [])].join(" · ");
   const by = d.state === "confirmed" && d.confirmed_by ? t("documents.confirmedBy", { by: d.confirmed_by, when: d.confirmed_at ? timeText(d.confirmed_at) : "" }).trim()
     : d.proposed_by ? t("documents.proposedBy", { by: d.proposed_by }) : "";
   const who = d.state === "confirmed" || !d.who_can_confirm ? "" : d.who_can_confirm.length ? t("documents.whoCanConfirm", { names: d.who_can_confirm.join(t("ask.sep")) }) : t("documents.nobodyCanConfirm");
-  return { id: d.id, name: d.name, state: d.state, meta, by, who, held: d.held ?? "", mayConfirm: Boolean(d.may_confirm) && d.state !== "confirmed", href: documentHref(d.id) };
+  return { id: d.id, name: d.name, state: d.state, meta, by, who, held: d.held ?? "", mayConfirm: Boolean(d.may_confirm) && d.state !== "confirmed", href: documentHref(d.id),
+    reason: d.reason ? t("documents.sentBackWhy", { reason: d.reason }) : "",   // sent back: why (a builder's view; a viewer never sees one that waits)
+    maySendBack: mayBuild && d.state === "confirmed", mayRemove: mayBuild };
+}
+
+/** A removed document, as builders see it in the list: its name, who removed it, when and why. The service never sends these to a viewer. */
+export function removedLine(r) {
+  return { name: r.name, text: t("documents.removedBy", { by: r.removed_by ?? "", when: r.removed_at ? timeText(r.removed_at) : "", reason: r.reason }) };
 }
 
 /** An answer from confirmed documents: the service's line ("from the documents, not from the data") and each claim with its quotes and where each comes from.

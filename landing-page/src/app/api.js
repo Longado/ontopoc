@@ -293,6 +293,8 @@ export const getDocuments = () => request("/api/workspace/documents");
 export const getDocument = (id) => request(`/api/workspace/documents/${encodeURIComponent(id)}`);
 export const uploadDocument = (filename, contentBase64, buildersOnly) => send("/api/workspace/documents/upload", { filename, content_base64: contentBase64, builders_only: buildersOnly });
 export const confirmDocument = (id, version) => send("/api/workspace/documents/confirm", { id, version });
+export const sendBackDocument = (id, version, reason) => send("/api/workspace/documents/send-back", { id, version, reason });
+export const removeDocument = (id, version, reason) => send("/api/workspace/documents/remove", { id, version, reason });
 
 /** A file's bytes as base64, which is how the service takes them. */
 export async function fileToBase64(file) {
