@@ -133,7 +133,7 @@ function DocumentAnswer({ record }) {
       {notes.length > 0 && <p className="warn">{staleHeading(record)} {notes.join(" ")}</p>}
       <p className="criteria">{view.line}</p>
       <ul className="doc-claims">
-        {view.quotes.map((q) => <li key={q.key}><blockquote><p>{q.quote}</p><footer className="muted small"><a href={q.href}>{q.source}</a></footer></blockquote></li>)}
+        {view.quotes.map((q) => <li key={q.key}><blockquote><p>{q.parts[0]}<mark>{q.parts[1]}</mark>{q.parts[2]}</p><footer className="muted small"><a href={q.href}>{q.source}</a></footer></blockquote></li>)}
       </ul>
     </div>
   );

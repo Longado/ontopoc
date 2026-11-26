@@ -39,8 +39,15 @@ export function answerFromDocuments(record) {
   if (record?.status !== "from_documents" || !Array.isArray(record.documents?.quotes)) return null;
   return {
     line: record.documents.line,
-    quotes: record.documents.quotes.map((q, i) => ({ key: `q-${i}`, quote: q.quote, source: t("ask.documents.source", { name: q.document, where: q.where }), href: documentHref(q.document_id) })),
+    quotes: record.documents.quotes.map((q, i) => ({ key: `q-${i}`, quote: q.quote, parts: sentenceParts(q), source: t("ask.documents.source", { name: q.document, where: q.where }), href: documentHref(q.document_id) })),
   };
+}
+
+/** [before, the quoted part, after] of the sentence that holds a quote; the quote alone when no sentence came with it. */
+function sentenceParts(q) {
+  const [from, to] = Array.isArray(q.mark) ? q.mark : [];
+  if (typeof q.sentence !== "string" || !(from >= 0 && to <= q.sentence.length && from < to)) return ["", q.quote, ""];
+  return [q.sentence.slice(0, from), q.sentence.slice(from, to), q.sentence.slice(to)];
 }
 
 const grouped = (n) => Number(n).toLocaleString("en-US");
