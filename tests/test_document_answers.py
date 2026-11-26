@@ -174,7 +174,7 @@ class Answers(DocumentCase):
             self.assertEqual(body['documents']['line'], line)
             self.assertEqual(set(body['documents']), {'line', 'quotes'})   # the documents' own words and where they are, nothing else
             [quote] = body['documents']['quotes']
-            self.assertEqual(set(quote), {'passage', 'quote', 'sentence', 'mark', 'document', 'document_id', 'version', 'where'})
+            self.assertEqual(set(quote), {'passage', 'quote', 'sentence', 'document', 'document_id', 'version', 'where'})
             for kept in (json.dumps(body, ensure_ascii=False), json.dumps(which.kept(self.demo.folder, body['id']), ensure_ascii=False)):
                 self.assertNotIn('违约方不需要', kept)   # the model's prose is never shown, returned or kept
             self.assertEqual((quote['quote'], quote['document'], quote['document_id'], quote['version']), (self.QUOTE, '供货合同.md', document['id'], document['version']))   # the version confirmed
@@ -650,12 +650,11 @@ class Round4(DocumentCase):
         body, _ = self.ask(self.guest, '拒绝交货', reply_for=quoting('以任何理由拒绝交货'))
         self.assertEqual(body['status'], 'from_documents', body)
         [q] = body['documents']['quotes']
-        self.assertEqual(q['sentence'], '供方不得以任何理由拒绝交货。')   # the negation stays in sight
-        self.assertEqual(q['sentence'][q['mark'][0]:q['mark'][1]], '以任何理由拒绝交货')
+        self.assertEqual(q['sentence'], {'before': '供方不得', 'quote': '以任何理由拒绝交货', 'after': '。'})   # the negation stays in sight
         self.assertIn('供方不得以任何理由拒绝交货。', json.dumps(which.kept(self.demo.folder, body['id']), ensure_ascii=False))
         body, _ = self.ask(self.guest, '拒绝交货', reply_for=quoting('理由拒绝交货。不可抗力'))   # across a sentence end: both sentences
         [q] = body['documents']['quotes']
-        self.assertEqual(q['sentence'], '供方不得以任何理由拒绝交货。不可抗力的情形除外！')
+        self.assertEqual(''.join(q['sentence'].values()), '供方不得以任何理由拒绝交货。不可抗力的情形除外！')
 
     def test_a_document_made_builders_only_during_the_question_answers_a_guest_as_words_no_document_has_and_names_no_raw_state(self):
         drop = lambda body: {k: v for k, v in body.items() if k not in ('id', 'asked_at', 'question')}
@@ -693,6 +692,69 @@ class Round4(DocumentCase):
         order = [(p['document'], p['id'].split('-')[1]) for p in request['documents']]
         expected = [(n, f'p{k}') for n in sorted(names, key=lambda n: hashlib.sha256(n.encode()).hexdigest()[:16]) for k in (2, 3)][:5]
         self.assertEqual(order, expected)
+
+
+class Round5(DocumentCase):
+    QUOTE = Answers.QUOTE
+
+    def no_mark(self, who, body):
+        Round4.no_mark(self, who, body)
+
+    def test_a_query_the_engine_cannot_run_shows_no_sentence_of_the_models_once_it_was_given_passages(self):
+        self.put()
+        for reply in ({'reasoning': MARK, 'query': 'SELECT ZZMARK'}, {'reasoning': MARK, 'query': {'start': 'MARKtype', 'where': [], 'via': [], 'group_by': None, 'share': None, 'measure': None}}):
+            body, [request] = self.ask(self.guest, '逾期交货怎么罚？', reply=reply)
+            self.assertIn('documents', request)
+            self.assertNotIn(body['status'], ('answered', 'no_data', 'from_documents'))
+            self.no_mark(self.guest, body)
+        with mock.patch('ontology_poc_generator.document_answers.fts5_available', lambda: False):   # without passages: main's behaviour, the model's sentence as before
+            body, [request] = self.ask(self.guest, '逾期交货怎么罚？', reply={'reasoning': MARK, 'query': 'SELECT ZZMARK'})
+        self.assertNotIn('documents', request)
+        self.assertIn('MARK', json.dumps(body, ensure_ascii=False))
+
+    def test_the_sentence_is_three_strings_whatever_lies_before_the_quote(self):
+        self.put('# 表情\n\n😀𝄞表情 之后的报价条款有效。\n', '表情.md')
+        body, _ = self.ask(self.guest, '报价条款', reply_for=quoting('之后的报价条款有效'))
+        [q] = body['documents']['quotes']
+        self.assertEqual(q['sentence'], {'before': '😀𝄞表情 ', 'quote': '之后的报价条款有效', 'after': '。'})
+        self.assertNotIn('mark', q)
+
+    def test_a_quote_that_starts_with_a_space_keeps_its_sentence(self):
+        self.put('# 甲\n\n第一句结束。 第二句的条款有效。\n', '甲.md')
+        body, _ = self.ask(self.guest, '条款有效', reply_for=quoting(' 第二句的条款'))
+        [q] = body['documents']['quotes']
+        self.assertEqual(q['sentence']['quote'], ' 第二句的条款')
+        self.assertEqual(q['sentence']['after'], '有效。')
+
+    def test_a_proviso_after_a_semicolon_stays_in_the_sentence(self):
+        self.put('# 第七条\n\n第七条 违约金按日计算；但因需方原因造成的除外。另起一句。\n\nPenalties accrue daily; except where the buyer caused the delay. Next.\n', '第七条.md')
+        body, _ = self.ask(self.guest, '违约金按日计算', reply_for=quoting('违约金按日计算'))
+        [q] = body['documents']['quotes']
+        self.assertEqual(''.join(q['sentence'].values()), '第七条 违约金按日计算；但因需方原因造成的除外。')
+        body, _ = self.ask(self.guest, 'penalties accrue daily', reply_for=quoting('Penalties accrue daily'))
+        [q] = body['documents']['quotes']
+        self.assertIn('except where the buyer caused the delay', q['sentence']['after'])
+
+    def test_only_decimal_digits_and_letters_count_and_overlapping_quotes_are_refused(self):
+        self.put('# 符号\n\n编号½①Ⅳ，条款有效期为三年，期满续签。\n', '符号.md')
+        body, _ = self.ask(self.admin, '条款有效期', reply_for=quoting('½①Ⅳ，'))
+        self.assertEqual((body['status'], body['refusal']['kind']), ('refused', 'document_check'), body)
+        def overlapping(request):
+            p = next(p for p in request['documents'] if '三年' in p['text'])
+            return {**NO_QUERY, 'document_answer': {'quotes': [{'passage': p['id'], 'quote': q} for q in ('条款有效期为三年', '有效期为三年', '期为三年，期满')]}}
+        body, _ = self.ask(self.admin, '条款有效期', reply_for=overlapping)
+        self.assertEqual((body['status'], body['refusal']['kind']), ('refused', 'document_check'), body)
+
+    def test_a_document_out_of_reach_in_flight_drops_the_models_reasoning(self):
+        document = self.put()
+        def hidden_meanwhile(request):
+            reply = quoting(self.QUOTE, reasoning=MARK)(request)
+            status, again = upload(self.admin, builders_only=True)
+            assert status == 200, again
+            return reply
+        body, _ = self.ask(self.guest, '逾期交货怎么罚？', reply_for=hidden_meanwhile)
+        self.assertNotEqual(body['status'], 'from_documents')
+        self.no_mark(self.guest, body)
 
 
 if __name__ == '__main__':

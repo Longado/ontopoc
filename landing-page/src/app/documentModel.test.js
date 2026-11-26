@@ -93,8 +93,10 @@ test("a confirmed document may be sent back or removed by a builder; a sent-back
 
 test("each quote is shown in the whole sentence that holds it, the quoted part marked, so nothing around it is out of sight", () => {
   setLocale("zh");
-  const view = answerFromDocuments({ status: "from_documents", documents: { line: "x", quotes: [{ passage: "1-p2", quote: "以任何理由拒绝交货", sentence: "供方不得以任何理由拒绝交货。", mark: [4, 13], document: "第七条.md", document_id: "document:abc", version: 2, where: "第 2 段" }] } });
+  const view = answerFromDocuments({ status: "from_documents", documents: { line: "x", quotes: [{ passage: "1-p2", quote: "以任何理由拒绝交货", sentence: { before: "供方不得", quote: "以任何理由拒绝交货", after: "。" }, document: "第七条.md", document_id: "document:abc", version: 2, where: "第 2 段" }] } });
   assert.deepEqual(view.quotes[0].parts, ["供方不得", "以任何理由拒绝交货", "。"]);
+  const astral = answerFromDocuments({ status: "from_documents", documents: { line: "x", quotes: [{ quote: "之后的报价条款有效", sentence: { before: "😀𝄞表情 ", quote: "之后的报价条款有效", after: "。" }, document: "a.md", document_id: "document:a", where: "p" }] } });
+  assert.deepEqual(astral.quotes[0].parts, ["😀𝄞表情 ", "之后的报价条款有效", "。"]);   // strings, not offsets: nothing to miscount before an emoji
   const old = answerFromDocuments({ status: "from_documents", documents: { line: "x", quotes: [{ quote: "支付违约金", document: "a.md", document_id: "document:a", where: "p" }] } });
   assert.deepEqual(old.quotes[0].parts, ["", "支付违约金", ""]);   // a kept answer from before sentences were kept: the quote alone, marked
 });
