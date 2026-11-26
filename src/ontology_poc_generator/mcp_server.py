@@ -543,7 +543,7 @@ def _lean(body: dict, keys: tuple, narrow: str = 'ORDER BY 那个数 DESC LIMIT 
 
 def ask(s, a):
     body = s.request('/api/workspace/ask', {'question': _text(a.get('question'), 'question')})
-    out = _lean(body, ('id', 'question', 'status', 'answer', 'beside', 'path', 'reason', 'refusal', 'query_text', 'definitions', 'datasets', 'limited_by_rule', 'today'),
+    out = _lean(body, ('id', 'question', 'status', 'answer', 'beside', 'path', 'reason', 'refusal', 'query_text', 'definitions', 'datasets', 'limited_by_rule', 'today', 'draft'),
                 '把 query_text 加上 ORDER BY 那个数 DESC LIMIT n 或 WHERE，用 ontopoc_query 再跑（不调用模型）')
     if body.get('status') in ('answered', 'no_data') and re.search(r'\bWHERE\b', str(body.get('query_text') or ''), re.I):   # the number is the model's reading, not a confirmed view: say so, not "valid orders"
         where = re.split(r'\bWHERE\b', str(body['query_text']), maxsplit=1, flags=re.I)[1]
@@ -715,6 +715,8 @@ TOOLS = [
           '问“哪些”时 answer 是对象列表：answer.total 是令牌主人能看到的全部符合的个数，answer.objects 有 columns（代码列带确认过的 meanings）和这一页的 rows（按主键排，一页最多 50 个）；'
           '问某一个编号的对象（例如 订单 DD20260004 的状态）时 answer.lookup 是那个主键，answer.objects 里是它能看的属性，看不到的和不存在的编号回答一样，都是 no_data。'
           '后面的页用 ontopoc_query 跑 query_text 并给 page。条件里用了 today 时，today 字段说用的是哪一天。'
+          '问的是要改数据（例如 把订单 DD20260004 标成已交付）且令牌主人有能提交的已确认行为时，status 是 draft：draft 是一份行为草稿（action、object、key、values、reason、current 是对象现在的值），'
+          '这一问什么都没有写；draft.submit 原样就是 POST /api/workspace/actions/submit 的内容，要由人自己提交（要有写权限的令牌），再由另一位建设者批准。没有行为能做这个改动时 refusal.kind 是 no_action，列出能提交的行为。'
           '会调用模型，慢且花钱；每问一次都记进问答历史、算一次提问，不要为了重试再问。',
           {'question': {'type': 'string', 'maxLength': 300, 'description': '要问的业务问题'}}, ('question',)),
     _tool(ontopoc_query, '用本体查询（OntoPoc Query，像 SQL）直接算一个数：代码按令牌主人能看的行和已确认的定义算，不调用模型，快，结果和 ask 一样带 definitions 和 limited_by_rule；没有条件时还带 beside（这个类型上每个已确认视图各自的数）。'

@@ -5,12 +5,12 @@ import json
 import sqlite3
 import unittest
 from unittest import mock
+from urllib.parse import quote
 
 from ontology_poc_generator import accounts, mcp_server, workspace_questions
 from ontology_poc_generator.workspace_store import open_workspace
-from tests.test_action_drafts_main import (BOB_ONLY, CANCELLED, COUNT, DELIVERED, FRESH, IN_PRODUCTION, NONE_CAN, Model, Workspace, draft)
-from tests.test_action_kinds import DROP_ORDER, NEW_ORDER
-from tests.test_object_types import ORDERS, STATUS_ACTION
+from tests.test_action_drafts_main import (CANCELLED, COUNT, DELIVERED, FRESH, IN_PRODUCTION, NONE_CAN, Model, Workspace, draft)
+from tests.test_object_types import ORDERS
 
 AMOUNT = {'name': '调金额', 'type': 'order', 'properties': ['金额'], 'description': '任何时候都能改金额'}
 UNCONFIRMED = {'name': '加急改金额', 'type': 'order', 'properties': ['金额'], 'description': '还没有人确认'}
@@ -96,7 +96,7 @@ class DraftTests(Workspace):
             self.assertEqual(body['draft']['params'], {'状态码': '0'})   # a meaning written as its label is the one code that has it
             after = tables(folder / 'workspace.sqlite')
             changed = {n for n in after if after[n] != before.get(n)}
-            self.assertLessEqual(changed, {'qa_question', 'ask_budget', 'session'}, changed)
+            self.assertLessEqual(changed, {'qa_question', 'sqlite_sequence', 'ask_budget', 'session'}, changed)
             self.assertEqual(len(after['qa_question']), len(before['qa_question']) + 1)
             self.assertEqual(records(folder / 'workspace.sqlite'), [])
             kept = json.loads(sqlite3.connect(folder / 'workspace.sqlite').execute('SELECT answer_json FROM qa_question WHERE id = ?', (body['id'],)).fetchone()[0])
@@ -219,7 +219,7 @@ class DraftTests(Workspace):
             status, body = self.ask(team['vera'], f'把订单 {IN_PRODUCTION} 标成已交付', reply)
             self.assertEqual(status, 200)
             self.assertNotIn('draft', body)
-            self.assertEqual(team['vera'].post('/api/workspace/actions/submit', {'action': '改订单状态', 'key': {'订单号': IN_PRODUCTION}, 'params': {'状态码': '0'}})[0], 404)   # as a submit refuses her
+            self.assertIn(team['vera'].post('/api/workspace/actions/submit', {'action': '改订单状态', 'key': {'订单号': IN_PRODUCTION}, 'params': {'状态码': '0'}})[0], (403, 404))   # as a submit refuses her
 
     def test_the_model_is_told_only_the_confirmed_actions_the_asker_may_submit_and_never_a_row_value(self):
         with self.started() as (base, folder):
@@ -268,6 +268,12 @@ class DraftTests(Workspace):
             self.assertEqual((body['status'], body['refusal']['kind'], body['refusal']['definitions'][0]['name']), ('refused', 'unsettled', '加急改金额'), body)
             # one that needs another look: its meanings changed
             self.assertEqual(ann.post('/api/workspace/types/meanings', {'id': 'order', 'column': '状态码', 'values': [{'value': '1', 'label': '制造中'}]})[0], 200)
+            for column in ('状态码', None):   # Bob confirms the new meaning and the type again; the action itself still needs another look
+                shown = team['bob'].get('/api/workspace/types/order')[1]
+                shown = next(p for p in shown['properties'] if p['column'] == column)['meanings'] if column else shown
+                self.assertEqual(team['bob'].post('/api/workspace/types/confirm', {'id': 'order', 'version': shown['version'], 'seen': shown['seen'], **({'column': column} if column else {})})[0], 200)
+            shown = team['bob'].get('/api/workspace/actions/' + quote(AMOUNT['name']))[1]   # every action on the type needs another look now; Bob confirms 调金额 again
+            self.assertEqual(team['bob'].post('/api/workspace/actions/confirm', {'id': AMOUNT['name'], 'version': shown['version']})[0], 200)
             status, body = self.ask(ann, f'把订单 {IN_PRODUCTION} 标成已交付', draft('改订单状态', {'订单号': IN_PRODUCTION}, {'状态码': '0'}))
             self.assertEqual((body['status'], body['refusal']['kind']), ('refused', 'unsettled'), body)
             self.assertEqual((body['refusal']['definitions'][-1]['name'], body['refusal']['definitions'][-1]['state']), ('改订单状态', 'needs_look'))

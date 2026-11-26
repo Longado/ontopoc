@@ -14,6 +14,8 @@ import { timeText } from "./format.js";
 import { answerView, besideView, criteriaLine, dataAsOf, definitionHref, historyView, namedLines, isAnswer, isThenAnswer, objectsView, paramsIn, queryExample, queryParams, queryRecord, rangeNotes, readText, refusalBranch, staleHeading, staleLines, standingText, timeWarning, todayNote } from "./qaModel.js";
 import { groupByDay, isThinking, newTurn, savedTurn, sendsOn, settle, suggestions, threadTitle } from "./chatModel.js";
 import { ObjectGraph } from "./ObjectGraph.jsx";
+import { RunAction } from "./TypeActions.jsx";
+import { draftView, isDraft } from "./draftModel.js";
 import { State } from "./TypesPage.jsx";
 import { formatDate, useT } from "./i18n/index.js";
 import { hrefFor } from "./routeModel.js";
@@ -21,7 +23,7 @@ import { Icon } from "./ui/Icon.jsx";
 import { useLoad } from "./useLoad.js";
 
 const MODEL_KINDS = ["model", "pipeline", "meanings"];   // the turn kinds that call the model and answer with a card
-const KIND = { type: "ask.kind.type", meaning: "ask.kind.meaning", relation: "ask.kind.relation", view: "ask.kind.view", derived: "ask.kind.derived" };
+const KIND = { type: "ask.kind.type", meaning: "ask.kind.meaning", relation: "ask.kind.relation", view: "ask.kind.view", derived: "ask.kind.derived", action: "ask.kind.action" };
 
 /** The definitions a refusal names, bottom of the chain first: what it is, where it stands and why, who could confirm it. */
 function Named({ list, mayBuild }) {
@@ -118,6 +120,31 @@ export function Answer({ record }) {
       )}
       {rangeNotes(record).map((n) => <p className="warn" key={n}>{n}</p>)}
       {notes.length > 0 && <p className="warn">{then ? notes.join(t("ask.stale.sep")) : t("ask.stale.withHeading", { heading: staleHeading(record), notes: notes.join(t("ask.stale.sep")) })}</p>}
+    </div>
+  );
+}
+
+/** A drafted action (action_drafts.py): the object's values now beside the values asked for, and the action's own form, prefilled. Nothing is submitted until the
+ * person presses Submit there; the record then waits for another builder, as any submit does. */
+function DraftCard({ record }) {
+  const t = useT();
+  const view = draftView(record);
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="answer draft">
+      <h2 className="section"><Icon name="info" size={16} />{view.title}</h2>
+      <p className="muted">{record.draft.action.says}</p>
+      {view.rows.length > 0 && (
+        <div className="table-wrap">
+          <table>
+            <thead><tr><th>{t("ask.actionDraft.property")}</th><th>{t("ask.actionDraft.current")}</th><th>{t("ask.actionDraft.asked")}</th></tr></thead>
+            <tbody>{view.rows.map((r) => <tr key={r.key}><td>{r.name}</td><td>{r.current}</td><td>{r.asked}</td></tr>)}</tbody>
+          </table>
+        </div>
+      )}
+      <p className="warn">{view.note}</p>
+      {open ? <RunAction action={view.form.action} objectKey={view.form.objectKey} objectText={view.form.objectText} prefill={view.form} onCancel={() => setOpen(false)} />
+        : <button className="primary" onClick={() => setOpen(true)}>{t("ask.actionDraft.open")}</button>}
     </div>
   );
 }
@@ -255,7 +282,7 @@ function AnswerCardBody({ record, mayBuild, onEdit }) {
     <section className="qa-card">
       {record.withheld ? <p className="warn">{record.reason}</p> : (
         <>
-          {isAnswer(record) ? <Answer record={record} /> : <Refusal record={record} mayBuild={mayBuild} />}
+          {isDraft(record) ? <DraftCard record={record} /> : isAnswer(record) ? <Answer record={record} /> : <Refusal record={record} mayBuild={mayBuild} />}
           {warning && <p className="time-warn" role="alert">{warning}</p>}
           {line && <p className="criteria">{line}</p>}
           <details className="basis">
@@ -357,7 +384,7 @@ function TurnView({ turn, mayBuild, admin, onEdit, followUps, onAsk, busy, last,
     );
   }
   const r = turn.record;
-  const unanswered = r && (!isAnswer(r) || r.status === "no_data");
+  const unanswered = r && !isDraft(r) && (!isAnswer(r) || r.status === "no_data");
   return (
     <>
       <UserBubble text={turn.text} query={turn.kind === "query"} />

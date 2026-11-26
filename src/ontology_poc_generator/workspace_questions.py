@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 import json
 import re
 
-from ontology_poc_generator import other_names
+from ontology_poc_generator import action_drafts, other_names
 from ontology_poc_generator.answer_checks import _use, _uses, choose_rows, column_values, definition_catalog, definition_check, meaning_id, picks_objects, refusal
 from ontology_poc_generator.derived_properties import derived_id, derived_visible, describe as describe_derived, evaluate as evaluate_derived, row_values, text_of
 from ontology_poc_generator.named_views import name_views
@@ -157,6 +157,8 @@ def _kind_and_name(conn, row: dict, types: dict | None = None) -> tuple[str, str
     if element_id.startswith(DERIVED_PREFIX):
         owner = types[content['type']]['content']['name'] if types and content['type'] in types else _content(element_row(conn, type_id(content['type'])))['name']
         return 'derived', f'{owner}.{content["name"]}'
+    if element_id.startswith('objaction:'):   # an action a draft names (action_drafts)
+        return 'action', content['name']
     return ('type' if element_id.startswith(TYPE_PREFIX) else 'view' if element_id.startswith(VIEW_PREFIX) else 'relation'), content['name']
 
 
@@ -365,7 +367,8 @@ def _refused_unsettled(blockers: list[dict]) -> dict:
 
 
 def _kind_word(kind: str) -> str:
-    return {'type': tr('对象类型', 'Object type'), 'relation': tr('关系', 'Relation'), 'meaning': tr('含义', 'Meaning'), 'view': tr('视图', 'View'), 'derived': tr('派生属性', 'Derived property')}[kind]
+    return {'type': tr('对象类型', 'Object type'), 'relation': tr('关系', 'Relation'), 'meaning': tr('含义', 'Meaning'), 'view': tr('视图', 'View'), 'derived': tr('派生属性', 'Derived property'),
+            'action': tr('行为', 'Action')}[kind]
 
 
 # --- what the engine reads ----------------------------------------------------------------------------------------------------------------------------
@@ -1065,10 +1068,13 @@ def _beside(sc: dict, parts: dict, answer, item: dict, asked: str, applied: list
     return {'views': lines, 'more': others[BESIDE_LIMIT:]} if lines else None
 
 
-def _answered(conn, gateway, user: dict | None, question: str, sc: dict) -> dict:
+def _answered(conn, gateway, user: dict | None, question: str, sc: dict, actions: list | None = None) -> dict:
+    """`actions`: the confirmed actions this person may submit, as the model is told them (action_drafts.told); none, and the question is asked as it was."""
     parts = _inputs(conn, sc, question)
     ontology = parts['ontology']
     catalog, definitions = _catalog_for_model(conn, sc, parts)
+    if actions:
+        catalog = {**catalog, 'actions': actions}
     relations = _checked_relations(conn, sc, parts)
     answer = _engine(sc, parts, relations, conn)
     spoken = {}   # what the model said the question asks of a relation, kept for the definitions an answer from the relation check stands on
@@ -1077,13 +1083,16 @@ def _answered(conn, gateway, user: dict | None, question: str, sc: dict) -> dict
         spoken['spec'] = spec
         return unmatched_answer({**ontology, 'relations': [{'key': k, 'from': r['content']['from'], 'to': r['content']['to']} for k, r in sc['relations'].items()]}, relations, spec)   # also a relation a query cannot walk (its one side is keyed on more than the joined column): the relation check counts it all the same
     answer.unmatched = unmatched
-    asked = ask_questions(ontology, parts['bundle'], gateway, question, answerer=answer, definitions=definitions, catalog=catalog,
-                          more=(ROWS_PROMPT_VERSION, ROWS_PROMPT) if ROW_ANSWERS else None)
+    more = (ROWS_PROMPT_VERSION, ROWS_PROMPT) if ROW_ANSWERS else None
+    asked = ask_questions(ontology, parts['bundle'], gateway, question, answerer=action_drafts.answering(conn, user, sc, question, answer) if actions else answer,
+                          definitions=definitions, catalog=catalog, more=action_drafts.prompt(more) if actions else more)
     if asked.get('request_failed'):   # the model could not be reached: nothing was answered
         raise QaRefused(asked['error'], 502)
     if asked['error'] or not asked['items']:   # it replied, but with no query for this question: kept as unanswered, said in the reader's words
         item = {'question': question, 'reasoning': '', 'query': None, 'status': 'no_query', 'reason': _no_query_reason(sc)}
         return {**_finish(conn, user, sc, parts, item, []), 'model': asked['model']}
+    if asked['items'][0].get(action_drafts.MARK):   # a draft of an action, or why there is none
+        return {**action_drafts.finish(asked['items'][0]), 'model': asked['model']}
     return {**_finish(conn, user, sc, parts, asked['items'][0], answer.applied, spoken.get('spec'), beside=(answer, question)), 'model': asked['model'],
             **({'ran': answer.ran()} if ROW_ANSWERS else {})}
 
@@ -1452,7 +1461,8 @@ def ask(conn, gateway, user: dict | None, question, writes='json', keep: bool = 
         raise QaRefused(tr('writes 只能是 "json"（模型写结构化查询，默认）或 "query"（模型写本体查询）', 'writes must be "json" (the model writes a structured query, the default) or "query" (the model writes an ontology query)'))
     question = _clean_question(question)
     sc = scope(conn, user)
-    blockers = _blockers(conn, user, question)
+    actions = action_drafts.told(conn, user, sc) if writes == 'json' else []   # the confirmed actions this person may submit: none, and asking is as it was
+    blockers = _blockers(conn, user, question) or (action_drafts.blockers(conn, user, question) if actions else [])
     if blockers:
         result = {**_refused_unsettled(blockers), 'definitions': [], 'types': [], 'datasets': {}, 'steps': [{'name': tr('核对定义', 'Check definitions'), 'text': tr('问题里提到的定义还没有确认，没有去问模型', 'A definition the question mentions is not confirmed, so the model was not asked'), 'failed': True}]}
     elif not sc['types']:
@@ -1472,7 +1482,7 @@ def ask(conn, gateway, user: dict | None, question, writes='json', keep: bool = 
         if writes == 'query':
             result = _answered_in_text(conn, gateway, user, question, sc)
         else:
-            result = _answered(conn, gateway, user, question, sc)
+            result = _answered(conn, gateway, user, question, sc, actions)
             ran = result.pop('ran', None)   # with ROW_ANSWERS: the query that was run (a list or lookup let be beside a number is not in it), not what the model wrote
             text = _query_text_of(sc, ran if ran is not None else result.get('query'), today='today' in result) if result['status'] in ('answered', 'no_data') else None
             if text:   # the question as a query a person can read, check and edit (docs/QUERY.md)
@@ -1490,7 +1500,9 @@ def ask(conn, gateway, user: dict | None, question, writes='json', keep: bool = 
 
 def _without_rows(result: dict) -> dict:
     """An answer as it is kept: a list or a lookup keeps its columns and how it was paged, never its rows (reopened, it is worked out again for the person
-    reopening it, under what they may see then). Any other answer as it is."""
+    reopening it, under what they may see then). A draft of an action keeps no value of the object (action_drafts.kept). Any other answer as it is."""
+    if isinstance(result.get('draft'), dict):
+        return action_drafts.kept(result)
     answer = result.get('answer')
     if not isinstance(answer, dict) or not isinstance(answer.get('objects'), dict):
         return result
@@ -1660,6 +1672,8 @@ def reopen(conn, user: dict | None, question_id: int, page=None) -> dict:
         if user is not None and user['role'] == 'viewer':
             fresh = _strip_rows(fresh)
         record = {**{k: v for k, v in record.items() if k not in AGAIN_KEYS}, **{k: fresh[k] for k in AGAIN_KEYS if k in fresh}, 'again': True}
+    if isinstance(record.get('draft'), dict):   # a draft kept no value of the object: checked again, on the object as it is now
+        record = action_drafts.again(conn, user, record, question)
     if isinstance(record.get('beside'), dict):   # what was beside it, as a fresh answer would name it: only views still confirmed and still this person's to see
         standing = lambda element_id: (row := element_row(conn, element_id)) is not None and row['state'] == 'confirmed' and _may_see(conn, user, element_id)
         views = [v for v in record['beside']['views'] if v.get('all_rows') or standing(v['id'])]
