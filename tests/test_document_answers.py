@@ -100,7 +100,7 @@ class UploadAndConfirm(DocumentCase):
         answered, _ = self.ask(self.admin, '逾期交货怎么罚？', reply_for=quoting('每逾期一日，按逾期部分货款的0.5%支付违约金'))
         self.assertEqual(answered['status'], 'from_documents', answered)
         status, again = upload(self.builder, CONTRACT.replace('0.5%', '1%'))   # Demo builder, who confirmed it, changes it
-        self.assertEqual((status, again['state'], again['version']), (200, 'checked', first['version'] + 2))
+        self.assertEqual((status, again['state'], again['version']), (200, 'checked', first['version'] + 1))   # `first` is as confirmed
         body, requests = self.ask(self.admin, '逾期交货怎么罚？')
         self.assertNotIn('documents', requests[0])   # waiting again: not searched, not sent
         self.assertNotEqual(body['status'], 'from_documents')
@@ -151,7 +151,7 @@ class Answers(DocumentCase):
             [claim] = body['documents']['claims']
             self.assertEqual(claim['text'], '逾期交货每逾期一日按逾期部分货款的0.5%支付违约金')
             [quote] = claim['quotes']
-            self.assertEqual((quote['quote'], quote['document'], quote['document_id'], quote['version']), (self.QUOTE, '供货合同.md', document['id'], document['version'] + 1))
+            self.assertEqual((quote['quote'], quote['document'], quote['document_id'], quote['version']), (self.QUOTE, '供货合同.md', document['id'], document['version']))   # the version confirmed
             self.assertTrue(quote['where'])
             self.assertNotIn('answer', body)   # never a number from the data
             self.assertEqual((body['types'], body['datasets']), ([], {}))
