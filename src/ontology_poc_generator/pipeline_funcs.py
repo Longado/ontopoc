@@ -184,12 +184,26 @@ def _replace(value, find, with_):
     return None if value is None else str(value).replace(find, with_)
 
 
+def extract_part(value, separator, part):
+    """One part of a text split on a separator taken exactly as written (str.split, never a pattern): `part` counts from 1, and -1 is the last part. None when the
+    value is empty, holds no separator, or has fewer parts than asked; nothing is guessed (pipeline_ops._extract counts each of these rows)."""
+    if value is None or not separator:
+        return None
+    text = number_text(value) if isinstance(value, (int, float)) else str(value)
+    if separator not in text:
+        return None
+    pieces = text.split(separator)
+    if part == -1:
+        return pieces[-1]
+    return pieces[part - 1] if 1 <= part <= len(pieces) else None
+
+
 def register(conn) -> None:
     """Make the functions known to this connection (a read-only one included: they change nothing)."""
     for name, args, fn in (('pl_bool', 1, to_bool), ('pl_text', 1, number_text), ('pl_to_decimal', 2, to_decimal), ('pl_to_integer', 2, to_integer),
                            ('pl_to_boolean', 1, to_bool), ('pl_to_date', 2, to_date), ('pl_to_datetime', 2, to_datetime),
                            ('pl_trim', 1, lambda v: None if v is None else str(v).strip()), ('pl_ws', 1, _clean_whitespace),
                            ('pl_upper', 1, lambda v: None if v is None else str(v).upper()), ('pl_lower', 1, lambda v: None if v is None else str(v).lower()),
-                           ('pl_replace', 3, _replace)):
+                           ('pl_replace', 3, _replace), ('pl_part', 3, extract_part)):
         conn.create_function(name, args, fn, deterministic=True)
     conn.create_aggregate('pl_pct', 2, Percentile)
