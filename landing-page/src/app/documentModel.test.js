@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { setLocale } from "./i18n/index.js";
-import { DOC_ACCEPT, answerFromDocuments, docFileProblem, documentHref, documentLine, limitsText } from "./documentModel.js";
+import { DOC_ACCEPT, answerFromDocuments, docFileProblem, documentHref, documentLine, limitsText, removedLine } from "./documentModel.js";
 import { definitionHref, isAnswer, statusText } from "./qaModel.js";
 
 const QUOTE = "每逾期一日，按逾期部分货款的0.5%支付违约金";
@@ -66,4 +66,20 @@ test("the limits are said in both languages", () => {
   setLocale("en");
   assert.match(limitsText(limits), /200,000 characters/);
   assert.match(limitsText(limits), /50 documents/);
+});
+
+test("a confirmed document may be sent back or removed by a builder; a sent-back one shows why, a removed one who removed it and why", () => {
+  setLocale("zh");
+  const confirmed = documentLine({ id: "document:abc", name: "供货合同.md", state: "confirmed", version: 2, passages: 4, builders_only: false, confirmed_by: "Demo builder", confirmed_at: "2026-11-26T00:00:00+00:00" }, { mayBuild: true });
+  assert.equal(confirmed.maySendBack, true);
+  assert.equal(confirmed.mayRemove, true);
+  assert.equal(documentLine({ id: "document:abc", name: "x.md", state: "confirmed", version: 2, passages: 1 }, { mayBuild: false }).maySendBack, false);
+  const back = documentLine({ id: "document:abc", name: "供货合同.md", state: "needs_look", version: 3, passages: 4, reason: "比例写错了", proposed_by: "demo-admin", who_can_confirm: ["Demo builder"] }, { mayBuild: true });
+  assert.equal(back.maySendBack, false);
+  assert.match(back.reason, /比例写错了/);
+  setLocale("en");
+  const gone = removedLine({ name: "供货合同.md", removed_by: "Demo builder", removed_at: "2026-11-26T00:00:00+00:00", reason: "void" });
+  assert.equal(gone.name, "供货合同.md");
+  assert.match(gone.text, /Demo builder/);
+  assert.match(gone.text, /void/);
 });

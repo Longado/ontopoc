@@ -4,6 +4,7 @@ person, and once confirmed a question it answers is answered with quotes code fo
 anyone else; a quote that is not verbatim, or a number that is not in a quote, is refused, never mended; a data question is answered as it always was."""
 import base64
 import json
+import sqlite3
 import unittest
 from unittest import mock
 
@@ -309,3 +310,93 @@ class Agent(DocumentCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class SendBackAndRemove(DocumentCase):
+    """Round 2: a confirmed document that turns out wrong stops answering, sent back to waiting or removed."""
+    QUOTE = Answers.QUOTE
+
+    def send_back(self, who, document, reason='第五条的比例写错了'):
+        return who.call('POST', '/api/workspace/documents/send-back', {'id': document['id'], 'version': document['version'], 'reason': reason})
+
+    def remove(self, who, document, reason='合同已作废'):
+        return who.call('POST', '/api/workspace/documents/remove', {'id': document['id'], 'version': document['version'], 'reason': reason})
+
+    def test_a_document_sent_back_leaves_search_at_once_and_waits_for_a_second_confirmation(self):
+        document = self.put()   # demo-admin put it forward, Demo builder confirmed it
+        self.assertEqual(self.send_back(self.builder, document, reason='')[0], 400)   # a reason is needed
+        status, back = self.send_back(self.builder, document)
+        self.assertEqual((status, back['state'], back['reason']), (200, 'needs_look', '第五条的比例写错了'), back)
+        self.assertEqual(self.send_back(self.builder, back)[0], 409)   # only a confirmed document is sent back
+        body, [request] = self.ask(self.builder, '逾期交货怎么罚？', reply_for=quoting(self.QUOTE))
+        self.assertNotIn('documents', request)   # out of search at once
+        self.assertEqual((body['status'], body['refusal']['kind']), ('refused', 'document_unconfirmed'), body)
+        self.assertEqual(body['refusal']['documents'][0]['name'], '供货合同.md')
+        guest, [request] = self.ask(self.guest, '逾期交货怎么罚？')   # a viewer never sees its name
+        self.assertNotIn('documents', request)
+        self.assertNotIn('供货合同', json.dumps(guest, ensure_ascii=False))
+        self.assertEqual(self.guest.call('GET', '/api/workspace/documents')[1]['documents'], [])
+        self.assertEqual(self.guest.call('GET', '/api/workspace/documents/' + document['id'])[0], 404)
+        [listed] = self.admin.call('GET', '/api/workspace/documents')[1]['documents']
+        self.assertEqual((listed['state'], listed['reason']), ('needs_look', '第五条的比例写错了'))
+        status, refused = self.admin.call('POST', '/api/workspace/documents/confirm', {'id': back['id'], 'version': back['version']})
+        self.assertEqual(status, 403, refused)   # who put it forward still does not confirm it
+        status, again = self.builder.call('POST', '/api/workspace/documents/confirm', {'id': back['id'], 'version': back['version']})
+        self.assertEqual((status, again['state']), (200, 'confirmed'), again)
+        body, _ = self.ask(self.guest, '逾期交货怎么罚？', reply_for=quoting(self.QUOTE))
+        self.assertEqual(body['status'], 'from_documents', body)
+        log = sqlite3.connect(self.demo.folder / 'workspace.sqlite').execute("SELECT who, change, after_json FROM log WHERE element_id = ? AND change = 'sent_back'", (document['id'],)).fetchall()
+        self.assertEqual([(who, change) for who, change, _ in log], [('Demo builder', 'sent_back')])
+        self.assertIn('第五条的比例写错了', log[0][2])
+
+    def test_a_sent_back_document_changed_since_is_not_confirmed_by_whoever_changed_it(self):
+        document = self.put()
+        status, back = self.send_back(self.builder, document)
+        self.assertEqual(status, 200, back)
+        status, changed = upload(self.builder, CONTRACT.replace('0.5%', '1%'))   # Demo builder corrects it
+        self.assertEqual((status, changed['state']), (200, 'checked'), changed)
+        self.assertEqual(self.builder.call('POST', '/api/workspace/documents/confirm', {'id': changed['id'], 'version': changed['version']})[0], 403)
+        self.assertEqual(self.admin.call('POST', '/api/workspace/documents/confirm', {'id': changed['id'], 'version': changed['version']})[0], 200)
+
+    def test_a_removed_document_leaves_search_and_the_index_its_answers_reopen_refused_and_its_name_may_come_again(self):
+        document = self.put()
+        admin_answer, _ = self.ask(self.admin, '逾期交货怎么罚？', reply_for=quoting(self.QUOTE))
+        guest_answer, _ = self.ask(self.guest, '逾期交货怎么罚？', reply_for=quoting(self.QUOTE))
+        self.assertEqual((admin_answer['status'], guest_answer['status']), ('from_documents', 'from_documents'))
+        self.assertEqual(self.remove(self.builder, document, reason='')[0], 400)
+        status, removed = self.remove(self.builder, document)
+        self.assertEqual(status, 200, removed)
+        conn = sqlite3.connect(self.demo.folder / 'workspace.sqlite')
+        self.assertEqual(conn.execute('SELECT COUNT(*) FROM doc_passage').fetchone()[0], 0)
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM doc_terms WHERE doc_terms MATCH '\"逾期\"'").fetchone()[0], 0)
+        self.assertEqual(conn.execute("SELECT who, change FROM log WHERE element_id = ? AND change = 'removed'", (document['id'],)).fetchall(), [('Demo builder', 'removed')])
+        body, [request] = self.ask(self.builder, '逾期交货怎么罚？')
+        self.assertNotIn('documents', request)
+        self.assertNotIn('documents', body)   # it is not there: no refusal names it, no "documents say nothing" (none is left)
+        listing = self.admin.call('GET', '/api/workspace/documents')[1]
+        self.assertEqual(listing['documents'], [])
+        [gone] = listing['removed']
+        self.assertEqual((gone['name'], gone['removed_by'], gone['reason']), ('供货合同.md', 'Demo builder', '合同已作废'))
+        self.assertNotIn('供货合同', json.dumps(self.guest.call('GET', '/api/workspace/documents')[1], ensure_ascii=False))
+        self.assertEqual(self.admin.call('GET', '/api/workspace/documents/' + document['id'])[0], 404)
+        reopened = self.admin.call('GET', f'/api/workspace/ask/{admin_answer["id"]}')[1]
+        self.assertEqual(reopened['withheld']['documents'], ['供货合同.md'])
+        self.assertIn('已移除', reopened['reason'])
+        self.assertNotIn(self.QUOTE, json.dumps(reopened, ensure_ascii=False))
+        self.assertNotIn('documents', reopened)
+        reopened = self.guest.call('GET', f'/api/workspace/ask/{guest_answer["id"]}')[1]
+        self.assertEqual(reopened['withheld']['documents'], [])
+        self.assertIn('已移除', reopened['reason'])
+        self.assertNotIn('供货合同', json.dumps(reopened, ensure_ascii=False))
+        english = self.demo.admin('en').call('GET', f'/api/workspace/ask/{admin_answer["id"]}')[1]
+        self.assertIn('removed', english['reason'])
+        status, fresh = upload(self.admin)
+        self.assertEqual((status, fresh['state'], fresh['version']), (200, 'checked', 1), fresh)
+        self.assertNotEqual(fresh['id'], document['id'])   # a new document: the old one's answers stay refused
+        self.assertIn('已移除', self.admin.call('GET', f'/api/workspace/ask/{admin_answer["id"]}')[1]['reason'])
+
+    def test_only_builders_send_back_or_remove(self):
+        document = self.put()
+        self.assertEqual(self.send_back(self.guest, document)[0], 403)
+        self.assertEqual(self.remove(self.guest, document)[0], 403)
+        self.assertEqual(self.remove(self.builder, {**document, 'version': document['version'] - 1})[0], 409)
