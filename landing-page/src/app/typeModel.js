@@ -25,7 +25,7 @@ export function stateLine(item, noun) {
   const confirmed = item.confirmed_by ? t("types.line.confirmed", { who: item.confirmed_by, time: timeText(item.confirmed_at), versions: versionsText(item.confirmed_on) }) : "";
   if (item.state === "confirmed") return confirmed;
   if (item.state === "rejected") return item.proposed_by ? t("types.line.rejectedBy", { who: item.proposed_by }) : t("types.line.rejected");
-  if (item.state === "needs_look") return confirmed ? t("types.line.needsLookWas", { confirmed }) : t("types.line.needsLook", { noun });
+  if (item.state === "needs_look") return confirmed ? t(item.cause === "definition" ? "types.line.needsLookWasDefinition" : "types.line.needsLookWas", { confirmed }) : t("types.line.needsLook", { noun });
   if (item.model_draft) return t("types.line.modelDraft");
   if (item.state === "proposed" || item.state === "checked") {
     const by = item.proposed_by ? t("types.line.proposedBy", { who: item.proposed_by }) : "";
@@ -179,10 +179,10 @@ export const reportOnlyTag = (rule) => (rule?.report_only ? t("types.rules.repor
 /** Whether a form rule has what its kind needs before it is sent. */
 export function ruleReady(rule) {
   if (!rule.column || !RULE_CHECKS.includes(rule.check)) return false;
+  if (rule.cite?.document && !rule.cite.passage) return false;   // a citation is whole or absent, on every kind of rule
   if (BOUNDED.includes(rule.check)) return String(rule.value ?? "").trim() !== "";
   if (rule.check === "between") return String(rule.low ?? "").trim() !== "" && String(rule.high ?? "").trim() !== "";
   if (rule.check === "not_before") return Boolean(rule.other);
-  if (rule.cite?.document && !rule.cite.passage) return false;   // a citation is whole or absent
   if (rule.check === "when") {
     const conditions = rule.conditions ?? [];
     if (!conditions.length || conditions.length > MAX_CONDITIONS || conditions.some((c) => !c.column || !trimmed(c.value))) return false;
