@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { checkTypeKey, createType, getDataset, getDatasets, getType, updateType } from "./api.js";
+import { checkTypeKey, createType, getDataset, getDatasets, getDocument, getDocuments, getType, updateType } from "./api.js";
 import { typeLabel } from "./format.js";
 import { t } from "./i18n/index.js";
 import { Select } from "./Select.jsx";
 import { hrefFor, parseRoute } from "./routeModel.js";
-import { RULE_CHECKS, TYPE_CHOICES, dateMates, keyProblem, otherNamesText, ruleChecks, ruleReady, rulesOfType, suggestEnglish, typePayload } from "./typeModel.js";
+import { MAX_CONDITIONS, RULE_CHECKS, TYPE_CHOICES, dateMates, keyProblem, otherNamesText, ruleChecks, ruleReady, rulesOfType, suggestEnglish, typePayload } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
 
 const ENUM_TYPES = ["integer", "text"];
@@ -49,8 +49,74 @@ function KeyResult({ result }) {
 const MAX_RULES = 20;
 const BOUNDED = ["gt", "ge", "lt", "le"];
 
+/** A conditional rule's conditions (each "property is value", up to MAX_CONDITIONS) and what the property must then be: one value, or one of a list. */
+function WhenFields({ rule, n, chosen, change }) {
+  const conditions = rule.conditions ?? [];
+  const set = (k, patch) => change({ conditions: conditions.map((c, j) => (j === k ? { ...c, ...patch } : c)) });
+  const others = chosen.filter((c) => c.name !== rule.column);
+  return (
+    <div className="rule-when">
+      {conditions.map((c, k) => (
+        <div className="inline" key={k}>
+          <Select label={t("types.rules.conditionAria", { n, i: k + 1 })} value={c.column} onChange={(v) => set(k, { column: v })}>
+            <option value="">{t("types.rules.pickColumn")}</option>
+            {others.map((o) => <option key={o.name} value={o.name}>{o.label.trim() || o.name}</option>)}
+          </Select>
+          <span>{t("types.rules.is")}</span>
+          <input type="text" aria-label={t("types.rules.conditionValueAria", { n, i: k + 1 })} value={c.value} onChange={(e) => set(k, { value: e.target.value })} />
+          <button className="plain" aria-label={t("types.rules.removeCondition", { n, i: k + 1 })} onClick={() => change({ conditions: conditions.filter((_, j) => j !== k) })}>{t("types.rules.remove")}</button>
+        </div>
+      ))}
+      <div className="inline">
+        <button className="secondary" disabled={conditions.length >= MAX_CONDITIONS} onClick={() => change({ conditions: [...conditions, { column: "", value: "" }] })}>{t("types.rules.addCondition")}</button>
+        <span>{t("types.rules.then")}</span>
+        {rule.list
+          ? <input type="text" aria-label={t("types.rules.mustListAria", { n })} value={rule.values ?? ""} onChange={(e) => change({ values: e.target.value })} />
+          : <input type="text" aria-label={t("types.rules.mustAria", { n })} value={rule.value ?? ""} onChange={(e) => change({ value: e.target.value })} />}
+        <label className="check"><input type="checkbox" checked={Boolean(rule.list)} onChange={(e) => change({ list: e.target.checked })} /> {t("types.rules.listToggle")}</label>
+      </div>
+      <p className="muted small">{t("types.rules.whenHint")}</p>
+    </div>
+  );
+}
+
+/** A rule's citation: a confirmed document, one of its passages, and the quote, which the service checks word for word in that passage. */
+function CiteFields({ cite, n, documents, change }) {
+  const [passages, setPassages] = useState([]);
+  const doc = cite?.document ?? "";
+  useEffect(() => {
+    let live = true;
+    if (!doc) return setPassages([]);
+    getDocument(doc).then((d) => live && setPassages(d.passages ?? []), () => live && setPassages([]));
+    return () => { live = false; };
+  }, [doc]);
+  if (!cite) {
+    return documents.length > 0 ? <button className="plain" onClick={() => change({ cite: { document: "", passage: "", quote: "" } })}>{t("types.rules.citeAdd")}</button> : null;
+  }
+  const set = (patch) => change({ cite: { ...cite, ...patch } });
+  return (
+    <div className="rule-cite">
+      <div className="inline">
+        <Select label={t("types.rules.citeDocAria", { n })} value={doc} onChange={(v) => set({ document: v, passage: "" })}>
+          <option value="">{t("types.rules.pickDocument")}</option>
+          {documents.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+        </Select>
+        <Select label={t("types.rules.citePassageAria", { n })} value={cite.passage} disabled={!doc} onChange={(v) => set({ passage: v })}>
+          <option value="">{t("types.rules.pickPassage")}</option>
+          {passages.map((p) => <option key={p.id} value={p.id}>{`${p.where}: ${p.text.slice(0, 60)}`}</option>)}
+        </Select>
+        <button className="plain" onClick={() => change({ cite: null })}>{t("types.rules.citeRemove")}</button>
+      </div>
+      <input type="text" className="wide" aria-label={t("types.rules.citeQuoteAria", { n })} value={cite.quote} onChange={(e) => set({ quote: e.target.value })} />
+      <p className="muted small">{t("types.rules.citeHint")}</p>
+    </div>
+  );
+}
+
 /** The value rules of the type being written: one row per rule (the property, the kind its declared type allows, and the numbers or the other date it needs). */
 function RuleRows({ form, setRules }) {
+  const [docs] = useLoad(() => getDocuments().catch(() => ({ documents: [] })), []);
+  const documents = (docs.data?.documents ?? []).filter((d) => d.state === "confirmed");   // only a confirmed document can be cited
   const chosen = form.columns.filter((c) => c.include || form.key.includes(c.name));
   const change = (i, patch) => setRules(form.rules.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   const pickColumn = (i, name) => {
@@ -72,7 +138,7 @@ function RuleRows({ form, setRules }) {
               <option value="">{t("types.rules.pickColumn")}</option>
               {chosen.map((c) => <option key={c.name} value={c.name}>{c.label.trim() || c.name}</option>)}
             </Select>
-            <Select label={t("types.rules.checkAria", { n })} value={r.check} disabled={!column} onChange={(v) => change(i, { check: v })}>
+            <Select label={t("types.rules.checkAria", { n })} value={r.check} disabled={!column} onChange={(v) => change(i, { check: v, ...(v === "when" && !r.conditions ? { conditions: [{ column: "", value: "" }], list: false, values: "", value: "" } : {}) })}>
               {allowed.map((c) => <option key={c} value={c}>{t(`types.rules.check.${c}`)}</option>)}
             </Select>
             {BOUNDED.includes(r.check) && <input type="text" inputMode="decimal" aria-label={t("types.rules.valueAria", { n })} value={r.value} onChange={(e) => change(i, { value: e.target.value })} />}
@@ -90,6 +156,9 @@ function RuleRows({ form, setRules }) {
               </Select>
             )}
             <button className="plain" aria-label={t("types.rules.removeAria", { n })} onClick={() => setRules(form.rules.filter((_, j) => j !== i))}>{t("types.rules.remove")}</button>
+            <label className="check"><input type="checkbox" aria-label={t("types.rules.reportOnlyAria", { n })} checked={Boolean(r.reportOnly)} onChange={(e) => change(i, { reportOnly: e.target.checked })} /> {t("types.rules.reportOnly")}</label>
+            {r.check === "when" && <WhenFields rule={r} n={n} chosen={chosen} change={(patch) => change(i, patch)} />}
+            <CiteFields cite={r.cite ?? null} n={n} documents={documents} change={(patch) => change(i, patch)} />
           </div>
         );
       })}

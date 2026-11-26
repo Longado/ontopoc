@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { confirmItem, decideRecord, getQueue, previewImpact, sendBack, withdrawRecord } from "./api.js";
+import { confirmConflictNote, confirmItem, decideRecord, getQueue, previewImpact, sendBack, withdrawRecord } from "./api.js";
 import { ImpactList, ReceiptPanel, WorkspaceReceipt } from "./ImpactList.jsx";
 import { KIND, groupTitle } from "./batchModel.js";
 import { approveWarning, batchPlan, batchSummary, queueCounts, queueLegend, queueRow, rejectProblem, sortByProblem } from "./confirmModel.js";
@@ -8,7 +8,7 @@ import { timeText } from "./format.js";
 import { itemHref } from "./relationModel.js";
 import { hrefFor } from "./routeModel.js";
 import { State } from "./TypesPage.jsx";
-import { confirmersText } from "./typeModel.js";
+import { citeLine, confirmersText, conflictLine, conflictNoteLine } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
 import { waitingText as derivedWaitingText } from "./derivedModel.js";
 import { viewWaitingText } from "./viewModel.js";
@@ -127,6 +127,46 @@ function Row({ item, picked, onPick, onChanged, onConfirmed }) {
   );
 }
 
+/** Two rules of a type that disagree (cited_rules): both rules with what each cites, the rows that meet both conditions, and the "known" note. A note waiting for
+ * a second person is confirmed here; a note is written on the type's page. */
+function ConflictRow({ item, onChanged }) {
+  const c = item.conflict;
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const confirm = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await confirmConflictNote(item.id, item.key);
+      onChanged();
+    } catch (e) {
+      setError(e.message);
+    }
+    setBusy(false);
+  };
+  return (
+    <li className="q-row">
+      <div className="q-main">
+        <span className="q-pick" />
+        <div className="q-body">
+          <div className="q-title">
+            <span className="q-kind">{t("types.conflicts.title")}</span>
+            <a href={hrefFor({ page: "type", id: item.id, tab: "props" })}>{item.title}</a>
+          </div>
+          <p className="q-problem q-warn"><Icon name="alert" size={14} /> {conflictLine(c)}</p>
+          {c.rules.map((r) => <p key={r.index} className="q-summary small">{r.says}{r.cite && <span className="muted"> — {citeLine(r.cite)}</span>}</p>)}
+          {c.note && <p className="muted small">{conflictNoteLine(c.note)}</p>}
+          {error && <p className="error small">{error}</p>}
+        </div>
+        <div className="q-actions">
+          {item.can_confirm ? <button className="primary" disabled={busy} onClick={confirm}>{t("types.conflicts.confirm")}</button>
+            : <a className="button secondary" href={hrefFor({ page: "type", id: item.id, tab: "props" })}>{t("types.conflicts.record")}</a>}
+        </div>
+      </div>
+    </li>
+  );
+}
+
 /** What one upload moved, as one row: the things it sent back, and the way into the screen that confirms them together. */
 function GroupRow({ group, items }) {
   const byElement = Object.fromEntries(items.map((i) => [i.element, i]));
@@ -171,7 +211,8 @@ export function ConfirmPage() {
   const [receiptFor, setReceiptFor] = useState(null);   // the definitions just confirmed: their receipt is shown at the top until closed
   const [summary, setSummary] = useState(false);
   const data = state.data;
-  const items = sortByProblem((data?.items ?? []).filter((i) => (!mineOnly || i.can_confirm) && !i.group));
+  const items = sortByProblem((data?.items ?? []).filter((i) => (!mineOnly || i.can_confirm) && !i.group && i.kind !== "conflict"));
+  const conflicts = (data?.items ?? []).filter((i) => i.kind === "conflict" && (!mineOnly || i.can_confirm));   // two rules that disagree: listed apart, confirmed by their own note
   const pickedHere = new Set([...picked].filter((e) => items.some((i) => i.element === e)));
   const plan = batchPlan(items, pickedHere);
   const batchable = items.filter((i) => ["confirm", "approve"].includes(queueRow(i).mode));
@@ -225,6 +266,7 @@ export function ConfirmPage() {
         <ul className="queue">
           {(data.groups ?? []).map((g) => <GroupRow key={g.key} group={g} items={data.items} />)}
           {items.map((item) => <Row key={`${item.element}@${item.version}@${item.state}`} item={item} picked={pickedHere.has(item.element)} onPick={pick} onChanged={reload} onConfirmed={setReceiptFor} />)}
+          {conflicts.map((item) => <ConflictRow key={item.element} item={item} onChanged={reload} />)}
         </ul>
       )}
       {batchable.length > 0 && (

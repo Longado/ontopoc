@@ -90,6 +90,9 @@ export const updateType = (payload) => send("/api/workspace/types/update", paylo
 export const proposeMeanings = (id, column, values) => send("/api/workspace/types/meanings", { id, column, values });
 /** Confirms the type (without `column`) or the meanings of one code column, as the version the person saw and with the `seen` the service sent (the data they read). */
 export const confirmType = (id, version, seen, column = null) => send("/api/workspace/types/confirm", { id, version, seen, ...(column ? { column } : {}) });
+/** "Known: asked <who>" on two rules that disagree (cited_rules): written by one builder, confirmed by another. Both answer {conflicts}. */
+export const noteConflict = (id, key, asked) => send("/api/workspace/types/conflict-note", { id, key, asked });
+export const confirmConflictNote = (id, key) => send("/api/workspace/types/conflict-note/confirm", { id, key });
 /** Asks the model for types. It can take up to two minutes: there is no timeout here, the dialog says it is waiting. */
 /** {data: {dataset, version, uploaded_at, who, link}, used_by: [{kind, label, count, items}]}: the data the type stands on and what stands on it. */
 export const getTypeUses = (id) => request(typePath(id, "/uses"));

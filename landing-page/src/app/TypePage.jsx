@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Explorer } from "./Explorer.jsx";
 import { TypeActions } from "./TypeActions.jsx";
-import { confirmType, getTypeUses, getType, getTypeLog, proposeMeanings, setValuesHidden } from "./api.js";
+import { confirmConflictNote, confirmType, getTypeUses, getType, getTypeLog, noteConflict, proposeMeanings, setValuesHidden } from "./api.js";
 import { useAuth } from "./Auth.jsx";
 import { canBuild } from "./authModel.js";
 import { timeText, typeLabel } from "./format.js";
@@ -13,7 +13,7 @@ import { statusOf } from "./statusModel.js";
 import { State } from "./TypesPage.jsx";
 import { TypeDerived } from "./TypeDerived.jsx";
 import { TypeViews } from "./TypeViews.jsx";
-import { alsoCalled, confirmersText, joinList, limitedNote, logText, meaningsSummary, offerFirstAction, otherNamesFrom, otherNamesText, reconfirmText, ruleExamples, ruleStanding, stateLine, tabCounts, typeSub, typeTabs, usesSummary } from "./typeModel.js";
+import { alsoCalled, citeLine, reportOnlyTag, conflictLine, conflictNoteLine, confirmersText, joinList, limitedNote, logText, meaningsSummary, offerFirstAction, otherNamesFrom, otherNamesText, reconfirmText, ruleExamples, ruleStanding, stateLine, tabCounts, typeSub, typeTabs, usesSummary } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
 import { PageHeader } from "./ui/PageHeader.jsx";
 
@@ -120,7 +120,7 @@ function Meanings({ type, prop, mayBuild, onChanged }) {
 
 /** The value rules this person may read: what each says, how many rows break it now (of their own rows, when a row rule limits them) and a few of their keys. */
 function Rules({ type }) {
-  const broken = type.rules.some((r) => r.broken);
+  const broken = type.rules.some((r) => r.broken && !r.report_only);   // a rule that only reports does not stop confirming
   return (
     <section className="rules" aria-label={t("types.rules.title")}>
       <h2 className="section">{t("types.rules.title")}</h2>
@@ -129,11 +129,57 @@ function Rules({ type }) {
           <li key={i}>
             <span className={r.broken ? "warn" : undefined}>{t("types.rules.line", { says: r.says, standing: ruleStanding(r, type.rows_limited) })}</span>
             {r.examples?.length > 0 && <span className="muted small block">{t("types.rules.examples", { keys: ruleExamples(r) })}</span>}
+            {r.report_only && <span className="muted small block">{reportOnlyTag(r)}</span>}
+            {r.cite && <span className={`small block${r.cite.stale ? " warn" : " muted"}`}>{citeLine(r.cite)}</span>}
           </li>
         ))}
       </ul>
       {broken && type.state !== "confirmed" && <p className="warn">{t("types.rules.blocks")}</p>}
       {type.rules_note && <p className="muted small">{type.rules_note}</p>}
+    </section>
+  );
+}
+
+/** Two rules that disagree: both rules with what each cites, how many rows meet both conditions now, and the "known: asked <who>" note, which a builder writes and
+ * another confirms. Listed until a rule changes or the note is confirmed; it does not stop confirming the type. */
+function Conflicts({ type, mayBuild, reload }) {
+  const [asked, setAsked] = useState({});
+  const [error, setError] = useState("");
+  const act = async (run) => {
+    setError("");
+    try {
+      await run();
+      setAsked({});
+      reload();
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+  return (
+    <section className="rules" aria-label={t("types.conflicts.title")}>
+      <h2 className="section">{t("types.conflicts.title")}</h2>
+      <p className="muted small">{t("types.conflicts.hint")}</p>
+      <ul className="readers">
+        {type.conflicts.map((c) => (
+          <li key={c.key}>
+            <span className="warn">{conflictLine(c)}</span>
+            {c.rules.map((r) => (
+              <span key={r.index} className="small block">{r.says}{r.cite && <span className={r.cite.stale ? " warn" : " muted"}> — {citeLine(r.cite)}</span>}</span>
+            ))}
+            {c.note && <span className="muted small block">{conflictNoteLine(c.note)}</span>}
+            {mayBuild && c.note?.may_confirm && <button className="primary" onClick={() => act(() => confirmConflictNote(type.id, c.key))}>{t("types.conflicts.confirm")}</button>}
+            {mayBuild && c.note && !c.note.may_confirm && c.note.held && <span className="muted small block">{c.note.held}</span>}
+            {mayBuild && !c.note && (
+              <span className="inline">
+                <input type="text" maxLength={80} aria-label={t("types.conflicts.askedAria")} placeholder={t("types.conflicts.askedPlaceholder")} value={asked[c.key] ?? ""}
+                  onChange={(e) => setAsked({ ...asked, [c.key]: e.target.value })} />
+                <button className="secondary" disabled={!(asked[c.key] ?? "").trim()} onClick={() => act(() => noteConflict(type.id, c.key, asked[c.key].trim()))}>{t("types.conflicts.record")}</button>
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+      {error && <p className="error">{error}</p>}
     </section>
   );
 }
@@ -184,6 +230,7 @@ function Properties({ type, mayBuild, reload }) {
       </div>
       {error && <p className="error">{error}</p>}
       {type.rules?.length > 0 && <Rules type={type} />}
+      {type.conflicts?.length > 0 && <Conflicts type={type} mayBuild={mayBuild} reload={reload} />}
       {type.properties.filter((p) => p.enum).map((p) => (
         <Meanings key={`${p.column}-${p.meanings.version ?? 0}-${p.meanings.state}`} type={type} prop={p} mayBuild={mayBuild} onChanged={reload} />
       ))}
