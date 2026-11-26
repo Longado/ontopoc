@@ -217,6 +217,17 @@ class Answers(DocumentCase):
         self.assertEqual(drop(after), drop(before))
         self.assertEqual(after['status'], 'answered')
 
+    def test_a_reply_with_any_query_is_never_answered_from_documents(self):
+        """A query the engine cannot read (here text where a structured query goes) is still the model saying it is a data question: main's answer, the document answer ignored."""
+        self.put()
+        def written(request):
+            return {**quoting(self.QUOTE)(request), 'query': 'SELECT count(o) FROM (o:Order)'}
+        body, [request] = self.ask(self.admin, '逾期交货怎么罚？', reply_for=written)
+        self.assertIn('documents', request)
+        self.assertNotEqual(body['status'], 'from_documents')
+        self.assertNotIn('documents', body)
+        self.assertNotIn('确认过的文档', body['reason'])
+
     def test_nothing_found_is_said_plainly(self):
         self.put()
         body, [request] = self.ask(self.admin, '火星上的天气怎么样？')
