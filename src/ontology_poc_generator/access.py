@@ -128,8 +128,7 @@ PERSON_ONLY_POSTS = (
     '/api/workspace/checked',                 # "checked by <person>" on a board card or a saved answer: the mark carries a person's name
     '/api/workspace/needed/confirm',          # what a question on the list of questions we need should give, confirmed by a person
     '/api/workspace/documents/confirm',       # a document that answers questions, confirmed by a person
-    '/api/workspace/documents/send-back',     # a confirmed document sent back to waiting: a person's judgement, with a reason
-    '/api/workspace/documents/remove',        # a document removed, with a reason
+    '/api/workspace/documents/remove',        # a document removed, with a reason: its passages cannot come back (sending one back takes trust away and stays open to a token)
 )
 
 # What a token may not do either, though no one vouches by it: write a question we need with what it should give (it is proposed by a named person, like the
