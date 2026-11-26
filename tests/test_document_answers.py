@@ -174,7 +174,7 @@ class Answers(DocumentCase):
             self.assertEqual(body['documents']['line'], line)
             self.assertEqual(set(body['documents']), {'line', 'quotes'})   # the documents' own words and where they are, nothing else
             [quote] = body['documents']['quotes']
-            self.assertEqual(set(quote), {'passage', 'quote', 'document', 'document_id', 'version', 'where'})
+            self.assertEqual(set(quote), {'passage', 'quote', 'sentence', 'mark', 'document', 'document_id', 'version', 'where'})
             for kept in (json.dumps(body, ensure_ascii=False), json.dumps(which.kept(self.demo.folder, body['id']), ensure_ascii=False)):
                 self.assertNotIn('违约方不需要', kept)   # the model's prose is never shown, returned or kept
             self.assertEqual((quote['quote'], quote['document'], quote['document_id'], quote['version']), (self.QUOTE, '供货合同.md', document['id'], document['version']))   # the version confirmed
