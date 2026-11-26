@@ -60,7 +60,7 @@ from ontology_poc_generator.ontology_confirm import confirmed_reference, element
 from ontology_poc_generator.ontology_library import import_definition, library_catalogue, library_definition
 from ontology_poc_generator.ontology_reference import compare_definition, local_schema, run_fingerprint, stale_reasons
 from ontology_poc_generator.ontology_questions import QUESTION_PROMPT_VERSION, answer_query, ask_questions
-from ontology_poc_generator import assistant_history, document_answers
+from ontology_poc_generator import assistant_history, cited_rules, document_answers
 from ontology_poc_generator.workspace_questions import WRITES as ASK_WRITES, QaRefused, ask as ask_workspace, query_as_text, run_text as run_query_text, history as question_history, reopen as reopen_question, scope_line, tally as question_tally
 from ontology_poc_generator.public_ontology import MAX_MODELER_ATTEMPTS
 from ontology_poc_generator.derived_measures import parse_derived
@@ -1387,6 +1387,10 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                                 body = propose_meanings(conn, payload, who, self.user)
                             elif route == '/confirm':
                                 body = confirm_element(conn, payload, who, self.user)
+                            elif route == '/conflict-note':   # "known: asked <who>" on two rules that disagree, for a second person to confirm (cited_rules)
+                                body = cited_rules.record_note(conn, payload, who, self.user)
+                            elif route == '/conflict-note/confirm':
+                                body = cited_rules.confirm_note(conn, payload, who, self.user)
                             elif route == '/views':
                                 body = create_view(conn, payload, who, self.user)
                             elif route == '/views/update':

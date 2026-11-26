@@ -29,7 +29,7 @@ from ontology_poc_generator.code_meanings import check_enum, merge_enum
 from ontology_poc_generator import other_names
 from ontology_poc_generator.row_rules import keeps, positions, restriction
 from ontology_poc_generator.type_access import can_access, column_allowed, dataset_hidden, hidden_columns, hidden_values, reads_hidden, visible_to
-from ontology_poc_generator.value_rules import EXAMPLES, REASON_EXAMPLES, RuleRefused, broken_text, columns_of, note as rules_note, read_rules, run as run_rules, says as rule_says
+from ontology_poc_generator.value_rules import EXAMPLES, REASON_EXAMPLES, RuleRefused, broken_text, columns_of, must_hold, note as rules_note, read_rules, run as run_rules, says as rule_says
 from ontology_poc_generator.actor import actor_id_for
 from ontology_poc_generator.workspace_store import (
     SelfConfirmation, barred, fan_note, StaleElement, _canonical, _key_of, _quote, check_key, current_dataset, dataset_records, element_state_writes, fan_marks, log_line,
@@ -280,8 +280,11 @@ def check_definition(conn, payload: dict, english_name: str | None = None, user:
     for column in posted:
         if not any(p['column'] == column and p['enum'] for p in properties):
             raise TypeRefused(tr(f'“{column}”不是这个类型里的代码列，没法写含义', f'"{column}" is not a code column of this type, so it cannot have meanings'))
+    from ontology_poc_generator.cited_rules import reader   # cited_rules reads this module: imported here, where it is used
+    on_file = element_row(conn, type_id(english))
     try:   # value rules are part of the type: kept only when there are some, so a type without them is stored as it always was
-        rules = read_rules([] if payload.get('rules') is None else payload['rules'], properties, lambda column: bool(posted.get(column)) or bool(_kept_meanings(conn, english, column)))
+        rules = read_rules([] if payload.get('rules') is None else payload['rules'], properties, lambda column: bool(posted.get(column)) or bool(_kept_meanings(conn, english, column)),
+                           reader(conn, user, (_content(on_file).get('rules') or []) if on_file and on_file['content_json'] else []))
     except RuleRefused as exc:
         raise TypeRefused(str(exc)) from None
     if rules:
@@ -342,6 +345,7 @@ def _proposed_rules(conn, content: dict, dataset: dict, user: dict | None) -> tu
     if shown is None:
         return {}, []
     warnings = [tr(f'值规则{r["says"]}：现在有 {r["broken"]} 行不满足。可以先提出，但有规则不满足时不能确认', f'The value rule {r["says"]}: {r["broken"]} rows break it now. It can be proposed, but it cannot be confirmed while a rule is broken')
+                if must_hold(r) else tr(f'值规则{r["says"]}：现在有 {r["broken"]} 行不满足。只报告，不拦着确认', f'The value rule {r["says"]}: {r["broken"]} rows break it now. It only reports and does not stop confirming')
                 for r in shown if r['broken']]
     return {'rules': shown}, warnings
 
@@ -369,7 +373,7 @@ def create_type(conn, payload: dict, who: str | None, user: dict | None = None) 
     check_names_free(conn, content)
     dataset = current_dataset(conn, content['dataset'])
     cols = dataset_columns(conn, dataset['id'])
-    changes, reads = [_type_change(content, dataset, key_check, who)], {type_id(content['english_name']): [f'dataset:{dataset["name"]}']}
+    changes, reads = [_type_change(content, dataset, key_check, who)], {type_id(content['english_name']): [f'dataset:{dataset["name"]}', *_cited(content)]}
     for column, entries in posted.items():
         values = _meanings([], column, cols[column], entries)
         if values:
@@ -497,7 +501,7 @@ def update_type(conn, payload: dict, who: str | None, user: dict | None = None) 
     changes, reads, was_confirmed = [], {}, []
     if reset or row['state'] in ('proposed', 'rejected'):   # a model's draft a person saves becomes theirs, checked, even with nothing changed; so does one that was sent back
         changes.append(_type_change(content, dataset, key_check, who))
-        reads[type_id(english)] = [f'dataset:{dataset["name"]}']
+        reads[type_id(english)] = [f'dataset:{dataset["name"]}', *_cited(content)]
     for column, entries in posted.items():
         fresh = moved_dataset and column in existing
         kept = [] if fresh else _kept_meanings(conn, english, column)
@@ -525,6 +529,20 @@ def update_type(conn, payload: dict, who: str | None, user: dict | None = None) 
         _edit_names(conn, element_row(conn, row['element_id']), content, who)
     shown, broken = _proposed_rules(conn, content, dataset, user)
     return {'id': english, 'state': element_row(conn, row['element_id'])['state'], 'reset': reset, 'warnings': [*warnings, *broken], **shown}
+
+
+def _cited(content: dict) -> list[str]:
+    """The documents the type's value rules cite: it reads them, so sending one back, removing or replacing it moves the type (cited_rules.document_moved)."""
+    from ontology_poc_generator.cited_rules import documents_of   # cited_rules reads this module
+    return documents_of(content)
+
+
+def _citation_problems(conn, content: dict) -> list[str]:
+    """What in the citations of a type's rules holds it back from confirmation now (cited_rules.problems); nothing for a type that cites nothing."""
+    if not any('cite' in r for r in content.get('rules') or []):
+        return []
+    from ontology_poc_generator.cited_rules import problems   # cited_rules reads this module
+    return problems(conn, content)
 
 
 def _type_words(content: dict) -> tuple:
@@ -623,10 +641,10 @@ def _type_problems(conn, content: dict, record: bool = True, ahead: dict | None 
         return problems, key_check['id'], None
     if saved_only:
         saved = _saved_rules(conn, content, dataset)
-        if saved is None:
-            return [*problems, unchecked_rules_text(dataset)], key_check['id'], None
+        if saved is None:   # not counted on this version: a type whose rules only report waits for nothing
+            return [*problems, *([unchecked_rules_text(dataset)] if any(map(must_hold, content['rules'])) else [])], key_check['id'], None
         names = {p['column']: p['name'] for p in content['properties']}
-        return [*problems, *(broken_text(rule_says(rule, names), n, saved['rows_checked'], []) for rule, n in zip(content['rules'], saved['broken']) if n)], key_check['id'], None
+        return [*problems, *(broken_text(rule_says(rule, names), n, saved['rows_checked'], []) for rule, n in zip(content['rules'], saved['broken']) if n and must_hold(rule))], key_check['id'], None
     codes = _rule_codes(conn, content, content['rules'])
     ahead = ahead if ahead is not None else (_COUNTED.get() or {}).get(type_id(content['english_name']))
     same = ahead is not None and (ahead['dataset_id'], ahead['rules'], ahead['codes']) == (dataset['id'], content['rules'], codes)
@@ -634,10 +652,11 @@ def _type_problems(conn, content: dict, record: bool = True, ahead: dict | None 
         found = ahead['found'] if same else _rule_pass(conn, content, dataset, content['rules'], REASON_EXAMPLES)
     except RulesUncheckable:
         found = None
-    if found is None:   # the count failed: the rules are not known to hold
-        return [*problems, uncheckable_text(conn, type_id(content['english_name']))], key_check['id'], None
+    if found is None:   # the count failed: the rules are not known to hold (rules that only report hold nothing back)
+        return [*problems, *([uncheckable_text(conn, type_id(content['english_name']))] if any(map(must_hold, content['rules'])) else [])], key_check['id'], None
     names = {p['column']: p['name'] for p in content['properties']}
-    problems += [broken_text(rule_says(rule, names), result['broken'], found['rows_checked'], result['examples']) for rule, result in zip(content['rules'], found['rules']) if result['broken']]
+    problems += [broken_text(rule_says(rule, names), result['broken'], found['rows_checked'], result['examples']) for rule, result in zip(content['rules'], found['rules'])
+                 if result['broken'] and must_hold(rule)]   # a rule that only reports lists its rows on the page; it is never a reason
     return problems, key_check['id'], _record_rules(conn, content, dataset, found) if record else None
 
 
@@ -748,7 +767,7 @@ def rules_untrusted(conn, element_id: str, latest: dict | None = None) -> dict |
     `latest`: _latest_counts, when the caller reads it once for many types."""
     row = element_row(conn, element_id)
     content = _content(row) if row and row['content_json'] else {}
-    if not content.get('rules'):
+    if not any(map(must_hold, content.get('rules') or [])):   # no rules, or only rules that report: nothing to hold
         return None
     dataset = current_dataset(conn, content['dataset'])
     if latest is None:   # one type: its own latest count
@@ -758,7 +777,7 @@ def rules_untrusted(conn, element_id: str, latest: dict | None = None) -> dict |
     if dataset is None or kept is None or kept[0] != dataset['id'] or kept[2].get('rules') != content['rules'] or kept[2].get('codes') != _rule_codes(conn, content, content['rules']):
         return {'counted': False}
     names = {p['column']: p['name'] for p in content['properties']}
-    problems = [broken_text(rule_says(rule, names), n, kept[1], []) for rule, n in zip(content['rules'], kept[2].get('broken') or []) if n]
+    problems = [broken_text(rule_says(rule, names), n, kept[1], []) for rule, n in zip(content['rules'], kept[2].get('broken') or []) if n and must_hold(rule)]
     return {'counted': True, 'problems': problems} if problems else None
 
 
@@ -842,6 +861,15 @@ def unchecked_rules_text(dataset: dict) -> str:
 
 
 def rules_readout(conn, element_id: str, content: dict, dataset: dict | None, user: dict | None, ahead: dict | None = None, saved_only: bool = False) -> list[dict] | None:
+    """_rules_readout with each rule's citation as this person may read it: the quote while it stands, nothing at all for someone who may not read the document."""
+    rules = _rules_readout(conn, element_id, content, dataset, user, ahead, saved_only)
+    if not rules or not any('cite' in r for r in rules):
+        return rules
+    from ontology_poc_generator.cited_rules import readout   # cited_rules reads this module
+    return readout(conn, user, rules)
+
+
+def _rules_readout(conn, element_id: str, content: dict, dataset: dict | None, user: dict | None, ahead: dict | None = None, saved_only: bool = False) -> list[dict] | None:
     """The value rules as this person may read them, each with what it says and the rows that break it now with up to 20 of their keys: counted over the
     rows a row rule lets them see, and without a rule on a column kept from them. None when there is no rule for them to read. `ahead` (_whole_pass): the
     count over all rows already made, used when this person reads all rows and every rule. `saved_only` (a list read on every page): no row is read; the counts are
@@ -939,6 +967,7 @@ def _label(conn, element_id: str) -> str:
     return (tr(f'“{content["name"]}”类型', f'the type "{content["name"]}"') if element_id.startswith(TYPE_PREFIX) else tr(f'“{content["name"]}”关系', f'the relation "{content["name"]}"') if element_id.startswith(RELATION_PREFIX)
             else tr(f'“{content["name"]}”视图', f'the view "{content["name"]}"') if element_id.startswith(VIEW_PREFIX) else tr(f'“{content["name"]}”行为', f'the action "{content["name"]}"') if element_id.startswith(ACTION_PREFIX)
             else tr(f'“{content["name"]}”管道', f'the pipeline "{content["name"]}"') if element_id.startswith(PIPELINE_PREFIX) else tr(f'“{content["name"]}”派生属性', f'the derived property "{content["name"]}"') if element_id.startswith(DERIVED_PREFIX)
+            else tr(f'文档《{content["name"]}》', f'the document "{content["name"]}"') if element_id.startswith('document:')   # what a type's cited rules read (cited_rules)
             else tr(f'“{content["column"]}”的含义', f'the meanings of "{content["column"]}"'))
 
 
@@ -1003,12 +1032,13 @@ def _flag_readers(conn, element_id: str, reason: str, moved: list[str], cause: s
         _flag(conn, reader, reason, None, moved, cause, 'parent')
 
 
-def _flag(conn, element_id: str, reason: str, caused_by: str | None, moved: list[str], cause: str = 'data', via: str = 'self', top: bool = True) -> None:
+def _flag(conn, element_id: str, reason: str, caused_by: str | None, moved: list[str], cause: str = 'data', via: str = 'self', top: bool = True, cites: tuple[str, str] | None = None) -> None:
     """A confirmed element whose check came out different goes to needs_look with the reason; then the same for what reads it, with its own reason. `cause` is
     what changed at the root (data or definition) and stays the same all the way down; `via` is self for the element whose own input or logic changed, parent
     for what reads it directly, ancestor for the rest. The dataset a pipeline writes is not an element: it passes the flag on to what reads it. Who can confirm
     what moved, and who confirmed it last, are told (tell_safely): inside an operation (one_telling) the move is added to it and told once at its end; outside
-    one, a top call tells its own move (`top` is false for the calls this one makes down the line)."""
+    one, a top call tells its own move (`top` is false for the calls this one makes down the line). `cites`: (the document whose citation caused the move, the reason
+    that names it), kept in the log line only: the stored reason says nothing of a document, and the log shows the named one to whoever may read the document."""
     row = element_row(conn, element_id)
     if row is None and element_id.startswith('dataset:'):
         for (reader,) in conn.execute('SELECT element_id FROM element_dep WHERE depends_on = ?', (element_id,)).fetchall():
@@ -1021,7 +1051,7 @@ def _flag(conn, element_id: str, reason: str, caused_by: str | None, moved: list
     conn.execute("UPDATE element_state SET state = 'needs_look', reason = ?, cause = ?, via = ?, version = version + 1 WHERE element_id = ?", (reason, cause, via, element_id))
     log_line(conn, 'system', element_id, 'needs_look',
              before={'state': 'confirmed', 'confirmed_by': row['confirmed_by'], 'confirmed_at': row['confirmed_at']},
-             after={'state': 'needs_look', 'reason': reason, 'caused_by': caused_by, 'cause': cause, 'via': via}, user_id=None)
+             after={'state': 'needs_look', 'reason': reason, 'caused_by': caused_by, 'cause': cause, 'via': via, **({'cites': cites[0], 'cited_reason': cites[1]} if cites else {})}, user_id=None)
     moved.append(element_id)
     pending = _MOVES.get()
     if pending is not None:
@@ -1181,6 +1211,7 @@ def confirm_element(conn, payload: dict, who: str | None, user: dict | None = No
     if is_type:
         refuse_ai_columns(conn, content['dataset'], content['key'], tr('主键', 'a key'))
         problems, check_id, rules_check = _type_problems(conn, content)
+        problems += _citation_problems(conn, content)   # a cited document that does not stand now: the rule's citation is not what was written
         waiting = _unconfirmed_meanings(conn, element_id)
         if waiting:
             raise TypeRefused(tr(f'它的{tr("、", ", ").join(f"“{c}”" for c in waiting)}的含义还没有确认，要先确认含义', f'The meanings of {", ".join(waiting)} are not confirmed yet. Confirm the meanings first'), 409)
@@ -1359,7 +1390,7 @@ def _state_view(conn, row: dict, user: dict | None, ahead: dict | None = None, s
     last = conn.execute('SELECT confirmed_by, confirmed_at, dataset_versions_json, evidence_ref FROM confirmation WHERE element_id = ? ORDER BY id DESC LIMIT 1',
                         (row['element_id'],)).fetchone()
     limited = limited_on(conn, row, user)
-    problems = _type_problems(conn, _content(row), record=False, ahead=ahead, saved_only=saved_only)[0] if waiting and can and not blocked and not limited and row['element_id'].startswith(TYPE_PREFIX) else []
+    problems = [*_type_problems(conn, _content(row), record=False, ahead=ahead, saved_only=saved_only)[0], *_citation_problems(conn, _content(row))] if waiting and can and not blocked and not limited and row['element_id'].startswith(TYPE_PREFIX) else []
     failing = bool(problems)   # confirming would be refused (confirm_element), or (saved_only) its rules are not counted on this version yet: not one to confirm now
     dataset = current_dataset(conn, _content(row)['dataset']) if problems else None
     unchecked = dataset is not None and problems == [unchecked_rules_text(dataset)]   # held out only because its rules wait to be counted
@@ -1480,13 +1511,22 @@ def type_detail(conn, english_name: str, user: dict | None) -> dict:
     if whole is not None:
         keep_count(conn, row['element_id'], _content(row), whole)   # so the reads made on every page know it from now on
     rules = rules_readout(conn, row['element_id'], _content(row), dataset, user, whole)   # none on a column kept from them, counted on their rows
+    conflicts = _conflicts(conn, row['element_id'], _content(row), user)
     from ontology_poc_generator.derived_properties import limited_reads   # derived_properties reads this module: imported here, where it is used
     return {'id': content['english_name'], 'name': content['name'], **({'other_names': other_names.of(content)} if other_names.of(content) else {}), 'description': content['description'], 'dataset': content['dataset'], 'limited_reads': limited_reads(conn, english_name, user),
             'dataset_version': dataset['version'] if dataset else None, 'rows': visible_rows(conn, row, dataset, user) if dataset else None, 'rows_limited': limited,
             **({'limited_note': limited_note()} if limited else {}), 'seen': None if limited else seen_of_type(dataset), 'key': content['key'],
             'properties': props, 'visible_to': None if user is not None and user['role'] == 'viewer' else visible_to(conn, row['element_id']), **_state_view(conn, row, user, whole),
             'columns': [{'name': n, 'type': c['type'], 'enum_candidate': bool(c['counts']) and c['type'] in CODE_TYPES} for n, c in cols.items() if n not in hidden],
-            'columns_kept': len(hidden), **({'rules': rules, 'rules_note': rules_note()} if rules else {})}
+            'columns_kept': len(hidden), **({'rules': rules, 'rules_note': rules_note()} if rules else {}), **({'conflicts': conflicts} if conflicts else {})}
+
+
+def _conflicts(conn, element_id: str, content: dict, user: dict | None) -> list[dict]:
+    """The conflicts among the type's conditional rules as this person may read them (cited_rules.findings); nothing for a type with fewer than two of them."""
+    if sum(1 for r in content.get('rules') or [] if r['check'] == 'when') < 2:
+        return []
+    from ontology_poc_generator.cited_rules import findings   # cited_rules reads this module
+    return findings(conn, element_id, content, user)
 
 
 def type_objects(conn, english_name: str, page: int, user: dict | None) -> dict:
@@ -1570,6 +1610,10 @@ def log_entries(conn, ids: list[str], user: dict | None = None) -> list[dict]:
             kept_from[element] = element.startswith((ENUM_PREFIX, VIEW_PREFIX, RELATION_PREFIX, DERIVED_PREFIX, ACTION_PREFIX)) and reads_hidden(conn, element, user)
         if kept_from[element] or (change in ('values_privacy_changed', 'column_access_changed') and after.get('column') in hidden(element)):
             continue
+        if change == 'needs_look' and after.get('cites'):   # a move a citation caused: the reason that names the document, to whoever may read it
+            from ontology_poc_generator.cited_rules import may_read_cited   # cited_rules reads this module
+            if may_read_cited(conn, user, after['cites']):
+                after = {**after, 'reason': after['cited_reason']}
         if change == 'needs_look' and after.get('reason'):   # a reason that quotes counts of the whole data
             if element not in limited:
                 held = element_row(conn, element)

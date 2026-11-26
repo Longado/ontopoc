@@ -53,7 +53,7 @@ ROUTES: list[tuple[str, str, str]] = [
     ('POST', r'/api/workspace/query(/text)?', 'viewer'),   # OntoPoc Query: run a text, or read a structured query back as text, within what the person may see (no model)
     # change data, start model work, write definitions
     ('POST', _UPLOAD_AND_DELETE, 'builder'),
-    ('POST', r'/api/workspace/types(/(update|meanings|meanings-draft|confirm|key-check|suggest|privacy|views(/(update|confirm))?|derived(/(update|confirm|trial|shape|expression))?))?', 'builder'),
+    ('POST', r'/api/workspace/types(/(update|meanings|meanings-draft|confirm|key-check|suggest|privacy|views(/(update|confirm))?|derived(/(update|confirm|trial|shape|expression))?|conflict-note(/confirm)?))?', 'builder'),
     ('POST', r'/api/workspace/types/dbt-import', 'builder'),   # a dbt manifest read into proposals: previewed on a copy, applied through the type and relation forms' own functions (dbt_import)
     ('POST', r'/api/workspace/relations(/(update|confirm|preview))?', 'builder'),
     ('POST', r'/api/workspace/queue/(confirm|confirm-group|send-back)', 'builder'),
@@ -129,6 +129,7 @@ PERSON_ONLY_POSTS = (
     '/api/workspace/needed/confirm',          # what a question on the list of questions we need should give, confirmed by a person
     '/api/workspace/documents/confirm',       # a document that answers questions, confirmed by a person
     '/api/workspace/documents/remove',        # a document removed, with a reason: its passages cannot come back (sending one back takes trust away and stays open to a token)
+    '/api/workspace/types/conflict-note/confirm',   # "known: asked <who>" on two rules that disagree, confirmed by a second person
 )
 
 # What a token may not do either, though no one vouches by it: write a question we need with what it should give (it is proposed by a named person, like the

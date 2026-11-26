@@ -23,6 +23,7 @@ from ontology_poc_generator.workspace_pipelines import (
 from ontology_poc_generator.row_rules import restriction, without_rules
 from ontology_poc_generator.type_access import hidden_columns, reads_hidden
 from ontology_poc_generator.workspace_store import drop_was, fan_note, current_dataset, fan_marks, log_line
+from ontology_poc_generator.cited_rules import queue_items as conflict_items
 
 IN_QUEUE = ('proposed', 'checked', 'needs_look')
 ORDER = {'needs_look': 0, 'pending': 1, 'checked': 1, 'proposed': 2}
@@ -60,7 +61,7 @@ def _rule_lines(rules: list[dict], own_rows: bool) -> list[dict]:
         if not r['broken']:
             return tr(f'{r["says"]}：{"你能看到的行里" if own_rows else ""}现在没有行不满足', f'{r["says"]}: no row{" you can see" if own_rows else ""} breaks it now')
         return tr(f'{r["says"]}：{"你能看到的行里" if own_rows else ""}现在有 {r["broken"]} 行不满足', f'{r["says"]}: {r["broken"]}{" of the rows you can see" if own_rows else " rows"} break it now')
-    return [{'ok': r['broken'] == 0, 'text': said(r)} for r in rules]
+    return [{'ok': r['broken'] == 0 or bool(r.get('report_only')), 'text': said(r)} for r in rules]   # a rule that only reports is listed, never a problem
 
 
 def _meaning_lines(content: dict, row: dict, limited: bool = False) -> list[dict]:
@@ -180,6 +181,7 @@ def queue(conn, user: dict | None, light: bool = False) -> dict:
         elif not light and _item(conn, row, without_rules(user), light=True):
             ruled_out += 1
     items += [approval_item(r, conn, user) for r in open_records(conn, user)]   # the submissions waiting for a second person: a card each
+    items += conflict_items(conn, user, light)   # two rules that disagree (cited_rules): a finding each, confirmable once a "known" note waits that this person did not write
     items.sort(key=lambda i: (not i['can_confirm'], ORDER[i['state']], i['element']))
     unchecked = sum(1 for i in items if i.get('rules_unchecked'))
     return {'items': [] if light else items, 'count': sum(1 for i in items if i['can_confirm']), 'hidden_by_rules': ruled_out, **({'rules_unchecked': unchecked} if unchecked else {})}
