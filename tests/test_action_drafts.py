@@ -1,19 +1,23 @@
 """The assistant drafts an action (ops/cards/oag-action-drafts.md): a question that asks for a change gets a draft of a confirmed action, which the person submits
 through the existing route and another builder approves. A scripted model writes the draft; code checks it with the same checks a submit makes, and writes
 nothing. See tests/test_action_drafts_main.py for the switch held against main."""
+import hashlib
 import json
 import sqlite3
 import unittest
 from unittest import mock
 from urllib.parse import quote
 
-from ontology_poc_generator import accounts, mcp_server, workspace_questions
+from ontology_poc_generator import accounts, action_drafts, mcp_server, workspace_questions
 from ontology_poc_generator.workspace_store import open_workspace
 from tests.test_action_drafts_main import (CANCELLED, COUNT, DELIVERED, FRESH, IN_PRODUCTION, NONE_CAN, Model, Workspace, draft)
 from tests.test_object_types import ORDERS
 
 AMOUNT = {'name': '调金额', 'type': 'order', 'properties': ['金额'], 'description': '任何时候都能改金额'}
 UNCONFIRMED = {'name': '加急改金额', 'type': 'order', 'properties': ['金额'], 'description': '还没有人确认'}
+GUARDED = {'name': '锁定大单', 'type': 'order', 'properties': ['状态码'], 'description': '只给几张指定的大单',
+           'conditions': [{'column': '订单号', 'op': 'in', 'value': [IN_PRODUCTION, 'DD20260004']}, {'column': '金额', 'op': 'gt', 'value': '45678'}]}
+MAIN_ASK_DESCRIPTION = '4a6216ac04295dd8a7066479be26a70bcebff5735243d91da8e69637625c38db'   # sha256 of the ask tool's description at a0de22fe (main's)
 PICK = {'name': '转客户', 'type': 'order', 'properties': ['客户编号'], 'choices': {'客户编号': {'type': 'order', 'column': '客户编号'}}, 'description': '换一个已有的客户'}
 KH001_IN_PRODUCTION = next(r for r in ORDERS if r['客户编号'] == 'KH001' and r['状态码'] == '1')['订单号']   # DD20260136
 HIDDEN_IN_PRODUCTION = next(r for r in ORDERS if r['客户编号'] != 'KH001' and r['状态码'] == '1')['订单号']
@@ -322,6 +326,140 @@ class DraftTests(Workspace):
             self.assertEqual(got['status'], 'draft')
             self.assertIn('ask', mcp_server.READ_TOOLS)
             self.assertFalse(any('submit' in t for t in mcp_server.READ_TOOLS))
+
+    # --- round 2 (ops/inbox/leader.md, 2026-11-26) ----------------------------------------------------------------------------------------------------------
+
+    def kept_answer(self, folder, answer_id) -> str:
+        conn = sqlite3.connect(folder / 'workspace.sqlite')
+        try:
+            return conn.execute('SELECT answer_json FROM qa_question WHERE id = ?', (answer_id,)).fetchone()[0]
+        finally:
+            conn.close()
+
+    def test_a_kept_refusal_keeps_no_value_of_the_object_and_is_checked_again_when_reopened(self):
+        with self.started() as (base, folder):
+            team = self.setup(base, 'some')
+            ann, admin = team['ann'], team['admin']
+            status, body = self.ask(ann, f'删掉订单 {IN_PRODUCTION}', draft('删除取消的订单', {'订单号': IN_PRODUCTION}, {}, '客户撤单'))   # DD20260003, of KH011, in production
+            self.assertEqual((body['status'], body['refusal']['check']), ('refused', 'condition'), body)
+            self.assertIn('现在是“生产中”', body['reason'])   # said to the person who asked, now
+            self.assertNotIn('生产中”', self.kept_answer(folder, body['id']))   # never kept
+            reopened = ann.get(f'/api/workspace/ask/{body["id"]}')[1]
+            self.assertIn('现在是“生产中”', reopened['reason'])   # checked again on reopening
+            self.assertEqual(admin.post('/api/workspace/row-rules', {'type': 'order', 'rules': [{'column': '客户编号', 'value': 'KH001', 'user_ids': [self.user_id(admin, 'ann')]}]})[0], 200)
+            reopened = ann.get(f'/api/workspace/ask/{body["id"]}')[1]
+            self.assertNotIn('生产中”', json.dumps(reopened, ensure_ascii=False))
+            self.assertNotEqual(reopened.get('status'), 'draft')
+
+    def test_a_kept_draft_keeps_no_options_read_from_rows_and_reopening_fills_them_again(self):
+        with self.started() as (base, folder):
+            team = self.setup(base, 'some')
+            self.confirmed_action(team, PICK)
+            status, body = self.ask(team['ann'], f'把订单 {IN_PRODUCTION} 的客户改成 KH002', draft('转客户', {'订单号': IN_PRODUCTION}, {'客户编号': 'KH002'}))
+            self.assertEqual(body['status'], 'draft', body)
+            self.assertTrue(body['draft']['action']['parameters'][0]['options'])   # the form offers the customers she may read
+            kept = self.kept_answer(folder, body['id'])
+            self.assertNotIn('"options"', kept)
+            self.assertNotIn('KH001', kept)   # no customer id but the one asked for
+            reopened = team['ann'].get(f'/api/workspace/ask/{body["id"]}')[1]
+            self.assertEqual(len(reopened['draft']['action']['parameters'][0]['options']), len(body['draft']['action']['parameters'][0]['options']))
+
+    def test_a_kept_draft_reopened_after_the_data_changed_is_refused_as_it_would_be_now(self):
+        with self.started() as (base, folder):
+            team = self.setup(base, 'some')
+            ann, bob = team['ann'], team['bob']
+            body = self.ask(ann, f'把订单 {IN_PRODUCTION} 标成已交付', draft('改订单状态', {'订单号': IN_PRODUCTION}, {'状态码': '0'}))[1]
+            record = ann.post('/api/workspace/actions/submit', body['draft']['submit'])[1]['record']
+            self.assertEqual(bob.post('/api/workspace/actions/decide', {'id': record, 'decision': 'approve'})[1]['state'], 'approved')
+            reopened = ann.get(f'/api/workspace/ask/{body["id"]}')[1]
+            self.assertEqual((reopened['status'], reopened['refusal']['check']), ('refused', 'condition'), reopened)
+            self.assertIn('现在是“已交付”', reopened['reason'])
+            self.assertNotIn('draft', reopened)
+
+    def test_a_question_naming_an_action_that_needs_another_look_is_refused_before_the_model(self):
+        with self.started() as (base, folder):
+            team = self.setup(base, 'some')
+            ann = team['ann']
+            self.confirmed_action(team, AMOUNT)
+            self.assertEqual(ann.post('/api/workspace/types/meanings', {'id': 'order', 'column': '状态码', 'values': [{'value': '1', 'label': '制造中'}]})[0], 200)
+            for column in ('状态码', None):
+                shown = team['bob'].get('/api/workspace/types/order')[1]
+                shown = next(p for p in shown['properties'] if p['column'] == column)['meanings'] if column else shown
+                self.assertEqual(team['bob'].post('/api/workspace/types/confirm', {'id': 'order', 'version': shown['version'], 'seen': shown['seen'], **({'column': column} if column else {})})[0], 200)
+            shown = team['bob'].get('/api/workspace/actions/' + quote(AMOUNT['name']))[1]
+            self.assertEqual(team['bob'].post('/api/workspace/actions/confirm', {'id': AMOUNT['name'], 'version': shown['version']})[0], 200)
+            asked = len(self.model.requests)
+            body = self.ask(ann, f'用改订单状态把订单 {IN_PRODUCTION} 标成已交付', draft('改订单状态', {'订单号': IN_PRODUCTION}, {'状态码': '0'}))[1]
+            self.assertEqual((body['status'], body['refusal']['kind']), ('refused', 'unsettled'), body)
+            self.assertEqual(len(self.model.requests), asked)   # the question names it: refused before the model
+            self.assertIn(('改订单状态', 'needs_look'), [(d['name'], d['state']) for d in body['refusal']['definitions']])
+
+    def test_an_action_that_reads_a_column_whose_values_are_kept_from_the_model_is_not_told(self):
+        with self.started() as (base, folder):
+            team = self.setup(base, 'some')
+            self.confirmed_action(team, AMOUNT)
+            self.ask(team['ann'], '订单有多少？', COUNT)
+            self.assertIn('调金额', [a['name'] for a in self.model.requests[-1]['ontology']['actions']])
+            self.assertEqual(team['ann'].post('/api/workspace/types/privacy', {'id': 'order', 'column': '金额', 'hide_values': True})[0], 200)
+            self.ask(team['ann'], '订单有多少？', COUNT)
+            told = [a['name'] for a in self.model.requests[-1]['ontology']['actions']]
+            self.assertNotIn('调金额', told)   # writes 金额
+            self.assertNotIn('新建订单', told)   # fills in 金额
+            self.assertIn('改订单状态', told)
+
+    def test_a_label_two_codes_share_is_not_turned_into_either_code(self):
+        with mock.patch.object(action_drafts, 'meaning_labels', lambda conn, english, column: {'0': '已交付', '1': '生产中', '2': '已交付'}):
+            self.assertEqual(action_drafts._code(None, 'order', '状态码', True, '已交付'), '已交付')   # checked as written, and refused as no code
+            self.assertEqual(action_drafts._code(None, 'order', '状态码', True, '生产中'), '1')
+            self.assertEqual(action_drafts._code(None, 'order', '状态码', True, '2'), '2')
+
+    def test_a_condition_value_is_told_only_for_a_column_whose_values_the_model_already_gets(self):
+        with self.started() as (base, folder):
+            team = self.setup(base, 'some')
+            self.confirmed_action(team, GUARDED)
+            self.ask(team['ann'], '订单有多少？', COUNT)
+            self.ask(team['ann'], '把那张大单锁定', draft('锁定大单', {'订单号': IN_PRODUCTION}, {'状态码': '0'}))
+            for request in self.model.requests:
+                sent = json.dumps({k: v for k, v in request.items() if k != 'asked'}, ensure_ascii=False)
+                for value in ('45678', 'DD20260004', IN_PRODUCTION):
+                    self.assertNotIn(value, sent)
+            guarded = next(a for a in self.model.requests[-1]['ontology']['actions'] if a['name'] == '锁定大单')
+            self.assertIn('订单号', guarded['conditions'])
+            self.assertIn('金额', guarded['conditions'])
+            status_action = next(a for a in self.model.requests[-1]['ontology']['actions'] if a['name'] == '改订单状态')
+            self.assertIn('生产中', status_action['conditions'])   # a code column's meanings go to the model already
+            body = self.ask(team['ann'], '把那张大单锁定', draft('锁定大单', {'订单号': DELIVERED}, {'状态码': '0'}))[1]
+            self.assertEqual(body['refusal']['check'], 'condition')   # code checks the whole condition
+
+    def test_a_reason_over_300_characters_is_left_for_the_person_to_write(self):
+        with self.started() as (base, folder):
+            team = self.setup(base, 'some')
+            long = '客户来电' * 80
+            for reply in (draft('改订单状态', {'订单号': IN_PRODUCTION}, {'状态码': '0'}, long), draft('删除取消的订单', {'订单号': CANCELLED}, {}, long)):
+                body = self.ask(team['ann'], '改一下', reply)[1]
+                self.assertEqual(body['status'], 'draft', body)
+                self.assertEqual((body['draft']['reason'], body['draft']['submit']['reason'], body['draft']['reason_too_long']), ('', '', True))
+            self.assertNotIn('reason_too_long', self.ask(team['ann'], '改一下', draft('改订单状态', {'订单号': IN_PRODUCTION}, {'状态码': '0'}, '签收'))[1]['draft'])
+
+    def test_a_reply_that_is_not_a_drafts_shape_is_refused_as_such(self):
+        with self.started() as (base, folder):
+            team = self.setup(base, 'some')
+            for reply, check in ((json.dumps({'questions': [{'question': 'x', 'reasoning': 'r', 'query': {'action': '改订单状态'}}]}, ensure_ascii=False), 'not_a_draft'),
+                                 (json.dumps({'questions': [{'question': 'x', 'reasoning': 'r', 'query': {'action': {'name': '改订单状态', 'colour': 'red'}}}]}, ensure_ascii=False), 'not_a_draft'),
+                                 (json.dumps({'questions': [{'question': 'x', 'reasoning': 'r', 'query': {'action': [{'name': '改订单状态'}, {'name': '删除取消的订单'}]}}]}, ensure_ascii=False), 'one_draft')):
+                body = self.ask(team['ann'], '改一下', reply)[1]
+                self.assertEqual((body['status'], body['refusal']['check']), ('refused', check), body)
+            body = self.ask(team['ann'], '改一下', json.dumps({'questions': [{'question': 'x', 'query': {'action': 'x'}}]}), lang='en')[1]
+            self.assertIn('not a draft', body['reason'])
+
+    def test_the_mcp_ask_description_is_mains_with_drafts_off_and_tells_of_drafts_with_them_on(self):
+        listed = lambda: {t['name']: t for t in mcp_server.handle({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'}, None)['result']['tools']}
+        with mock.patch.object(action_drafts, 'DRAFTS', False):
+            off = listed()['ask']['description']
+        self.assertEqual(hashlib.sha256(off.encode()).hexdigest(), MAIN_ASK_DESCRIPTION)
+        on = listed()['ask']['description']
+        self.assertTrue(on.startswith(off))
+        self.assertIn('draft', on[len(off):])
 
 
 if __name__ == '__main__':

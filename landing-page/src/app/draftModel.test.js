@@ -48,3 +48,15 @@ test("an action named in a refusal links to its type's actions tab, and a draft 
   setLocale("zh");
   assert.equal(statusText("draft"), "已草拟");
 });
+
+test("once the person submitted from the card it no longer says nothing is submitted, and a reason too long is left for them to write", () => {
+  setLocale("en");
+  assert.equal(draftView(edit, { submitted: true }).note, null);
+  assert.match(draftView(edit).note, /Nothing is submitted yet/);
+  const long = { ...edit, draft: { ...edit.draft, reason: "", reason_too_long: true } };
+  assert.equal(draftView(long).form.reason, "");
+  assert.match(draftView(long).reasonNote, /too long/);
+  assert.equal(draftView(edit).reasonNote, null);
+  setLocale("zh");
+  assert.match(draftView(long).reasonNote, /太长/);
+});
