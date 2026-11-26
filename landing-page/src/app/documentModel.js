@@ -43,11 +43,12 @@ export function answerFromDocuments(record) {
   };
 }
 
-/** [before, the quoted part, after] of the sentence that holds a quote; the quote alone when no sentence came with it. */
+/** [before, the quoted part, after] of the sentence that holds a quote, as the service sends them (three strings: no offsets to count); the quote alone when no
+ * sentence came with it (a kept answer from before). */
 export function sentenceParts(q) {
-  const [from, to] = Array.isArray(q.mark) ? q.mark : [];
-  if (typeof q.sentence !== "string" || !(from >= 0 && to <= q.sentence.length && from < to)) return ["", q.quote, ""];
-  return [q.sentence.slice(0, from), q.sentence.slice(from, to), q.sentence.slice(to)];
+  const s = q.sentence;
+  if (!s || typeof s !== "object" || typeof s.quote !== "string") return ["", q.quote, ""];
+  return [String(s.before ?? ""), s.quote, String(s.after ?? "")];
 }
 
 const grouped = (n) => Number(n).toLocaleString("en-US");
