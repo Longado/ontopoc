@@ -1618,6 +1618,8 @@ def reopen(conn, user: dict | None, question_id: int, page=None) -> dict:
     i, question, at, stored = found
     record = json.loads(stored)
     named = list(dict.fromkeys([*record.pop('named', []), *(type_id(t['id']) for t in record['types'])]))
+    if (gone := document_answers.reopened_removed(conn, user, named)) is not None:   # a document it quoted or named was removed: said so, never its old quotes
+        return {'id': i, 'question': question, 'asked_at': at, 'status': record['status'], **gone}
     lost = [element_id for element_id in named if not _may_see(conn, user, element_id)]
     waiting = [_waiting_line(conn, row, user) for row in (element_row(conn, e) for e in lost) if waiting_for_viewer(conn, row, user)]
     if lost and len(waiting) == len(lost):   # each waits for a second look: said as a fresh question would say it, the name and who it waits for, nothing of why

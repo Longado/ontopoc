@@ -1676,9 +1676,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                         body = document_answers.listing(conn, self.user)
                     elif method == 'GET' and len(parts) == 1:
                         body = document_answers.document(conn, self.user, parts[0])
-                    elif method == 'POST' and parts in (['upload'], ['confirm']):
+                    elif method == 'POST' and parts in (['upload'], ['confirm'], ['send-back'], ['remove']):
                         with runs_lock:
-                            act = document_answers.upload if parts == ['upload'] else document_answers.confirm
+                            act = {'upload': document_answers.upload, 'confirm': document_answers.confirm, 'send-back': document_answers.send_back, 'remove': document_answers.remove}[parts[0]]
                             body = act(conn, self.user, payload, self.signer(payload, 'who'))
                     else:
                         self.reply(404, {'error': lang.unknown_endpoint()})
@@ -2185,7 +2185,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             if self.path == '/api/workspace/ask':
                 self.ask_post()
                 return
-            if self.path in ('/api/workspace/documents/upload', '/api/workspace/documents/confirm'):
+            if self.path in ('/api/workspace/documents/upload', '/api/workspace/documents/confirm', '/api/workspace/documents/send-back', '/api/workspace/documents/remove'):
                 self.documents_route('POST')
                 return
             if self.path.split('?')[0].startswith('/api/workspace/assistant/turns'):

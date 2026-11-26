@@ -24,7 +24,7 @@ import unicodedata
 from ontology_poc_generator.company_documents import DocumentFileError, load_document_file
 from ontology_poc_generator.lang import tr
 from ontology_poc_generator.object_types import TypeRefused, _content, element_row, held_note, write_confirmation
-from ontology_poc_generator.workspace_store import SelfConfirmation, element_state_writes, may_confirm
+from ontology_poc_generator.workspace_store import SelfConfirmation, drop_was, element_state_writes, log_line, may_confirm, now_text
 
 DOCUMENT_PREFIX = 'document:'
 PASSAGE_CHARS = 600   # a paragraph longer than this is cut at sentence ends into passages of at most this many characters
@@ -33,6 +33,7 @@ MAX_CHARS = 200_000   # characters of text in one document (the file itself is c
 MAX_DOCUMENTS = 50    # documents in one workspace
 MAX_CLAIMS = 8        # claims in one answer: more is refused, not cut
 MAX_NAME = 120
+MAX_REASON = 200   # the reason a document is sent back or removed: one line
 STATES_SEARCHED = ('confirmed',)
 
 DOC_PROMPT_VERSION = 'workspace_documents.v1'
@@ -53,6 +54,8 @@ CREATE TABLE IF NOT EXISTS doc_passage (
     id INTEGER PRIMARY KEY AUTOINCREMENT, element_id TEXT NOT NULL, position INTEGER NOT NULL, paragraph INTEGER NOT NULL, part INTEGER NOT NULL, text TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS doc_passage_element ON doc_passage(element_id, position);
 CREATE VIRTUAL TABLE IF NOT EXISTS doc_terms USING fts5(terms, tokenize = 'unicode61 remove_diacritics 0');
+-- a removed document: its id is never given out again (its name may come back as a new document), so an answer that quoted it can say it was removed
+CREATE TABLE IF NOT EXISTS doc_removed (element_id TEXT PRIMARY KEY, name TEXT NOT NULL, removed_by TEXT, removed_at TEXT NOT NULL, reason TEXT NOT NULL);
 '''
 _CJK = '㐀-䶿一-鿿豈-﫿'
 _STOP = frozenset({'怎么', '什么', '多少', '哪些', '哪个', '如何', '是否', '为什么', '是什', '么样', '有没', '没有', '请问', '一下', '这个', '那个', '的是', '是多',
@@ -177,6 +180,8 @@ def _shown(conn, user: dict | None, row: dict) -> dict:
            'passages': content['passages'], 'chars': content['chars'], 'proposed_by': row['proposed_by'],
            'confirmed_by': row['confirmed_by'] if row['state'] == 'confirmed' else None, 'confirmed_at': row['confirmed_at'] if row['state'] == 'confirmed' else None}
     if _builder(user) and row['state'] != 'confirmed':
+        if row['state'] == 'needs_look' and row.get('reason'):   # sent back: why
+            out['reason'] = row['reason']
         out.update(who_can_confirm=_who_can_confirm(conn, row), may_confirm=user is None or may_confirm(conn, row, user.get('id')), held=held_note(conn, row))
     return out
 
@@ -189,7 +194,7 @@ def listing(conn, user: dict | None) -> dict:
     """GET /api/workspace/documents: the documents this person may read, whether the feature is on, its limits and what goes to the model."""
     return {'available': fts5_available(), **({} if fts5_available() else {'unavailable': unavailable_text()}),
             'documents': [_shown(conn, user, r) for r in _rows(conn) if may_read(conn, user, r)], 'limits': limits(),
-            'may_upload': _builder(user),
+            'may_upload': _builder(user), **({'removed': _removed(conn)} if _builder(user) else {}),   # a viewer never sees a removed document's name
             'sent_to_model': tr('确认过的文档里，和问题相关的段落（每次最多 {n} 段）会连同问题发给模型；数据行从不发给模型。',
                                 'Passages of confirmed documents that match a question (at most {n} each time) are sent to the model with the question; rows of data never are.').format(n=MAX_PASSAGES)}
 
@@ -228,7 +233,8 @@ def upload(conn, user: dict | None, payload: dict, who: str | None) -> dict:
     if chars > MAX_CHARS:
         raise DocumentRefused(tr(f'文档有 {chars} 个字，上限是 {MAX_CHARS} 个字：请分成几份上传', f'The document has {chars} characters; the limit is {MAX_CHARS}. Upload it in parts'))
     name = bundle['file']['name']
-    element_id = DOCUMENT_PREFIX + hashlib.sha256(name.encode()).hexdigest()[:16]
+    conn.executescript(_SCHEMA)
+    element_id = _id_for(conn, name)
     pieces = [(i, k, text) for i, paragraph in enumerate(bundle['paragraphs'], start=1) for k, text in enumerate(_pieces(paragraph), start=1)]
     content = {'name': name, 'kind': name.rpartition('.')[2].lower(), 'sha256': bundle['file']['sha256'], 'chars': chars, 'passages': len(pieces), 'builders_only': builders_only}
     conn.executescript(_SCHEMA)
@@ -361,7 +367,7 @@ def _nothing() -> str:
 
 def _state_text(state: str) -> str:
     return {'checked': tr('已经提出，还没有另一位确认', 'Proposed, waiting for a second person to confirm'), 'proposed': tr('还没有人确认', 'Not confirmed yet'),
-            'needs_look': tr('需要再看', 'Needs another look'), 'rejected': tr('被退回了', 'Sent back')}.get(state, state)
+            'needs_look': tr('被退回了，等再确认', 'Sent back, waiting to be confirmed again'), 'rejected': tr('被退回了', 'Sent back')}.get(state, state)
 
 
 def settled(conn, user: dict | None, docs: dict | None, item: dict, result: dict) -> dict:
@@ -416,3 +422,99 @@ def named(result: dict) -> list[str]:
     """The documents a refusal names, so that reopening it can tell when the asker may no longer read one."""
     refusal = result.get('refusal') or {}
     return [d['id'] for d in refusal.get('documents', [])] if refusal.get('kind') == 'document_unconfirmed' else []
+
+
+# --- send back and remove (round 2) ---------------------------------------------------------------------------------------------------------------------
+
+def _id_for(conn, name: str) -> str:
+    """The id of the document with this name: the same name is the same document, unless that document was removed; then the name is a new document."""
+    k = 0
+    while True:
+        element_id = DOCUMENT_PREFIX + hashlib.sha256((name if k == 0 else f'{name}#{k}').encode()).hexdigest()[:16]
+        if conn.execute('SELECT 1 FROM doc_removed WHERE element_id = ?', (element_id,)).fetchone() is None:
+            return element_id
+        k += 1
+
+
+def _removed_table(conn) -> bool:
+    return conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'doc_removed'").fetchone() is not None
+
+
+def _removed(conn) -> list[dict]:
+    if not _removed_table(conn):
+        return []
+    return [{'id': e, 'name': n, 'removed_by': by, 'removed_at': at, 'reason': why}
+            for e, n, by, at, why in conn.execute('SELECT element_id, name, removed_by, removed_at, reason FROM doc_removed ORDER BY removed_at DESC, element_id')]
+
+
+def _act(conn, user: dict | None, payload: dict, verb: tuple[str, str]) -> tuple[dict, str]:
+    """(the document's row, the reason) for a send-back or a removal, after the checks both share: a builder, a document they read, the version they read, a reason."""
+    element_id, version, reason = payload.get('id'), payload.get('version'), payload.get('reason')
+    if not _builder(user):
+        raise DocumentRefused(tr(f'{verb[0]}文档要搭建者', f'{verb[1]} a document needs a builder'), 403)
+    row = element_row(conn, element_id) if isinstance(element_id, str) and element_id.startswith(DOCUMENT_PREFIX) else None
+    if not may_read(conn, user, row):
+        raise DocumentRefused(tr('没有这份文档', 'There is no such document'), 404)
+    reason = reason.strip() if isinstance(reason, str) else ''
+    if not reason or len(reason) > MAX_REASON or '\n' in reason:
+        raise DocumentRefused(tr(f'{verb[0]}要写理由，1 到 {MAX_REASON} 个字，不能换行', f'{verb[1]} needs a reason of 1 to {MAX_REASON} characters, on one line'))
+    if isinstance(version, bool) or version != row['version']:
+        raise DocumentRefused(tr('这份文档在你看过之后变了，请刷新后再看', 'The document changed after you looked. Refresh and look again'), 409)
+    return row, reason
+
+
+def send_back(conn, user: dict | None, payload: dict, who: str | None) -> dict:
+    """POST /api/workspace/documents/send-back {id, version, reason}: a confirmed document goes back to waiting (needs another look) with the reason. It leaves
+    search at once; confirming it again follows the two-person and changed-since rules, as for any definition."""
+    row, reason = _act(conn, user, payload, ('退回', 'Sending back'))
+    if row['state'] != 'confirmed':
+        raise DocumentRefused(tr('只有已确认的文档才能退回', 'Only a confirmed document can be sent back'), 409)
+    conn.execute('BEGIN IMMEDIATE')
+    try:
+        if conn.execute("UPDATE element_state SET state = 'needs_look', reason = ?, cause = NULL, via = NULL, version = version + 1 WHERE element_id = ? AND version = ?",
+                        (reason, row['element_id'], row['version'])).rowcount != 1:
+            raise DocumentRefused(tr('这份文档在你看过之后变了，请刷新后再看', 'The document changed after you looked. Refresh and look again'), 409)
+        log_line(conn, who or tr('未署名', 'unsigned'), row['element_id'], 'sent_back', before={'state': 'confirmed', 'version': row['version']}, after={'state': 'needs_look', 'reason': reason})
+        drop_was(conn, row['element_id'])
+        conn.execute('COMMIT')
+    except BaseException:
+        conn.execute('ROLLBACK')
+        raise
+    return _shown(conn, user, element_row(conn, row['element_id']))
+
+
+def remove(conn, user: dict | None, payload: dict, who: str | None) -> dict:
+    """POST /api/workspace/documents/remove {id, version, reason}: the document and its passages leave the workspace and the search index; the log keeps who,
+    when and why, and doc_removed keeps its name so that answers that quoted it reopen refused. Its name may be uploaded again: a new document."""
+    row, reason = _act(conn, user, payload, ('移除', 'Removing'))
+    name = _content(row)['name']
+    conn.executescript(_SCHEMA)
+    conn.execute('BEGIN IMMEDIATE')
+    try:
+        for (passage,) in conn.execute('SELECT id FROM doc_passage WHERE element_id = ?', (row['element_id'],)).fetchall():
+            conn.execute('DELETE FROM doc_terms WHERE rowid = ?', (passage,))
+        conn.execute('DELETE FROM doc_passage WHERE element_id = ?', (row['element_id'],))
+        if conn.execute('DELETE FROM element_state WHERE element_id = ? AND version = ?', (row['element_id'], row['version'])).rowcount != 1:
+            raise DocumentRefused(tr('这份文档在你看过之后变了，请刷新后再看', 'The document changed after you looked. Refresh and look again'), 409)
+        conn.execute('INSERT INTO doc_removed(element_id, name, removed_by, removed_at, reason) VALUES (?, ?, ?, ?, ?)', (row['element_id'], name, who, now_text(), reason))
+        log_line(conn, who or tr('未署名', 'unsigned'), row['element_id'], 'removed', before={'state': row['state'], 'version': row['version'], 'name': name}, after={'reason': reason})
+        conn.execute('COMMIT')
+    except BaseException:
+        conn.execute('ROLLBACK')
+        raise
+    return {'id': row['element_id'], 'name': name, 'removed': True, 'reason': reason}
+
+
+def reopened_removed(conn, user: dict | None, named: list[str]) -> dict | None:
+    """What a kept answer or refusal that named a document since removed reopens as: withheld, saying the document was removed (its name only to a builder),
+    never with its old quotes. None when it named none."""
+    if not _removed_table(conn):
+        return None
+    ids = [e for e in named if isinstance(e, str) and e.startswith(DOCUMENT_PREFIX)]
+    gone = [n for e in ids for (n,) in conn.execute('SELECT name FROM doc_removed WHERE element_id = ?', (e,))]
+    if not gone:
+        return None
+    if not _builder(user):
+        return {'withheld': {'documents': []}, 'reason': tr('这条回答引用的文档已移除，所以不再显示它。', 'A document this answer quoted has been removed, so it is no longer shown.')}
+    names = tr('、', ', ').join(gone)
+    return {'withheld': {'documents': gone}, 'reason': tr(f'这条回答引用的文档「{names}」已移除，所以不再显示它。', f'The document this answer quoted ("{names}") has been removed, so it is no longer shown.')}
