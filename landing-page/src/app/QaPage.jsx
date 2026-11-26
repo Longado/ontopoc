@@ -146,7 +146,7 @@ function DraftCard({ record }) {
       {view.note && <p className="warn">{view.note}</p>}
       {view.reasonNote && <p className="muted">{view.reasonNote}</p>}
       {open ? <RunAction action={view.form.action} objectKey={view.form.objectKey} objectText={view.form.objectText} prefill={view.form} onDone={() => setSubmitted(true)} onCancel={() => setOpen(false)} />
-        : <button className="primary" onClick={() => setOpen(true)}>{t("ask.actionDraft.open")}</button>}
+        : view.offerForm && <button className="primary" onClick={() => setOpen(true)}>{t("ask.actionDraft.open")}</button>}
     </div>
   );
 }

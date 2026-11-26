@@ -161,7 +161,7 @@ It does not do heavy orchestration, large data, live queries against your databa
 ## Privacy
 
 - Uploaded files, pulled tables and all results stay on the machine running the service.
-- The model sees the names and types of object types and properties, confirmed code meanings, relations, what derived properties say, and every value of columns with few distinct values (such as city or tier). Key columns and columns a builder marks "don't send values" send no values. No rows are sent. For a question that asks for a change, the model also sees the confirmed actions the asker may submit (names, type, properties, meanings, conditions as text). A condition's value is written out only for a column whose values the model gets anyway; on a key column, a column with many values or one marked "don't send values" it reads "is one of a fixed list" or "is greater than a set number", and code checks the whole condition. The object's current values go to the person only.
+- The model sees the names and types of object types and properties, confirmed code meanings, relations, what derived properties say, and every value of columns with few distinct values (such as city or tier). Key columns and columns a builder marks "don't send values" send no values. No rows are sent. For a question that asks for a change, the model also sees the confirmed actions the asker may submit (names, type, properties, meanings, conditions as text; an action's description goes to the model as written, as type and view descriptions do). A condition's value is written out only for a column whose values the model gets anyway; on a key column, a column with many values or one marked "don't send values" it reads "is one of a fixed list" or "is greater than a set number", and code checks the whole condition. The object's current values go to the person only.
 - Each model call leaves one line in `model_calls.jsonl` (which agent, how long, success or failure), never the content. A call made by a run of Questions we need is marked as that run's.
 - What the earlier screen sends to the model is in [docs/LEGACY_SCREEN.en.md](docs/LEGACY_SCREEN.en.md#what-the-model-sees).
 
@@ -216,8 +216,8 @@ Issues and pull requests are welcome. Read the [development guardrails](docs/DEV
 ## Development
 
 ```bash
-PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (2,692 on 2026-11-26; install ".[check,sources]" first, or the Turtle, OWL and SHACL tests and some source checks are skipped)
-npm --prefix landing-page run test:unit                       # page tests (834 on 2026-11-26)
+PYTHONPATH=src python3 -m unittest discover -s tests -q      # backend tests (2,694 on 2026-11-26; install ".[check,sources]" first, or the Turtle, OWL and SHACL tests and some source checks are skipped)
+npm --prefix landing-page run test:unit                       # page tests (835 on 2026-11-26)
 PYTHONPATH=src:. python3 scripts/real_model_check.py --out /tmp/check   # real model against SQL (needs a model key; fails only on a wrong number)
 PYTHONPATH=src python3 -m ontology_poc_generator.ontology_server --data-dir /tmp/ontopoc-trial   # a trial run in another data directory
 ```

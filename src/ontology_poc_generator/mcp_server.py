@@ -802,7 +802,8 @@ ASK_DRAFT_NOTE = ('问的是要改数据（例如 把订单 DD20260004 标成已
                   '没有行为能做这个改动时 refusal.kind 是 no_action，列出能提交的行为。')   # said only while drafts are on (action_drafts.DRAFTS): off, ask reads as it did before them
 
 
-def _described(tool: dict) -> str:
+def described(tool: dict) -> str:
+    """A tool's description as it is served (tools/list) and shown on the agent page: ask's tells of drafts only while they are on."""
     from ontology_poc_generator import action_drafts
     return tool['description'] + (ASK_DRAFT_NOTE if tool['name'] == 'ask' and action_drafts.DRAFTS else '')
 
@@ -824,7 +825,7 @@ def handle(message: dict, service, only: tuple | None = None) -> dict | None:
     if method == 'ping':
         return reply({})
     if method == 'tools/list':
-        return reply({'tools': [{k: _described(t) if k == 'description' else t[k] for k in ('name', 'description', 'inputSchema', 'annotations')} for t in offered]})
+        return reply({'tools': [{k: described(t) if k == 'description' else t[k] for k in ('name', 'description', 'inputSchema', 'annotations')} for t in offered]})
     if method == 'tools/call':
         params = message.get('params') or {}
         tool = next((t for t in offered if t['name'] == params.get('name')), None)
