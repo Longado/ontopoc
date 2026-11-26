@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 import json
 import re
 
-from ontology_poc_generator import other_names
+from ontology_poc_generator import document_answers, other_names
 from ontology_poc_generator.answer_checks import _use, _uses, choose_rows, column_values, definition_catalog, definition_check, meaning_id, picks_objects, refusal
 from ontology_poc_generator.derived_properties import derived_id, derived_visible, describe as describe_derived, evaluate as evaluate_derived, row_values, text_of
 from ontology_poc_generator.named_views import name_views
@@ -1066,6 +1066,7 @@ def _beside(sc: dict, parts: dict, answer, item: dict, asked: str, applied: list
 
 
 def _answered(conn, gateway, user: dict | None, question: str, sc: dict) -> dict:
+    docs = document_answers.found(conn, user, question)   # None when there is nothing of documents for this person: then everything below is as it was
     parts = _inputs(conn, sc, question)
     ontology = parts['ontology']
     catalog, definitions = _catalog_for_model(conn, sc, parts)
@@ -1078,14 +1079,14 @@ def _answered(conn, gateway, user: dict | None, question: str, sc: dict) -> dict
         return unmatched_answer({**ontology, 'relations': [{'key': k, 'from': r['content']['from'], 'to': r['content']['to']} for k, r in sc['relations'].items()]}, relations, spec)   # also a relation a query cannot walk (its one side is keyed on more than the joined column): the relation check counts it all the same
     answer.unmatched = unmatched
     asked = ask_questions(ontology, parts['bundle'], gateway, question, answerer=answer, definitions=definitions, catalog=catalog,
-                          more=(ROWS_PROMPT_VERSION, ROWS_PROMPT) if ROW_ANSWERS else None)
+                          **document_answers.asking(docs, (ROWS_PROMPT_VERSION, ROWS_PROMPT) if ROW_ANSWERS else None))
     if asked.get('request_failed'):   # the model could not be reached: nothing was answered
         raise QaRefused(asked['error'], 502)
     if asked['error'] or not asked['items']:   # it replied, but with no query for this question: kept as unanswered, said in the reader's words
         item = {'question': question, 'reasoning': '', 'query': None, 'status': 'no_query', 'reason': _no_query_reason(sc)}
-        return {**_finish(conn, user, sc, parts, item, []), 'model': asked['model']}
-    return {**_finish(conn, user, sc, parts, asked['items'][0], answer.applied, spoken.get('spec'), beside=(answer, question)), 'model': asked['model'],
-            **({'ran': answer.ran()} if ROW_ANSWERS else {})}
+        return document_answers.settled(conn, user, docs, item, {**_finish(conn, user, sc, parts, item, []), 'model': asked['model']})
+    return document_answers.settled(conn, user, docs, asked['items'][0], {**_finish(conn, user, sc, parts, asked['items'][0], answer.applied, spoken.get('spec'), beside=(answer, question)), 'model': asked['model'],
+                                                                          **({'ran': answer.ran()} if ROW_ANSWERS else {})})
 
 
 ROWS_PROMPT_VERSION = 'workspace_rows.v2'
@@ -1426,6 +1427,7 @@ def _named_ids(result: dict, sc: dict) -> list[str]:
         ids += [d['id'] for d in refusal['definitions'] if 'id' in d]   # a viewer's line that says only that something waits names nothing
     elif refusal.get('kind') in ('not_in_scope', 'definition_unmet'):   # these say what is in scope (and for a builder what is left out)
         ids += [type_id(k) for k in sc['types']] + [v['row']['element_id'] for v in sc['views'].values()] + [d['id'] for d in refusal.get('left_out', []) if 'id' in d]
+    ids += document_answers.named(result)   # the documents a refusal names as waiting
     return list(dict.fromkeys(ids))
 
 
@@ -1538,7 +1540,7 @@ def history(conn, user: dict | None) -> list[dict]:
 
 TALLY_DAYS = 7
 HELD_BACK_LIMIT = 5
-ANSWERED = ('answered', 'no_data')
+ANSWERED = ('answered', 'no_data', 'from_documents')   # from_documents: answered from confirmed documents (document_answers), never a number from the data
 HELD_BACK = ('refused', 'definition_unmet', 'needs_derived')   # a check stopped it: a definition not confirmed, nothing in scope, a relation that cannot be walked, a query that left out a confirmed definition, a measure that waits for confirming
 
 
@@ -1599,6 +1601,8 @@ def _may_see(conn, user: dict | None, element_id: str) -> bool:
         return view_visible(conn, row, user)
     if element_id.startswith(DERIVED_PREFIX):
         return derived_visible(conn, row, user)
+    if element_id.startswith(document_answers.DOCUMENT_PREFIX):
+        return document_answers.may_read(conn, user, row)
     type_row = element_row(conn, type_id(_content(row)['type']))
     return type_row is not None and _visible(conn, type_row, user) and not reads_hidden(conn, element_id, user)   # a meaning of a column kept from them is not theirs
 

@@ -60,7 +60,7 @@ from ontology_poc_generator.ontology_confirm import confirmed_reference, element
 from ontology_poc_generator.ontology_library import import_definition, library_catalogue, library_definition
 from ontology_poc_generator.ontology_reference import compare_definition, local_schema, run_fingerprint, stale_reasons
 from ontology_poc_generator.ontology_questions import QUESTION_PROMPT_VERSION, answer_query, ask_questions
-from ontology_poc_generator import assistant_history
+from ontology_poc_generator import assistant_history, document_answers
 from ontology_poc_generator.workspace_questions import WRITES as ASK_WRITES, QaRefused, ask as ask_workspace, query_as_text, run_text as run_query_text, history as question_history, reopen as reopen_question, scope_line, tally as question_tally
 from ontology_poc_generator.public_ontology import MAX_MODELER_ATTEMPTS
 from ontology_poc_generator.derived_measures import parse_derived
@@ -1659,6 +1659,40 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 conn.close()
             self.reply(200, body)
 
+        def documents_route(self, method: str):
+            """GET /api/workspace/documents (the documents this person may read, whether the feature is on, its limits), GET /api/workspace/documents/<id> (one, with
+            its passages); POST /api/workspace/documents/upload {filename, content_base64, builders_only?} and /confirm {id, version} (see document_answers.py).
+            Writes hold runs_lock, as an upload of data does."""
+            parts = [unquote(p) for p in urlsplit(self.path).path[len('/api/workspace/documents'):].split('/') if p]
+            try:
+                payload = self.read_json() if method == 'POST' else {}
+                if payload is None:
+                    return
+                if not isinstance(payload, dict):
+                    raise ValueError(tr('请求要是一个 JSON 对象', 'The request must be a JSON object'))
+                conn = open_workspace(output_dir / 'workspace.sqlite')
+                try:
+                    if method == 'GET' and not parts:
+                        body = document_answers.listing(conn, self.user)
+                    elif method == 'GET' and len(parts) == 1:
+                        body = document_answers.document(conn, self.user, parts[0])
+                    elif method == 'POST' and parts in (['upload'], ['confirm']):
+                        with runs_lock:
+                            act = document_answers.upload if parts == ['upload'] else document_answers.confirm
+                            body = act(conn, self.user, payload, self.signer(payload, 'who'))
+                    else:
+                        self.reply(404, {'error': lang.unknown_endpoint()})
+                        return
+                finally:
+                    conn.close()
+            except document_answers.DocumentRefused as exc:
+                self.reply(exc.status, {'error': str(exc)})
+                return
+            except (ValueError, UnicodeError) as exc:
+                self.reply(400, {'error': str(exc)})
+                return
+            self.reply(200, body)
+
         def ask_post(self):
             """POST /api/workspace/ask {question}: answered from the confirmed definitions this person may see, or refused with the reason (see workspace_questions.py).
             The model is asked without the lock; the answer is kept under it."""
@@ -1896,6 +1930,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             if self.path.split('?')[0] == '/api/workspace/ask' or self.path.startswith('/api/workspace/ask/'):
                 self.ask_get()
+                return
+            if urlsplit(self.path).path == '/api/workspace/documents' or self.path.startswith('/api/workspace/documents/'):
+                self.documents_route('GET')
                 return
             if self.path.split('?')[0].startswith('/api/workspace/assistant/turns'):
                 self.assistant_get()
@@ -2147,6 +2184,9 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 return
             if self.path == '/api/workspace/ask':
                 self.ask_post()
+                return
+            if self.path in ('/api/workspace/documents/upload', '/api/workspace/documents/confirm'):
+                self.documents_route('POST')
                 return
             if self.path.split('?')[0].startswith('/api/workspace/assistant/turns'):
                 self.assistant_post()

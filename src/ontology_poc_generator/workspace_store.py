@@ -430,7 +430,7 @@ def element_state_writes(conn, changes: list[tuple], versions: dict[str, int] | 
 # back, while it waits}. Nobody in the set and not its proposer may confirm it while two-person confirmation is active (may_confirm); confirming empties it;
 # nothing another person does takes a name out of it. The only ways out: what it says is again exactly what was last confirmed (the set empties and, when
 # nothing else sent it back, it is confirmed again as it was: restore_if_back), or a person outside the set confirms.
-TRACKED = ('objtype:', 'enum:', 'relation:', 'objview:', 'objaction:', 'derived:')
+TRACKED = ('objtype:', 'enum:', 'relation:', 'objview:', 'objaction:', 'derived:', 'document:')   # document: a document for answers (document_answers)
 
 
 def tracked(element_id: str) -> bool:

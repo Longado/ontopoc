@@ -916,10 +916,11 @@ def _catalog(ontology: dict, bundle: dict, derived: list | None = None) -> dict:
 
 def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = None, purpose_only: bool = False,
                   derived: list | None = None, card: dict | None = None, answerer=None, definitions: list | None = None, catalog: dict | None = None,
-                  more: tuple[str, str] | None = None) -> dict:
+                  more: tuple[str, str] | None = None, told: dict | None = None, keep: tuple = ()) -> dict:
     """`answerer(query, question, used)` works out one question's answer in place of answer_query (the caller reads the rows its own
     way; `used` is the model's `definitions_used`). `definitions` is what the person has confirmed, told to the model; `catalog` replaces the one built from the data.
     `more`: (its version, its text), what the caller adds to the prompt, after all of it (the English note too) and under a version of its own.
+    `told`: what the caller adds to the request, after all of it; `keep`: the keys of the model's item kept on the item as written (the caller checks them).
     One call. With question: that question. With purpose_only: the questions the person wrote as the purpose, which
     an upload answers. With neither: the model's own round, asked for on the questions page."""
     request = {'purpose': bundle['decision'], 'ontology': catalog or _catalog(ontology, bundle, derived)}   # `catalog`: what the caller lets the model see (the workspace hides values)
@@ -929,6 +930,7 @@ def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = 
         request['asked'] = question
     elif purpose_only:
         request['only_purpose'] = True
+    request.update(told or {})
     system = QUESTION_SYSTEM_PROMPT + ENGLISH_NOTE if english() else QUESTION_SYSTEM_PROMPT
     version, system = (QUESTION_PROMPT_VERSION, system) if more is None else (f'{QUESTION_PROMPT_VERSION}+{more[0]}', system + more[1])   # after it, every word of it as it was
     out = {'prompt_version': version, 'model': None, 'asked_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
@@ -943,7 +945,7 @@ def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = 
     raw = reply.get('questions') if isinstance(reply, dict) else reply if question and isinstance(reply, list) else None   # one asked question: the item list without its wrapper too
     if question and isinstance(raw, dict):   # the list written as its one item
         raw = [raw]
-    if raw is None and question and isinstance(reply, dict) and {'query', 'reasoning', 'missing'} & set(reply):   # one asked question answered as a bare object, not in a list (a query left out is null)
+    if raw is None and question and isinstance(reply, dict) and ({'query', 'reasoning', 'missing'} | set(keep)) & set(reply):   # one asked question answered as a bare object, not in a list (a query left out is null)
         raw = [{**reply, 'question': reply['question'] if isinstance(reply.get('question'), str) else question}]
     if question and isinstance(raw, list):
         raw = [{**q, 'question': q['question'] if isinstance(q.get('question'), str) else question} if isinstance(q, dict) else q for q in raw]
@@ -977,7 +979,8 @@ def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = 
             result = unmatched(q.get('unmatched_relation')) if unmatched and status == 'query_limit' else None
             result = result or _in_names(ontology, {'status': status, 'reason': _for_reader(str(q.get('reasoning') or ''), status) or tr('模型认为本体表达不了这个问题', 'The model thinks the ontology cannot express this question'), 'reason_from_model': True})
         out['items'].append({'question': q['question'], 'reasoning': str(q.get('reasoning') or ''), 'query': query,
-                             **({'definitions_used': used} if used else {}), **({'definitions_told': [d['id'] for d in definitions]} if definitions else {}), **result, **({'asked': True} if question else {'from_purpose': True} if purpose_only else {})})
+                             **({'definitions_used': used} if used else {}), **({'definitions_told': [d['id'] for d in definitions]} if definitions else {}), **result, **({'asked': True} if question else {'from_purpose': True} if purpose_only else {}),
+                             **{k: q[k] for k in keep if k in q}})
     out['answered'] = sum(i['status'] == 'answered' for i in out['items'])
     out['total'] = len(out['items'])
     return out
