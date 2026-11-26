@@ -24,6 +24,9 @@ COVERED = ('/api/workspace/types/confirm', '/api/workspace/types/views/confirm',
            '/api/workspace/pipelines/confirm', '/api/workspace/actions/confirm', '/api/workspace/actions/decide', '/api/workspace/queue/confirm',
            '/api/workspace/queue/confirm-group', '/api/workspace/checked', '/api/workspace/needed/confirm', '/api/workspace/documents/confirm',
            '/api/workspace/documents/send-back', '/api/workspace/documents/remove')
+# Person-only acts that vouch for nothing but take trust away from a document that answers questions: sending it back and removing it (the Leader's decision,
+# 2026-11-26, ops/cards/doc-answers.md round 2). They reach no confirmation writer, so the test that ties the list to the writers leaves them out.
+TAKES_TRUST_AWAY = ('/api/workspace/documents/send-back', '/api/workspace/documents/remove')
 REFUSED_ZH = '确认和批准要由本人登录页面来做'
 REFUSED_EN = 'Confirming and approving are done by a person signed in to the page'
 CHECKED = '/api/workspace/checked'   # a checked number is recorded on a board card or a saved answer, not in the review queue: its own sentence
@@ -308,7 +311,7 @@ class EveryVouchingWriteIsPersonOnlyTests(GateTestCase):
                     admin.post(path, {})
                 except OSError:   # a route that does not answer a ValueError as a 400 dropped the connection; what it reached is noted all the same
                     pass
-        self.assertEqual(hit - set(ON_A_COPY), set(access.PERSON_ONLY_POSTS))
+        self.assertEqual(hit - set(ON_A_COPY), set(access.PERSON_ONLY_POSTS) - set(TAKES_TRUST_AWAY))
         self.assertEqual(hit & set(ON_A_COPY), set(ON_A_COPY))   # still on a copy: if impact stops reaching a writer, this line goes
 
 

@@ -328,7 +328,7 @@ class SendBackAndRemove(DocumentCase):
         status, back = self.send_back(self.builder, document)
         self.assertEqual((status, back['state'], back['reason']), (200, 'needs_look', '第五条的比例写错了'), back)
         self.assertEqual(self.send_back(self.builder, back)[0], 409)   # only a confirmed document is sent back
-        body, [request] = self.ask(self.builder, '逾期交货怎么罚？', reply_for=quoting(self.QUOTE))
+        body, [request] = self.ask(self.builder, '逾期交货怎么罚？')
         self.assertNotIn('documents', request)   # out of search at once
         self.assertEqual((body['status'], body['refusal']['kind']), ('refused', 'document_unconfirmed'), body)
         self.assertEqual(body['refusal']['documents'][0]['name'], '供货合同.md')
