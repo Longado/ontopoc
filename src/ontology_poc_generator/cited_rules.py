@@ -85,12 +85,7 @@ def reader(conn, user: dict | None, kept: list[dict]):
             raise RuleRefused(tr(f'“{column}”的规则的引用太短：至少要有 {d.MIN_QUOTE} 个字母、汉字或数字', f'The quote of the rule on "{column}" is too short: it needs at least {d.MIN_QUOTE} letters or digits'))
         if problem == 'missing':
             raise RuleRefused(tr(f'“{column}”的规则的引用在《{name}》{found["where"]}的原文里找不到：要一字不差', f'The quote of the rule on "{column}" is not in "{name}", {found["where"]}: it must be word for word'))
-        said = (document, passage, quote)
-        if said in cited:
-            raise RuleRefused(tr(f'“{column}”的规则的引用和另一条规则的引用重复：同一句原话只引用一次', f'The quote of the rule on "{column}" repeats another rule\'s: one quote is cited once'))
-        cited.add(said)
-        return {'document': document, 'passage': passage, 'quote': quote, 'sha256': _content(row)['sha256']}
-    cited: set = set()
+        return {'document': document, 'passage': passage, 'quote': quote, 'sha256': _content(row)['sha256']}   # one sentence may justify two rules
     return cite
 
 
@@ -156,9 +151,11 @@ def problems(conn, content: dict) -> list[str]:
 
 
 def moved_reason() -> str:
-    """The reason a type stores when a document its rules cite moved: it names no document and no citation, since every reader of the type's state reads it (a
-    viewer's board, an answer's standing); the type's page shows each citation that no longer stands, to whoever may read the document."""
-    return tr('它的定义依据的内容变了，要重新确认', 'What its definition rests on changed, and it needs confirming again')
+    """The reason a type stores when a document its rules cite moved: the words every change of a definition shows (object_types.CAUSE_WORDS), so a reader
+    who may not read the document learns only that the definition changed, as for any other cause; the type's page shows each citation that no longer stands,
+    to whoever may read the document, and the log names it to them."""
+    from ontology_poc_generator.object_types import CAUSE_WORDS
+    return CAUSE_WORDS['definition']
 
 
 def document_moved(conn, document: str, how: tuple[str, str], name: str) -> None:
@@ -183,8 +180,9 @@ def may_read_cited(conn, user: dict | None, document: str) -> bool:
 # --- conflicts --------------------------------------------------------------------------------------------------------------------------------------
 
 def pair_key(a: dict, b: dict) -> str:
-    """The pair of rules as written (citations included): a change to either is another pair."""
-    both = sorted(json.dumps(r, ensure_ascii=False, sort_keys=True) for r in (a, b))
+    """The pair of rules as anyone who reads them is shown them: without their citations, which a reader may not be allowed to know of. (A note is about the
+    rules as written, citations included: _notes matches them whole.)"""
+    both = sorted(json.dumps({k: v for k, v in r.items() if k != 'cite'}, ensure_ascii=False, sort_keys=True) for r in (a, b))
     return hashlib.sha256(json.dumps(both, ensure_ascii=False).encode()).hexdigest()[:16]
 
 
@@ -192,12 +190,27 @@ def _notes_table(conn) -> bool:
     return conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'rule_conflict_note'").fetchone() is not None
 
 
-def _notes(conn, english: str) -> dict[str, dict]:
+def _notes(conn, english: str, rules: list[dict] | None = None) -> dict[str, dict]:
+    """{pair key: note} of a type's notes; with `rules` (the type's rules now), only the notes whose two rules are exactly two of them, citations included."""
     if not _notes_table(conn):
         return {}
     cursor = conn.execute('SELECT * FROM rule_conflict_note WHERE type = ?', (english,))
     names = [c[0] for c in cursor.description]
-    return {r[1]: dict(zip(names, r)) for r in cursor}
+    notes = {r[1]: dict(zip(names, r)) for r in cursor}
+    if rules is not None:
+        now = [json.dumps(r, ensure_ascii=False, sort_keys=True) for r in rules]
+        notes = {k: n for k, n in notes.items() if all(json.dumps(r, ensure_ascii=False, sort_keys=True) in now for r in json.loads(n['rules_json']))}
+    return notes
+
+
+def drop_stale_notes(conn, english: str, content: dict, who: str | None) -> None:
+    """Inside the caller's transaction, once a type's rules changed: every note whose two rules are not both among them now is deleted, so changing a rule back
+    does not bring a note back (it was about the pair as it was confirmed). The type's log says so."""
+    kept = _notes(conn, english, content.get('rules') or [])
+    for key, note in _notes(conn, english).items():
+        if key not in kept:
+            conn.execute('DELETE FROM rule_conflict_note WHERE type = ? AND pair = ?', (english, key))
+            log_line(conn, who or tr('未署名', 'unsigned'), type_id(english), 'conflict_note_dropped', after={'key': key, 'asked': note['asked']})
 
 
 def _own_rows(conn, dataset: dict, limit) -> str:
@@ -231,8 +244,9 @@ def _note_view(note: dict | None, user: dict | None) -> dict | None:
     if note is None:
         return None
     can = _may_confirm_note(note, user, None)
+    builder = user is None or user.get('role') in ('builder', 'admin')   # the sentence on who may confirm it is for those who could
     return {'asked': note['asked'], 'proposed_by': note['proposed_by'], 'proposed_at': note['proposed_at'], 'state': 'checked', 'may_confirm': can,
-            **({} if can else {'held': tr('记下这条的人不能自己确认：要另一位来确认', 'Whoever wrote the note cannot confirm it: a second person must')})}
+            **({} if can or not builder else {'held': tr('记下这条的人不能自己确认：要另一位来确认', 'Whoever wrote the note cannot confirm it: a second person must')})}
 
 
 def findings(conn, element_id: str, content: dict, user: dict | None, count: bool = True) -> list[dict]:
@@ -243,7 +257,7 @@ def findings(conn, element_id: str, content: dict, user: dict | None, count: boo
     if not pairs:
         return []
     hidden = hidden_columns(conn, element_id, user)
-    notes = _notes(conn, content['english_name'])
+    notes = _notes(conn, content['english_name'], rules)
     names = {p['column']: p['name'] for p in content['properties']}
     dataset = current_dataset(conn, content['dataset']) if count else None
     cols = dataset_columns(conn, dataset['id']) if dataset else {}
@@ -318,7 +332,7 @@ def record_note(conn, payload: dict, who: str | None, user: dict | None) -> dict
 def confirm_note(conn, payload: dict, who: str | None, user: dict | None) -> dict:
     """POST /api/workspace/types/conflict-note/confirm {id, key}: a second person confirms the note; the conflict is no longer listed."""
     row, content, found = _finding(conn, payload, user)
-    note = _notes(conn, content['english_name']).get(found['key'])
+    note = _notes(conn, content['english_name'], content['rules']).get(found['key'])
     if note is None:
         raise TypeRefused(tr('这条冲突还没有人记下“已知”', 'Nobody has noted this conflict as known yet'), 404)
     if not _may_confirm_note(note, user, who):

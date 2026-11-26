@@ -168,7 +168,7 @@ def read_rules(given, properties: list[dict], has_codes, cite=None) -> list[dict
             rule['other'] = other
         elif check == 'when':
             rule.update(_conditional(r, column, props))
-        if any(rule == {k: v for k, v in was.items() if k not in ('cite', 'report_only')} for was in kept):   # the same rule twice, whatever each cites or reports
+        if any(same_rule(rule, was) for was in kept):   # the same rule twice, whatever each cites or reports and in whatever order its conditions or values come
             raise RuleRefused(tr(f'“{column}”的同一条规则写了两次', f'The same rule on "{column}" is written twice'))
         if r.get('cite') is not None:
             if isinstance(r['cite'], list) or cite is None:
@@ -187,6 +187,18 @@ def columns_of(rule: dict) -> set[str]:
     return {rule['column'], *([rule['other']] if 'other' in rule else []), *(c['column'] for c in rule.get('when') or [])}
 
 
+def same_rule(a: dict, b: dict) -> bool:
+    """Whether two rules say the same thing: the same kind on the same column with the same bounds, and for a conditional rule the same conditions and the same
+    values allowed, in any order (one value is a list of one). What each cites and whether it only reports do not count."""
+    def plain(r):
+        out = {k: v for k, v in r.items() if k not in ('cite', 'report_only', 'when', 'equals', 'one_of')}
+        if r['check'] == 'when':
+            out['when'] = sorted((c['column'], c['equals']) for c in r['when'])
+            out['allowed'] = sorted(allowed_values(r))
+        return out
+    return plain(a) == plain(b)
+
+
 def must_hold(rule: dict) -> bool:
     """Whether a rule's broken rows hold the type back (every rule but one marked report only)."""
     return not rule.get('report_only')
@@ -199,13 +211,13 @@ def allowed_values(rule: dict) -> tuple[str, ...]:
 
 def conflicts(rules: list[dict]) -> list[tuple[int, int, list[dict]]]:
     """(i, j, the conditions both rules put together) for each pair of conditional rules on the same column whose conditions can hold on one row (each is a
-    conjunction of equalities, and no column is required equal to two different values) and whose required values differ (not the same value, or not the same
-    list). Pairs in rule order; the conditions put together are sorted by column."""
+    conjunction of equalities, and no column is required equal to two different values) and whose required values share none: no value meets both (a list that
+    is only narrower than the other is no conflict). Pairs in rule order; the conditions put together are sorted by column."""
     found = []
     for i, a in enumerate(rules):
         for j in range(i + 1, len(rules)):
             b = rules[j]
-            if a['check'] != 'when' or b['check'] != 'when' or a['column'] != b['column'] or set(allowed_values(a)) == set(allowed_values(b)):
+            if a['check'] != 'when' or b['check'] != 'when' or a['column'] != b['column'] or set(allowed_values(a)) & set(allowed_values(b)):
                 continue
             merged: dict[str, str] = {}
             for c in [*a['when'], *b['when']]:
@@ -335,13 +347,14 @@ def _shown(number) -> str:
     return str(number)
 
 
-def says(rule: dict, names: dict[str, str] | None = None) -> str:
-    """The rule as one sentence, by the properties' names; a rule that only reports says so."""
-    said = _says(rule, names)
+def says(rule: dict, names: dict[str, str] | None = None, unsent: frozenset | set = frozenset()) -> str:
+    """The rule as one sentence, by the properties' names; a rule that only reports says so. `unsent`: the columns whose values are not sent to the model
+    (type_access.hidden_values): a conditional rule's sentence for an agent writes no value of them, only that it is a fixed one."""
+    said = _says(rule, names, unsent)
     return said + tr('（只报告）', ' (report only)') if rule.get('report_only') else said
 
 
-def _says(rule: dict, names: dict[str, str] | None = None) -> str:
+def _says(rule: dict, names: dict[str, str] | None = None, unsent: frozenset | set = frozenset()) -> str:
     name = lambda c: (names or {}).get(c, c)
     c, check = name(rule['column']), rule['check']
     if check == 'not_empty':
@@ -359,15 +372,27 @@ def _says(rule: dict, names: dict[str, str] | None = None) -> str:
     if check == 'in_codes':
         return tr(f'“{c}”要是写了含义的代码之一', f'"{c}" must be one of the codes that have a meaning')
     if check == 'when':
-        where = tr('、'.join(f'“{name(k["column"])}”是 {k["equals"]}' for k in rule['when']), ' and '.join(f'"{name(k["column"])}" is {k["equals"]}' for k in rule['when']))
-        must = (tr(f'要是 {rule["equals"]}', f'must be {rule["equals"]}') if 'equals' in rule
-                else tr(f'要是 {"、".join(rule["one_of"])} 之一', f'must be one of {", ".join(rule["one_of"])}'))
-        return tr(f'当{where} 时，“{c}”{must}', f'When {where}, "{c}" {must}')
+        shown = lambda k: k['column'] not in unsent
+        where = tr('、'.join(f'“{name(k["column"])}”是 {k["equals"]}' if shown(k) else f'“{name(k["column"])}”是某个固定的值' for k in rule['when']),
+                   ' and '.join(f'"{name(k["column"])}" is {k["equals"]}' if shown(k) else f'"{name(k["column"])}" is a fixed value' for k in rule['when']))
+        if rule['column'] in unsent:
+            must = tr('要是某个固定的值', 'must be a fixed value') if 'equals' in rule else tr('要是一组固定的值之一', 'must be one of a fixed list')
+        else:
+            must = (tr(f'要是 {rule["equals"]}', f'must be {rule["equals"]}') if 'equals' in rule
+                    else tr(f'要是 {"、".join(rule["one_of"])} 之一', f'must be one of {", ".join(rule["one_of"])}'))
+        return tr(f'当{where}{" " if shown(rule["when"][-1]) else ""}时，“{c}”{must}', f'When {where}, "{c}" {must}')
     return tr(f'“{c}”不能早于“{name(rule["other"])}”', f'"{c}" must not be before "{name(rule["other"])}"')
 
 
-def note() -> str:
-    """How the rules treat what is not a plain value, for the page."""
+def note(report_only: bool = False) -> str:
+    """How the rules treat what is not a plain value, for the page; with a rule that only reports, said so (without one, the words are what they always were)."""
+    if report_only:
+        return tr('空着的格子只算违反“不能为空”，其他规则不判断它；填了但不是数字的格子违反数字规则；不是真实日期的格子（例如 2026-02-30）违反日期规则；只有日期没有时间的，按当天开始算。'
+                  '必须满足的规则有一条不满足，这个对象类型就不能确认；确认之后新数据违反了它，对象类型会退回“需要再看”。标为“只报告”的规则只列出不满足的行，不拦着确认，也不让类型退回。',
+                  'An empty cell breaks only "not empty"; other rules do not judge it. A filled cell that is not a number breaks a number rule, and one that is not a real date '
+                  '(such as 2026-02-30) breaks a date rule; a date without a time counts as the start of that day. While a rule that must hold is broken the object type cannot '
+                  'be confirmed; once it is confirmed, new data that breaks such a rule sends it back for another look. A rule marked report only lists the rows that break it '
+                  'and never stops confirming or sends the type back.')
     return tr('空着的格子只算违反“不能为空”，其他规则不判断它；填了但不是数字的格子违反数字规则；不是真实日期的格子（例如 2026-02-30）违反日期规则；只有日期没有时间的，按当天开始算。'
               '有一条规则不满足，这个对象类型就不能确认；确认之后新数据违反了它，对象类型会退回“需要再看”。',
               'An empty cell breaks only "not empty"; other rules do not judge it. A filled cell that is not a number breaks a number rule, and one that is not a real date '

@@ -518,6 +518,9 @@ def update_type(conn, payload: dict, who: str | None, user: dict | None = None) 
         return {'id': english, 'state': row['state'], 'reset': reset, 'warnings': [*warnings, *broken], **shown}
 
     def after(c):
+        if old.get('rules', []) != content.get('rules', []):   # a "known" note was about the rules as they were: it does not come back with them
+            from ontology_poc_generator.cited_rules import drop_stale_notes   # cited_rules reads this module
+            drop_stale_notes(c, english, content, who)
         if reset and row['state'] == 'confirmed':   # the type is not confirmed any more: what reads it (the relations) cannot stand on it
             _flag_readers(c, row['element_id'], tr(f'它连接的“{old["name"]}”类型改了{tr("、", ", ").join(reset)}，要重新确认', f'The type "{old["name"]}" it connects to changed ({", ".join(reset)}) and needs confirming again'), [])
         _meaning_reset_flags(c, was_confirmed, english)
@@ -1518,7 +1521,7 @@ def type_detail(conn, english_name: str, user: dict | None) -> dict:
             **({'limited_note': limited_note()} if limited else {}), 'seen': None if limited else seen_of_type(dataset), 'key': content['key'],
             'properties': props, 'visible_to': None if user is not None and user['role'] == 'viewer' else visible_to(conn, row['element_id']), **_state_view(conn, row, user, whole),
             'columns': [{'name': n, 'type': c['type'], 'enum_candidate': bool(c['counts']) and c['type'] in CODE_TYPES} for n, c in cols.items() if n not in hidden],
-            'columns_kept': len(hidden), **({'rules': rules, 'rules_note': rules_note()} if rules else {}), **({'conflicts': conflicts} if conflicts else {})}
+            'columns_kept': len(hidden), **({'rules': rules, 'rules_note': rules_note(any(r.get('report_only') for r in rules))} if rules else {}), **({'conflicts': conflicts} if conflicts else {})}
 
 
 def _conflicts(conn, element_id: str, content: dict, user: dict | None) -> list[dict]:

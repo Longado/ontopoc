@@ -71,8 +71,9 @@ def definitions(conn, user: dict | None) -> dict:
         meanings = {column: {'values': m['labels'], **_meanings_called(m['row']), **_stamp(conn, m['row']['element_id'])} for column, m in sc['meanings'].get(name, {}).items() if column not in hidden}
         names = {p['column']: p['name'] for p in content['properties']}   # the properties this person may see: a rule on any other column is not theirs to read
         readable = [r for r in content.get('rules') or [] if columns_of(r) <= set(names)]
-        rules = [rule_says(r, names) for r in readable if must_hold(r)]
-        reported = [rule_says(r, names) for r in readable if not must_hold(r)]   # rules that only report: never under "every row holds them"
+        unsent = set(hidden_values(conn, type_id(name)))   # a value of a column whose values the model does not get is not written in a sentence for an agent
+        rules = [rule_says(r, names, unsent) for r in readable if must_hold(r)]
+        reported = [rule_says(r, names, unsent) for r in readable if not must_hold(r)]   # rules that only report: never under "every row holds them"
         types.append({'id': name, 'name': content['name'], **_called(content), 'description': content['description'], 'dataset': content['dataset'], 'key': content['key'],
                       'properties': [{'column': p['column'], 'name': p['name'], **_called(p), 'type': p['type'], 'code': p['enum'] and p['column'] in meanings} for p in content['properties']],
                       'meanings': meanings, **({'value_rules': rules} if rules else {}), **({'reported_rules': reported} if reported else {}), **_stamp(conn, t['row']['element_id'])})

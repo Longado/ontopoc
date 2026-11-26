@@ -16,7 +16,7 @@ import json
 
 from ontology_poc_generator.object_types import (
     ACTION_PREFIX, DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, TypeRefused,
-    _by_value, _confirmers, _content, held_note, _label, _type_problems, counted_ahead, dataset_columns, element_row, keep_count, limited_on, unconfirmed_producers)
+    _by_value, _citation_problems, _confirmers, _content, held_note, _label, _type_problems, counted_ahead, dataset_columns, element_row, keep_count, limited_on, unconfirmed_producers)
 from ontology_poc_generator.review_queue import IN_QUEUE, _item, confirm_item, queue
 from ontology_poc_generator.workspace_store import SelfConfirmation, current_dataset, log_line
 
@@ -90,7 +90,7 @@ def _plan(conn, rows: list[dict], user: dict | None) -> list[dict]:
                 why = tr(f'要先确认{tr("、", ", ").join(_label(conn, d) for d in waiting)}', f'Confirm {", ".join(_label(conn, d) for d in waiting)} first')
             elif element_id.startswith(TYPE_PREFIX) and (producers := unconfirmed_producers(conn, content['dataset'])):
                 why = tr(f'要先确认管道{tr("、", ", ").join(f"“{n}”" for n in producers)}', f'Confirm the pipeline {", ".join(producers)} first')
-            elif element_id.startswith(TYPE_PREFIX) and (problems := _type_problems(conn, content, record=False)[0]):   # confirming it would be refused (confirm_element): not planned, and what stands on it waits
+            elif element_id.startswith(TYPE_PREFIX) and (problems := [*_type_problems(conn, content, record=False)[0], *_citation_problems(conn, content)]):   # confirming it would be refused (confirm_element): not planned, and what stands on it waits
                 why = tr(f'按现在的数据过不了检查，确认不了：{tr("；", "; ").join(problems)}', f'It fails the checks on the current data and cannot be confirmed: {"; ".join(problems)}')
         if why is None:
             will.add(element_id)
