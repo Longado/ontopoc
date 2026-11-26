@@ -8,7 +8,7 @@ import unittest
 from unittest import mock
 from urllib.parse import quote
 
-from ontology_poc_generator import accounts, action_drafts, mcp_server, workspace_questions
+from ontology_poc_generator import accounts, action_drafts, agent_access, mcp_server, workspace_questions
 from ontology_poc_generator.workspace_store import open_workspace
 from tests.test_action_drafts_main import (CANCELLED, COUNT, DELIVERED, FRESH, IN_PRODUCTION, NONE_CAN, Model, Workspace, draft)
 from tests.test_object_types import ORDERS
@@ -460,6 +460,27 @@ class DraftTests(Workspace):
         on = listed()['ask']['description']
         self.assertTrue(on.startswith(off))
         self.assertIn('draft', on[len(off):])
+
+    # --- round 3 ---------------------------------------------------------------------------------------------------------------------------------------------
+
+    def test_a_kept_nothing_to_change_refusal_keeps_no_value_of_the_object(self):
+        with self.started() as (base, folder):
+            team = self.setup(base, 'some')
+            body = self.ask(team['ann'], f'把订单 {IN_PRODUCTION} 改成生产中', draft('改订单状态', {'订单号': IN_PRODUCTION}, {'状态码': '1'}))[1]
+            self.assertEqual(body['refusal']['check'], 'nothing_to_change', body)
+            self.assertIn('状态码 生产中', body['reason'])   # said to the person now
+            self.assertNotIn('生产中', self.kept_answer(folder, body['id']))   # the value the object holds is not kept
+            self.assertIn('状态码 生产中', team['ann'].get(f'/api/workspace/ask/{body["id"]}')[1]['reason'])   # said again on reopening
+
+    def test_the_agent_page_shows_the_ask_description_mcp_serves(self):
+        served = lambda: next(t for t in mcp_server.handle({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list'}, None)['result']['tools'] if t['name'] == 'ask')['description']
+        page = lambda: next(t for t in agent_access.agent_info(None, None)['tools'] if t['name'] == 'ask')['description']
+        with mock.patch.object(agent_access, 'definitions', lambda conn, user: {'types': [], 'relations': [], 'views': [], 'derived': []}):
+            self.assertEqual(page(), served())
+            self.assertIn(mcp_server.ASK_DRAFT_NOTE, page())
+            with mock.patch.object(action_drafts, 'DRAFTS', False):
+                self.assertEqual(page(), served())
+                self.assertEqual(hashlib.sha256(page().encode()).hexdigest(), MAIN_ASK_DESCRIPTION)
 
 
 if __name__ == '__main__':

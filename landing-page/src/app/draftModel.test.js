@@ -60,3 +60,8 @@ test("once the person submitted from the card it no longer says nothing is submi
   setLocale("zh");
   assert.match(draftView(long).reasonNote, /太长/);
 });
+
+test("after a submit from the card, the form is not offered again for that draft", () => {
+  assert.equal(draftView(edit).offerForm, true);
+  assert.equal(draftView(edit, { submitted: true }).offerForm, false);
+});
