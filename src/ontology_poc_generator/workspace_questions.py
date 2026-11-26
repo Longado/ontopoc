@@ -1074,7 +1074,7 @@ def _answered(conn, gateway, user: dict | None, question: str, sc: dict, actions
     ontology = parts['ontology']
     catalog, definitions = _catalog_for_model(conn, sc, parts)
     if actions:
-        catalog = {**catalog, 'actions': actions}
+        catalog = {**catalog, 'actions': action_drafts.for_model(actions, catalog)}
     relations = _checked_relations(conn, sc, parts)
     answer = _engine(sc, parts, relations, conn)
     spoken = {}   # what the model said the question asks of a relation, kept for the definitions an answer from the relation check stands on
@@ -1501,7 +1501,7 @@ def ask(conn, gateway, user: dict | None, question, writes='json', keep: bool = 
 def _without_rows(result: dict) -> dict:
     """An answer as it is kept: a list or a lookup keeps its columns and how it was paged, never its rows (reopened, it is worked out again for the person
     reopening it, under what they may see then). A draft of an action keeps no value of the object (action_drafts.kept). Any other answer as it is."""
-    if isinstance(result.get('draft'), dict):
+    if action_drafts.drafted(result):
         return action_drafts.kept(result)
     answer = result.get('answer')
     if not isinstance(answer, dict) or not isinstance(answer.get('objects'), dict):
@@ -1672,7 +1672,7 @@ def reopen(conn, user: dict | None, question_id: int, page=None) -> dict:
         if user is not None and user['role'] == 'viewer':
             fresh = _strip_rows(fresh)
         record = {**{k: v for k, v in record.items() if k not in AGAIN_KEYS}, **{k: fresh[k] for k in AGAIN_KEYS if k in fresh}, 'again': True}
-    if isinstance(record.get('draft'), dict):   # a draft kept no value of the object: checked again, on the object as it is now
+    if action_drafts.drafted(record):   # a draft (or its refusal) kept no value of the object: checked again, on the object as it is now
         record = action_drafts.again(conn, user, record, question)
     if isinstance(record.get('beside'), dict):   # what was beside it, as a fresh answer would name it: only views still confirmed and still this person's to see
         standing = lambda element_id: (row := element_row(conn, element_id)) is not None and row['state'] == 'confirmed' and _may_see(conn, user, element_id)

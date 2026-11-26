@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from ontology_poc_generator.lang import tr
 from ontology_poc_generator.object_actions import (
-    SubmitRefused, _action_row, _label, _of_type, _phrase, _shown_columns, _texts, _type_name, action_visible, check_submit, conditions_of,
+    MAX_REASON, NUMBER_TYPES, OPS, SubmitRefused, _action_row, _label, _of_type, _phrase, _shown_columns, _texts, _type_name, action_visible, check_submit, conditions_of,
     describe, kind_of, parameters, waiting_on)
 from ontology_poc_generator.object_types import TypeRefused, _content, element_row, enum_id, type_id
 from ontology_poc_generator.object_views import meaning_labels
@@ -28,7 +28,9 @@ from ontology_poc_generator.type_access import hidden_columns, hidden_values
 
 DRAFTS = True   # whether a question may be answered with a draft of an action; off, Q&A is as it was before drafts
 MARK = 'action_draft'   # the key that marks an item the answerer worked out as a draft (or its refusal), for workspace_questions._answered
-FIELDS = ('name', 'key', 'values', 'reason', 'type')   # what the model's draft may say: anything more is a chain of steps
+FIELDS = ('name', 'key', 'values', 'reason', 'type')   # what the model's draft may say
+CHAIN = ('then', 'next', 'steps', 'actions', 'after')   # what a reply that chains steps says beside them (anything else unknown: not a draft's shape)
+VALUED = ('condition', 'nothing_to_change')   # the checks whose words quote the object's value now: kept without them, said again on reopening
 KEPT_OUT = ('current', 'current_text', 'change_text', 'beside')   # what a kept draft leaves out: the object's values, read again when it is reopened
 
 PROMPT_VERSION = 'workspace_actions.v1'
@@ -83,8 +85,30 @@ def told(conn, user: dict | None, sc: dict) -> list[dict]:
                          **({'meanings': meaning_labels(conn, content['type'], column)} if p['enum'] else {}),
                          **({'picked_from': tr(f'{_type_name(conn, source["type"])} 的 {source["column"]}', f'{source["column"]} of {_type_name(conn, source["type"])}')} if source else {})})
         out.append({'name': content['name'], 'kind': kind, 'type': content['type'], 'type_name': t['name'], 'description': content.get('description') or '', 'key': key,
-                    'properties': said, 'conditions': tr('、', ', ').join(_phrase(conn, content['type'], names, c) for c in conditions_of(content))})
+                    'properties': said, '_conditions': [{'column': c['column'], 'full': _phrase(conn, content['type'], names, c), 'vague': _vague(names, props, c)}
+                                                        for c in conditions_of(content)]})
     return out
+
+
+def _vague(names: dict, props: dict, cond: dict) -> str:
+    """A condition without its value, for a column whose values the model does not get: 订单号 是一组固定取值之一, 金额 大于一个设定的数."""
+    name, op = names[cond['column']], cond['op']
+    if op in ('empty', 'not_empty'):
+        return f'{name} {OPS[op]}'
+    if op == 'in':
+        return tr(f'{name} 是一组固定取值之一', f'{name} is one of a fixed list')
+    if op in ('eq', 'ne'):
+        return tr(f'{name} {"是" if op == "eq" else "不是"}一个设定的值', f'{name} {"is" if op == "eq" else "is not"} a set value')
+    what = tr('数', 'number') if props[cond['column']]['type'] in NUMBER_TYPES else tr('日期', 'date')
+    return tr(f'{name} {OPS[op]}一个设定的{what}', f'{name} {OPS[op]} a set {what}')
+
+
+def for_model(actions: list[dict], catalog: dict) -> list[dict]:
+    """The actions as the model reads them: a condition's value only on a column whose values or meanings the catalog already gives the model (few distinct
+    values, not a key, not "don't send values"); any other condition without its value. Code still checks the whole condition."""
+    told = {t['key']: {a['path'] for a in t['attributes'] if a.get('values') or a.get('meanings')} for t in catalog.get('object_types', [])}
+    return [{**{k: v for k, v in a.items() if k != '_conditions'},
+             'conditions': tr('、', ', ').join(c['full'] if c['column'] in told.get(a['type'], set()) else c['vague'] for c in a['_conditions'])} for a in actions]
 
 
 def prompt(more: tuple[str, str] | None) -> tuple[str, str]:
@@ -110,14 +134,31 @@ def finish(item: dict) -> dict:
     return {k: item[k] for k in keys if k in item}
 
 
+def drafted(result: dict) -> bool:
+    """Whether a Q&A result is a draft of an action, or the refusal of one (the model's query asked for an action and drafting read it)."""
+    query = result.get('query')
+    return (isinstance(query, dict) and 'action' in query
+            and (result.get('status') == 'draft' or (result.get('refusal') or {}).get('kind') in ('action_check', 'no_action', 'unsettled')))
+
+
 def kept(result: dict) -> dict:
-    """A draft as it is kept with the question: without the object's current values (reopen reads them again)."""
-    return {**result, 'draft': {k: v for k, v in result['draft'].items() if k not in KEPT_OUT}}
+    """A draft, or its refusal, as it is kept with the question: no value of the object and no value read from rows (a draft's current values, the options
+    its form offers; a refusal's words that quote the object's value now). Reopening checks it again and says them as they are then."""
+    if isinstance(result.get('draft'), dict):
+        line = {k: v for k, v in result['draft'].items() if k not in KEPT_OUT}
+        line['action'] = {**line['action'], 'parameters': [{k: v for k, v in p.items() if k != 'options'} for p in line['action']['parameters']]}
+        return {**result, 'draft': line}
+    refusal = result.get('refusal') or {}
+    if refusal.get('kind') == 'action_check' and refusal.get('check') in VALUED:
+        said = tr('它的原话提到了对象当时的值，没有保存；重新打开时按现在的数据再检查一遍', 'its words quoted the object\'s value then and are not kept; reopening checks it again on the data as it is now')
+        reason = tr(f'没有起草：{said}', f'Not drafted: {said}')
+        return {**result, 'reason': reason, 'refusal': {**refusal, 'said': said}, 'steps': [{**st, 'text': said} if st.get('failed') else st for st in result.get('steps', [])]}
+    return result
 
 
 def again(conn, user: dict | None, record: dict, question: str) -> dict:
     """A kept draft read again for the person reopening it: the same draft checked now, with the object's values as they are now (or the refusal now)."""
-    if not DRAFTS or not isinstance(record.get('query'), dict) or 'action' not in record['query']:
+    if not DRAFTS or not drafted(record):
         return record
     from ontology_poc_generator.workspace_questions import scope
     fresh = draft(conn, user, scope(conn, user), question, record['query'])
@@ -167,9 +208,13 @@ def draft(conn, user: dict | None, sc: dict, question: str, query: dict) -> dict
     """The draft the model's {"action": ...} asks for, checked as a submit would be and writing nothing; or the refusal that says why there is none."""
     asked = query['action']
     understood = _step(tr('理解问题', 'Understand the question'), tr('问题要改数据：起草一个行为，不算数', 'The question asks for a change: draft an action, no number'))
-    if not isinstance(asked, dict) or set(asked) - set(FIELDS):
+    extra = set(asked) - set(FIELDS) if isinstance(asked, dict) else set()
+    if isinstance(asked, list) or (extra and extra <= set(CHAIN)):
         why = tr('一个问题只起草一个行为，不连着做几步：请一次问一个改动', 'One question drafts one action, not a chain of steps: ask for one change at a time')
         return _refused(tr(f'没有起草：{why}', f'Not drafted: {why}'), {'kind': 'action_check', 'check': 'one_draft', 'said': why}, [understood, _step(tr('结果', 'Result'), why, True)])
+    if not isinstance(asked, dict) or extra:
+        why = tr('模型的回复不是一份草稿：没有按“行为、对象的主键、值、理由”写出来，所以什么都没有起草。请换个说法再问一次', 'the reply was not a draft: it did not name an action, the object\'s key, the values and a reason, so nothing was drafted. Ask again in other words')
+        return _refused(tr(f'没有起草：{why}', f'Not drafted: {why}'), {'kind': 'action_check', 'check': 'not_a_draft', 'said': why}, [understood, _step(tr('结果', 'Result'), why, True)])
     name = asked.get('name')
     if name in (None, ''):
         return _no_action(conn, user, sc, asked.get('type'), understood)
@@ -196,13 +241,16 @@ def draft(conn, user: dict | None, sc: dict, question: str, query: dict) -> dict
         values = {}
     reason = asked.get('reason') if isinstance(asked.get('reason'), str) and asked['reason'].strip() else question   # no reason written: the question is the reason
     reason = ' '.join(reason.split())
+    too_long = len(reason) > MAX_REASON   # the model's, not the person's: left for them to write; every other check is made with the question as the reason
+    if too_long:
+        reason = ' '.join(question.split())[:MAX_REASON]
     payload = {'action': content['name'], 'key': key, 'params': values, 'reason': reason}
     who = user['display_name'] if user else None
     try:
         planned = check_submit(conn, row, payload, who, user, hidden_as_missing=True)
     except SubmitRefused as no:
-        return _check_refused(str(no), no.check, content['name'], understood)
-    return _drafted(conn, user, row, planned, understood)
+        return {**_check_refused(str(no), no.check, content['name'], understood), 'types': [{'id': content['type'], 'name': t['name']}]}   # reopened, it is withheld as the type's answers are
+    return _drafted(conn, user, row, planned, understood, too_long)
 
 
 def _check_refused(said: str, check: str, name, understood: dict) -> dict:
@@ -210,7 +258,7 @@ def _check_refused(said: str, check: str, name, understood: dict) -> dict:
                     [understood, _step(tr('核对行为', 'Check the action'), said, True)])
 
 
-def _drafted(conn, user: dict | None, row: dict, planned: dict, understood: dict) -> dict:
+def _drafted(conn, user: dict | None, row: dict, planned: dict, understood: dict, too_long: bool = False) -> dict:
     content, rec, t = _content(row), planned['record'], planned['type']
     kind, english = rec['op'], t['english_name']
     hidden = hidden_columns(conn, type_id(english), user) if user is not None else set()
@@ -239,8 +287,12 @@ def _drafted(conn, user: dict | None, row: dict, planned: dict, understood: dict
             'current': current, 'asked': asked, 'current_text': before_text if kind != 'create' else '', 'asked_text': after_text if kind != 'delete' else '', 'change_text': change_text,
             'beside': beside, 'submit': {'action': content['name'], 'key': rec['key'], 'params': {} if kind == 'delete' else dict(rec['after']), 'reason': rec['reason']},
             'dataset': dataset['name'], 'dataset_version': dataset['version']}
+    if too_long:   # the assistant's reason did not fit: the form asks the person for one
+        line = {**line, 'reason': '', 'submit': {**line['submit'], 'reason': ''}, 'reason_too_long': True}
     reason = tr(f'草拟了「{content["name"]}」：{said}。还没有提交：核对后由你提交，另一位建设者批准之后才会改数据。',
                 f'Drafted "{content["name"]}": {said}. Nothing is submitted yet: check it and submit it; the data changes only after another builder approves it.')
+    if too_long:
+        reason += tr(f'助手写的理由超过 {MAX_REASON} 个字，没有填进去：请自己写一句理由。', f' The assistant\'s reason was longer than {MAX_REASON} characters and is not filled in: write one yourself.')
     steps = [understood, _step(tr('核对行为', 'Check the action'), tr(f'「{content["name"]}」已确认，你可以提交；提交前的检查都通过了（没有写入）：{line["action"]["says"]}',
                                                                       f'"{content["name"]}" is confirmed and yours to submit; every check a submit makes passed (nothing written): {line["action"]["says"]}')),
              _step(tr('结果', 'Result'), reason)]

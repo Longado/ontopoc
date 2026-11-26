@@ -128,8 +128,9 @@ export function Answer({ record }) {
  * person presses Submit there; the record then waits for another builder, as any submit does. */
 function DraftCard({ record }) {
   const t = useT();
-  const view = draftView(record);
   const [open, setOpen] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const view = draftView(record, { submitted });
   return (
     <div className="answer draft">
       <h2 className="section"><Icon name="info" size={16} />{view.title}</h2>
@@ -142,8 +143,9 @@ function DraftCard({ record }) {
           </table>
         </div>
       )}
-      <p className="warn">{view.note}</p>
-      {open ? <RunAction action={view.form.action} objectKey={view.form.objectKey} objectText={view.form.objectText} prefill={view.form} onCancel={() => setOpen(false)} />
+      {view.note && <p className="warn">{view.note}</p>}
+      {view.reasonNote && <p className="muted">{view.reasonNote}</p>}
+      {open ? <RunAction action={view.form.action} objectKey={view.form.objectKey} objectText={view.form.objectText} prefill={view.form} onDone={() => setSubmitted(true)} onCancel={() => setOpen(false)} />
         : <button className="primary" onClick={() => setOpen(true)}>{t("ask.actionDraft.open")}</button>}
     </div>
   );

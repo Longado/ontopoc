@@ -90,6 +90,7 @@ export default {
   "actionDraft.current": "Now",
   "actionDraft.asked": "Asked",
   "actionDraft.open": "Open the form to submit",
+  "actionDraft.reasonTooLong": "The assistant's reason was too long (over 300 characters), so it is not filled in. Write a reason in the form yourself.",
   "refusal.title": "No answer",
   "refusal.unsettled": "The definitions this question uses are not usable yet, so it was not answered from older ones.",
   "refusal.relationLeftOut": "A confirmed relation exists that Ask could not use (reason below). The model cannot see it, so the answer below says there is no relation.",

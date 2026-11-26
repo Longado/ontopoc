@@ -90,6 +90,7 @@ export default {
   "actionDraft.current": "现在",
   "actionDraft.asked": "要改成",
   "actionDraft.open": "打开表单提交",
+  "actionDraft.reasonTooLong": "助手写的理由超过 300 个字，太长了，没有填进去。请在表单里自己写一句理由。",
   "refusal.title": "没有回答",
   "refusal.unsettled": "问题用到的定义还不能用，没有照旧的定义回答。",
   "refusal.relationLeftOut": "有已确认的关系问答用不上（原因在下面），模型看不到它，所以下面说“没有关系”。",
