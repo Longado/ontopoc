@@ -4,15 +4,17 @@ person, and once confirmed a question it answers is answered with quotes code fo
 anyone else; a quote that is not verbatim, or a number that is not in a quote, is refused, never mended; a data question is answered as it always was."""
 import base64
 import json
+import re
 import sqlite3
 import unittest
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 from unittest import mock
 
-from ontology_poc_generator import mcp_server
+from ontology_poc_generator import document_answers, mcp_server
 from ontology_poc_generator.recognition import ModelCompletion
 from tests import test_one_number as one
+from tests import test_which_ones_main as which
 from tests.test_demo_mode import a_guest
 from tests.test_demo_view_waits import Seeded
 from tests.test_doc_answers_main import CONTRACT
@@ -41,12 +43,17 @@ class DocModel(one.Scripted):
         return ModelCompletion('test', 'test-model', json.dumps({'questions': [{'question': request['asked'], **self.reply_for(request)}]}, ensure_ascii=False))
 
 
-def quoting(quote, claim=None, said=None):
-    """A reply that answers from the passage holding `quote`: one claim (`claim`, or the quote itself) resting on `said` (the quote as written, by default exact)."""
+def quoting(quote, said=None, prose=None):
+    """A reply that answers from the passage holding `quote`, quoting `said` (by default the quote itself, exact). `prose`: a sentence of the model's own beside
+    the quotes, which is never shown, returned or kept."""
     def reply(request):
         passage = next(p for p in request.get('documents') or [] if quote in p['text'])
-        return {**NO_QUERY, 'document_answer': {'claims': [{'text': claim or quote, 'quotes': [{'passage': passage['id'], 'quote': said or quote}]}]}}
+        return {**NO_QUERY, 'document_answer': {'quotes': [{'passage': passage['id'], 'quote': said or quote}], **({'answer': prose} if prose else {})}}
     return reply
+
+
+LINE_ZH = '以下是文档里的原话，由助手挑选，不是来自数据'
+LINE_EN = "These are the documents' own words, chosen by the assistant; not from the data"
 
 
 def upload(who, text=CONTRACT, filename='供货合同.md', builders_only=False):
@@ -160,13 +167,15 @@ class Answers(DocumentCase):
 
     def test_a_question_the_documents_answer_quotes_its_passages_with_the_documents_name_and_place(self):
         document = self.put()
-        for who, line in ((self.admin, '来自文档，不是来自数据'), (self.guest, '来自文档，不是来自数据'), (self.demo.admin('en'), 'From the documents, not from the data')):
-            body, [request] = self.ask(who, '逾期交货怎么罚？', reply_for=quoting(self.QUOTE, '逾期交货每逾期一日按逾期部分货款的0.5%支付违约金'))
+        for who, line in ((self.admin, LINE_ZH), (self.guest, LINE_ZH), (self.demo.admin('en'), LINE_EN)):
+            body, [request] = self.ask(who, '逾期交货怎么罚？', reply_for=quoting(self.QUOTE, prose='违约方不需要支付违约金'))
             self.assertEqual(body['status'], 'from_documents', body)
             self.assertEqual(body['documents']['line'], line)
-            [claim] = body['documents']['claims']
-            self.assertEqual(claim['text'], '逾期交货每逾期一日按逾期部分货款的0.5%支付违约金')
-            [quote] = claim['quotes']
+            self.assertEqual(set(body['documents']), {'line', 'quotes'})   # the documents' own words and where they are, nothing else
+            [quote] = body['documents']['quotes']
+            self.assertEqual(set(quote), {'passage', 'quote', 'document', 'document_id', 'version', 'where'})
+            for kept in (json.dumps(body, ensure_ascii=False), json.dumps(which.kept(self.demo.folder, body['id']), ensure_ascii=False)):
+                self.assertNotIn('违约方不需要', kept)   # the model's prose is never shown, returned or kept
             self.assertEqual((quote['quote'], quote['document'], quote['document_id'], quote['version']), (self.QUOTE, '供货合同.md', document['id'], document['version']))   # the version confirmed
             self.assertTrue(quote['where'])
             self.assertNotIn('answer', body)   # never a number from the data
@@ -175,6 +184,7 @@ class Answers(DocumentCase):
             passages = request['documents']
             self.assertTrue(1 <= len(passages) <= 5)
             self.assertEqual(set(passages[0]), {'id', 'document', 'text'})
+            self.assertTrue(all(re.fullmatch(r'\d+-p\d+', p['id']) for p in passages), passages)   # numbered per document, never a row id
             self.assertTrue(any(self.QUOTE in p['text'] for p in passages))
             self.assertIn('document_answer', self.demo.model.systems[-1])
             reopened = who.call('GET', f'/api/workspace/ask/{body["id"]}')[1]
@@ -199,10 +209,11 @@ class Answers(DocumentCase):
     def test_a_quote_that_is_not_verbatim_is_refused_not_mended(self):
         self.put()
         for said in (self.QUOTE.replace('，', ','), self.QUOTE.replace('0.5%', '0.5 %'), self.QUOTE + '。违约金不设上限'):
-            body, _ = self.ask(self.admin, '逾期交货怎么罚？', reply_for=quoting(self.QUOTE, '逾期一日按0.5%支付违约金', said=said))
+            body, _ = self.ask(self.admin, '逾期交货怎么罚？', reply_for=quoting(self.QUOTE, said=said))
             self.assertEqual((body['status'], body['refusal']['kind']), ('refused', 'document_check'), body)
-            self.assertNotIn('claims', json.dumps(body.get('documents') or {}))
+            self.assertNotIn('documents', body)
             self.assertIn('原文', body['reason'])
+            self.assertNotIn('违约金', body['reason'])   # what it quoted is not repeated, here or in what is kept
 
     def test_a_quote_from_a_passage_the_model_was_not_given_is_refused(self):
         self.put()
@@ -210,21 +221,44 @@ class Answers(DocumentCase):
         given = lambda request: {p['id'] for p in request['documents']}
         def elsewhere(request):
             other = next(p for p in listing['passages'] if p['id'] not in given(request))
-            return {**NO_QUERY, 'document_answer': {'claims': [{'text': other['text'][:10], 'quotes': [{'passage': other['id'], 'quote': other['text'][:10]}]}]}}
+            return {**NO_QUERY, 'document_answer': {'quotes': [{'passage': other['id'], 'quote': other['text'][:10]}]}}
         body, _ = self.ask(self.admin, '逾期交货怎么罚？', reply_for=elsewhere)
         self.assertEqual((body['status'], body['refusal']['kind']), ('refused', 'document_check'), body)
 
-    def test_a_number_that_is_not_in_a_quote_is_refused(self):
+    def test_a_quote_of_fewer_than_four_characters_that_are_not_punctuation_or_space_is_refused(self):
         self.put()
-        for claim in ('逾期一日按货款的5%支付违约金', '逾期一日按0.5%支付违约金，上限为合同总价的10%', '逾期五日以上按0.5%支付违约金', '逾期一日按0.50%支付违约金'):
-            body, _ = self.ask(self.admin, '逾期交货怎么罚？', reply_for=quoting(self.QUOTE, claim))
-            self.assertEqual((body['status'], body['refusal']['kind']), ('refused', 'document_check'), (claim, body))
-            self.assertIn('数字', body['reason'])
-        body, _ = self.ask(self.admin, '逾期交货怎么罚？', reply_for=quoting(self.QUOTE, '每逾期一日按逾期部分货款的0.5%支付违约金'))
+        for said in ('0.5%', '，；：', '', ' 违约金 ', '0.5%，'):
+            body, _ = self.ask(self.admin, '逾期交货怎么罚？', reply_for=quoting(self.QUOTE, said=said))
+            self.assertEqual((body['status'], body['refusal']['kind']), ('refused', 'document_check'), (said, body))
+        body, _ = self.ask(self.admin, '逾期交货怎么罚？', reply_for=quoting(self.QUOTE, said='支付违约金'))
         self.assertEqual(body['status'], 'from_documents', body)
 
+    def test_an_answer_in_the_old_shape_with_claims_is_refused(self):
+        self.put()
+        def claims(request):
+            passage = next(p for p in request['documents'] if self.QUOTE in p['text'])
+            return {**NO_QUERY, 'document_answer': {'claims': [{'text': '违约金是百分之五', 'quotes': [{'passage': passage['id'], 'quote': self.QUOTE}]}]}}
+        body, _ = self.ask(self.admin, '逾期交货怎么罚？', reply_for=claims)
+        self.assertEqual((body['status'], body['refusal']['kind']), ('refused', 'document_check'), body)
+        self.assertNotIn('百分之五', json.dumps(body, ensure_ascii=False))
+
+    def test_a_quote_checked_against_its_own_passage_not_another(self):
+        self.put()
+        def crossed(request):
+            holding = next(p for p in request['documents'] if self.QUOTE in p['text'])
+            other = next(p for p in request['documents'] if p['id'] != holding['id'])
+            return {**NO_QUERY, 'document_answer': {'quotes': [{'passage': other['id'], 'quote': self.QUOTE}]}}
+        body, [request] = self.ask(self.admin, '逾期交货怎么罚？订单付款', reply_for=crossed)
+        self.assertGreaterEqual(len(request['documents']), 2)
+        self.assertEqual((body['status'], body['refusal']['kind']), ('refused', 'document_check'), body)
+
+    def test_at_most_five_passages_go_to_the_model(self):
+        self.put('# 罚则\n\n' + '\n\n'.join(f'第{i}条 迟到罚款{i}0元。' for i in range(1, 9)), '罚则.md')
+        _, [request] = self.ask(self.admin, '罚款')
+        self.assertEqual(len(request['documents']), 5)
+
     def test_a_data_question_is_answered_as_without_documents_and_its_document_answer_is_ignored(self):
-        reply = {**one.item(one.SUM_AMOUNT), 'document_answer': {'claims': [{'text': self.QUOTE, 'quotes': [{'passage': 'p1', 'quote': self.QUOTE}]}]}}
+        reply = {**one.item(one.SUM_AMOUNT), 'document_answer': {'quotes': [{'passage': '1-p2', 'quote': self.QUOTE}]}}
         before, _ = self.ask(self.admin, '订单的金额一共是多少？', reply=reply)
         self.put()
         after, [request] = self.ask(self.admin, '订单的金额一共是多少？', reply=reply)
@@ -249,9 +283,22 @@ class Answers(DocumentCase):
         body, [request] = self.ask(self.admin, '火星上的天气怎么样？')
         self.assertNotIn('documents', request)
         self.assertEqual(body['documents']['line'], '确认过的文档里没有说到这件事。')
-        self.assertTrue(body['reason'].startswith('确认过的文档里没有说到这件事。'), body['reason'])
+        self.assertTrue(body['reason'].startswith('确认过的文档里没有说到这件事。\n'), body['reason'])   # the service's sentence, then on a line of its own what main says
         body, _ = self.ask(self.demo.admin('en'), 'What is the weather on Mars?')
-        self.assertTrue(body['reason'].startswith('The confirmed documents say nothing about this.'), body['reason'])
+        self.assertTrue(body['reason'].startswith('The confirmed documents say nothing about this.\n'), body['reason'])
+
+    def test_nothing_is_said_of_documents_when_the_asker_may_read_no_confirmed_one(self):
+        self.put(confirm=False)   # only a document that waits, and the question does not match it
+        body, [request] = self.ask(self.builder, '火星上的天气怎么样？')
+        self.assertNotIn('documents', request)
+        self.assertNotIn('documents', body)
+        self.assertNotIn('确认过的文档', body['reason'])
+
+    def test_an_answer_from_the_relation_check_is_never_replaced_by_a_document_answer(self):
+        docs = {'readable': True, 'waiting': [], 'passages': [{'id': '1-p2', 'element_id': 'document:x', 'document': 'x.md', 'version': 2, 'confirmed_by': 'b', 'where': 'p', 'text': self.QUOTE}]}
+        item = {'query': None, 'status': 'query_limit', 'from_relation_check': True, 'document_answer': {'quotes': [{'passage': '1-p2', 'quote': self.QUOTE}]}}
+        result = {'status': 'query_limit', 'reason': 'relation check'}
+        self.assertIs(document_answers.settled(None, None, docs, item, result), result)
 
 
 class Waiting(DocumentCase):
@@ -310,9 +357,6 @@ class Agent(DocumentCase):
         self.assertEqual((got['status'], got['documents']), ('from_documents', body['documents']))
 
 
-if __name__ == '__main__':
-    unittest.main()
-
 
 class SendBackAndRemove(DocumentCase):
     """Round 2: a confirmed document that turns out wrong stops answering, sent back to waiting or removed."""
@@ -370,7 +414,8 @@ class SendBackAndRemove(DocumentCase):
         self.assertEqual(status, 200, removed)
         conn = sqlite3.connect(self.demo.folder / 'workspace.sqlite')
         self.assertEqual(conn.execute('SELECT COUNT(*) FROM doc_passage').fetchone()[0], 0)
-        self.assertEqual(conn.execute("SELECT COUNT(*) FROM doc_terms WHERE doc_terms MATCH '\"逾期\"'").fetchone()[0], 0)
+        for index in ('doc_terms_all', 'doc_terms_builders', 'doc_terms_waiting'):   # one index per level of visibility
+            self.assertEqual(conn.execute(f"SELECT COUNT(*) FROM {index} WHERE {index} MATCH '\"逾期\"'").fetchone()[0], 0, index)
         self.assertEqual(conn.execute("SELECT who, change FROM log WHERE element_id = ? AND change = 'removed'", (document['id'],)).fetchall(), [('Demo builder', 'removed')])
         body, [request] = self.ask(self.builder, '逾期交货怎么罚？')
         self.assertNotIn('documents', request)
@@ -435,3 +480,105 @@ class TokenActs(DocumentCase):
             self.assertEqual((status, body.get('needs_person')), (403, True), body)
             self.assertIn(words, body['error'])
         self.assertEqual(len(self.admin.call('GET', '/api/workspace/documents')[1]['documents']), 1)   # still there
+
+
+VISIBLE = '# 规定\n\n甲、罚款五千元。\n\n乙、检验按批次进行，每一批来料都要抽样，抽样不合格的整批退回给供应商处理。\n'
+HIDDEN = '# 内部\n\n' + '\n\n'.join(f'第{i}项 罚款事项{i}' for i in range(1, 21)) + '\n'
+
+
+class Round3(DocumentCase):
+    QUOTE = Answers.QUOTE
+
+    def test_what_a_viewers_model_is_offered_does_not_depend_on_documents_they_may_not_read(self):
+        self.put(VISIBLE, '规定.md')
+        _, [before] = self.ask(self.guest, '罚款和检验')
+        self.put(HIDDEN, '内部.md', builders_only=True)
+        self.put(HIDDEN.replace('内部', '草稿'), '草稿.md', confirm=False)
+        _, [after] = self.ask(self.guest, '罚款和检验')
+        self.assertEqual(json.dumps(after['documents'], ensure_ascii=False), json.dumps(before['documents'], ensure_ascii=False))   # the same passages, order and ids
+        _, [builder] = self.ask(self.builder, '罚款和检验')
+        self.assertIn('内部.md', {p['document'] for p in builder['documents']})
+        listed = {d['name']: d['id'] for d in self.admin.call('GET', '/api/workspace/documents')[1]['documents']}
+        for name in ('规定.md', '内部.md'):
+            passages = self.admin.call('GET', '/api/workspace/documents/' + listed[name])[1]['passages']
+            self.assertEqual([p['id'] for p in passages], [f'p{i}' for i in range(1, len(passages) + 1)])   # numbered per document
+
+    def test_a_document_removed_while_a_question_is_answered_is_refused_as_removed(self):
+        document = self.put()
+        def removed_meanwhile(request):
+            reply = quoting(self.QUOTE)(request)
+            assert self.builder.call('POST', '/api/workspace/documents/remove', {'id': document['id'], 'version': document['version'], 'reason': '作废'})[0] == 200
+            return reply
+        body, _ = self.ask(self.admin, '逾期交货怎么罚？', reply_for=removed_meanwhile)
+        self.assertEqual((body['status'], body['refusal']['kind']), ('refused', 'document_removed'), body)
+        self.assertNotIn(self.QUOTE, json.dumps(body, ensure_ascii=False))
+
+    def test_a_document_sent_back_while_a_question_is_answered_is_refused_as_waiting_and_never_shown_as_confirmed(self):
+        for who, named in ((self.admin, True), (self.guest, False)):
+            document = self.put(filename=f'供货合同{int(named)}.md')
+            def sent_back_meanwhile(request, document=document):
+                reply = quoting(self.QUOTE)(request)
+                assert self.builder.call('POST', '/api/workspace/documents/send-back', {'id': document['id'], 'version': document['version'], 'reason': '有误'})[0] == 200
+                return reply
+            body, _ = self.ask(who, '逾期交货怎么罚？', reply_for=sent_back_meanwhile)
+            self.assertEqual((body['status'], body['refusal']['kind']), ('refused', 'document_unconfirmed'), body)
+            self.assertNotIn(self.QUOTE, json.dumps(body, ensure_ascii=False))
+            self.assertEqual('供货合同' in json.dumps(body, ensure_ascii=False), named)   # a viewer is never told its name
+
+    def test_a_kept_refusal_of_a_document_answer_keeps_no_quoted_text_and_reopens_withheld_when_the_document_is_out_of_reach(self):
+        document = self.put()
+        body, _ = self.ask(self.guest, '逾期交货怎么罚？', reply_for=quoting(self.QUOTE, said=self.QUOTE + '，违约金不设上限'))
+        self.assertEqual(body['refusal']['kind'], 'document_check')
+        self.assertEqual(body['refusal']['documents'], [document['id']])   # the documents it read
+        kept = json.dumps(which.kept(self.demo.folder, body['id']), ensure_ascii=False)
+        self.assertNotIn('违约金', kept)
+        self.assertEqual(upload(self.admin, builders_only=True)[0], 200)   # now for builders only, and waiting
+        reopened = self.guest.call('GET', f'/api/workspace/ask/{body["id"]}')[1]
+        self.assertIn('withheld', reopened)
+        self.assertNotIn('refusal', reopened)
+
+    def test_a_kept_answer_reopens_withheld_for_a_viewer_who_may_no_longer_read_its_document(self):
+        self.put()
+        body, _ = self.ask(self.guest, '逾期交货怎么罚？', reply_for=quoting(self.QUOTE))
+        self.assertEqual(body['status'], 'from_documents')
+        self.assertEqual(upload(self.admin, builders_only=True)[0], 200)
+        reopened = self.guest.call('GET', f'/api/workspace/ask/{body["id"]}')[1]
+        self.assertIn('withheld', reopened)
+        self.assertNotIn(self.QUOTE, json.dumps(reopened, ensure_ascii=False))
+
+    def test_confirming_with_a_version_that_moved_is_refused(self):
+        status, body = upload(self.admin)
+        self.assertEqual(upload(self.admin, CONTRACT.replace('0.5%', '1%'))[0], 200)
+        self.assertEqual(self.builder.call('POST', '/api/workspace/documents/confirm', {'id': body['id'], 'version': body['version']})[0], 409)
+
+    def test_without_fts5_remove_and_send_back_answer_503(self):
+        document = self.put()
+        with mock.patch('ontology_poc_generator.document_answers.fts5_available', lambda: False):
+            for path in ('/api/workspace/documents/remove', '/api/workspace/documents/send-back'):
+                status, body = self.builder.call('POST', path, {'id': document['id'], 'version': document['version'], 'reason': '作废'})
+                self.assertEqual(status, 503, (path, body))
+                self.assertIn('FTS5', body['error'])
+
+    def test_a_docx_that_unpacks_too_large_is_refused_before_it_is_read(self):
+        import io, zipfile
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as z:
+            z.writestr('word/document.xml', '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' + '<w:p><w:r><w:t>罚款</w:t></w:r></w:p>' * 2000 + '</w:body></w:document>')
+        with mock.patch('ontology_poc_generator.company_documents.MAX_DOCX_XML', 10_000):
+            status, body = self.admin.call('POST', '/api/workspace/documents/upload', {'filename': '大.docx', 'content_base64': base64.b64encode(buffer.getvalue()).decode()})
+        self.assertEqual(status, 400, body)
+        self.assertIn('10,000', body['error'])
+
+    def test_a_pdf_reader_that_runs_out_of_time_is_a_plain_refusal(self):
+        import subprocess
+        def too_slow(*args, **kwargs):
+            raise subprocess.TimeoutExpired(args[0], 60)
+        with mock.patch('ontology_poc_generator.company_documents.shutil.which', lambda name: '/usr/bin/pdftotext'), \
+                mock.patch('ontology_poc_generator.company_documents.subprocess.run', too_slow):
+            status, body = self.admin.call('POST', '/api/workspace/documents/upload', {'filename': '慢.pdf', 'content_base64': base64.b64encode(b'%PDF-1.4').decode()})
+        self.assertEqual(status, 400, body)
+        self.assertIn('60', body['error'])
+
+
+if __name__ == '__main__':
+    unittest.main()

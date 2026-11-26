@@ -8,24 +8,31 @@ import { definitionHref, isAnswer, statusText } from "./qaModel.js";
 const QUOTE = "每逾期一日，按逾期部分货款的0.5%支付违约金";
 const RECORD = {
   status: "from_documents",
-  documents: { line: "来自文档，不是来自数据", claims: [{ text: "逾期一日按0.5%支付违约金", quotes: [{ passage: "p2", quote: QUOTE, document: "供货合同.md", document_id: "document:abc", version: 2, where: "第 2 段" }] }] },
+  documents: { line: "以下是文档里的原话，由助手挑选，不是来自数据", quotes: [{ passage: "1-p2", quote: QUOTE, document: "供货合同.md", document_id: "document:abc", version: 2, where: "第 2 段" }] },
   definitions: [{ id: "document:abc", kind: "document", name: "供货合同.md", version: 2, confirmed_by: "Demo builder" }],
 };
 
-test("an answer from documents is each claim with its quotes and where each comes from, under the service's line; it is not a number from the data", () => {
+test("an answer from documents is the documents' own words, each with where it comes from, under the service's line; no sentence of the model's, and no number from the data", () => {
   for (const lang of ["zh", "en"]) {
     setLocale(lang);
     const view = answerFromDocuments(RECORD);
-    assert.equal(view.line, "来自文档，不是来自数据");   // the service's own sentence, in the asker's language
-    assert.equal(view.claims[0].text, "逾期一日按0.5%支付违约金");
-    assert.equal(view.claims[0].quotes[0].quote, QUOTE);
-    assert.equal(view.claims[0].quotes[0].href, "#/documents/document%3Aabc");
-    assert.equal(view.claims[0].quotes[0].source, lang === "zh" ? "供货合同.md，第 2 段" : "供货合同.md, 第 2 段");
+    assert.equal(view.line, "以下是文档里的原话，由助手挑选，不是来自数据");   // the service's own sentence, in the asker's language
+    assert.deepEqual(Object.keys(view).sort(), ["line", "quotes"]);
+    assert.equal(view.quotes[0].quote, QUOTE);
+    assert.equal(view.quotes[0].href, "#/documents/document%3Aabc");
+    assert.equal(view.quotes[0].source, lang === "zh" ? "供货合同.md，第 2 段" : "供货合同.md, 第 2 段");
     assert.equal(isAnswer(RECORD), false);   // never read as an answer from the data (no figure, no data-as-of line)
     assert.equal(statusText("from_documents"), lang === "zh" ? "来自文档" : "From documents");
   }
   assert.equal(answerFromDocuments({ status: "answered", answer: { total: 3 } }), null);
   assert.equal(answerFromDocuments({ status: "ontology_gap", documents: { found: false, line: "x" } }), null);
+});
+
+test("a document's own page, which holds its passages, counts them", () => {
+  setLocale("zh");
+  const page = documentLine({ id: "document:abc", name: "供货合同.md", state: "confirmed", version: 2, passages: [{ id: "p1" }, { id: "p2" }], passage_count: 2, confirmed_by: "Demo builder" });
+  assert.match(page.meta, /^2 段/);
+  assert.doesNotMatch(page.meta, /documents\.passages/);
 });
 
 test("a document opens on its own page from an answer's basis", () => {
