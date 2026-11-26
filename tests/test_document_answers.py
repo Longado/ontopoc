@@ -3,6 +3,7 @@ person, and once confirmed a question it answers is answered with quotes code fo
 "from the documents, not from the data". What waits is never used and is named only to those who may read it; a builders-only document does not exist for
 anyone else; a quote that is not verbatim, or a number that is not in a quote, is refused, never mended; a data question is answered as it always was."""
 import base64
+import hashlib
 import json
 import re
 import sqlite3
@@ -43,12 +44,12 @@ class DocModel(one.Scripted):
         return ModelCompletion('test', 'test-model', json.dumps({'questions': [{'question': request['asked'], **self.reply_for(request)}]}, ensure_ascii=False))
 
 
-def quoting(quote, said=None, prose=None):
+def quoting(quote, said=None, prose=None, reasoning='test'):
     """A reply that answers from the passage holding `quote`, quoting `said` (by default the quote itself, exact). `prose`: a sentence of the model's own beside
     the quotes, which is never shown, returned or kept."""
     def reply(request):
         passage = next(p for p in request.get('documents') or [] if quote in p['text'])
-        return {**NO_QUERY, 'document_answer': {'quotes': [{'passage': passage['id'], 'quote': quote if said is None else said}], **({'answer': prose} if prose else {})}}
+        return {**NO_QUERY, 'reasoning': reasoning, 'document_answer': {'quotes': [{'passage': passage['id'], 'quote': quote if said is None else said}], **({'answer': prose} if prose else {})}}
     return reply
 
 
@@ -514,16 +515,22 @@ class Round3(DocumentCase):
         self.assertNotIn(self.QUOTE, json.dumps(body, ensure_ascii=False))
 
     def test_a_document_sent_back_while_a_question_is_answered_is_refused_as_waiting_and_never_shown_as_confirmed(self):
+        drop = lambda body: {k: v for k, v in body.items() if k not in ('id', 'asked_at', 'question')}
         for who, named in ((self.admin, True), (self.guest, False)):
             document = self.put(filename=f'供货合同{int(named)}.md')
             def sent_back_meanwhile(request, document=document):
-                reply = quoting(self.QUOTE)(request)
+                reply = quoting(self.QUOTE, reasoning='')(request)
                 assert self.builder.call('POST', '/api/workspace/documents/send-back', {'id': document['id'], 'version': document['version'], 'reason': '有误'})[0] == 200
                 return reply
             body, _ = self.ask(who, '逾期交货怎么罚？', reply_for=sent_back_meanwhile)
-            self.assertEqual((body['status'], body['refusal']['kind']), ('refused', 'document_unconfirmed'), body)
+            self.assertNotEqual(body['status'], 'from_documents')
             self.assertNotIn(self.QUOTE, json.dumps(body, ensure_ascii=False))
             self.assertEqual('供货合同' in json.dumps(body, ensure_ascii=False), named)   # a viewer is never told its name
+            if named:
+                self.assertEqual(body['refusal']['kind'], 'document_unconfirmed', body)
+            else:   # for a viewer it is no longer there: answered exactly as words no document has
+                none, _ = self.ask(who, '火星上的天气怎么样？', reply={**NO_QUERY, 'reasoning': ''})
+                self.assertEqual(drop(body), drop(none))
 
     def test_a_kept_refusal_of_a_document_answer_keeps_no_quoted_text_and_reopens_withheld_when_the_document_is_out_of_reach(self):
         document = self.put()
@@ -578,6 +585,114 @@ class Round3(DocumentCase):
             status, body = self.admin.call('POST', '/api/workspace/documents/upload', {'filename': '慢.pdf', 'content_base64': base64.b64encode(b'%PDF-1.4').decode()})
         self.assertEqual(status, 400, body)
         self.assertIn('60', body['error'])
+
+
+MARK = 'MARK违约方不需要支付违约金'
+FIXED_ZH = '助手没有用给它的文档段落回答。'
+
+
+class Round4(DocumentCase):
+    QUOTE = Answers.QUOTE
+
+    def no_mark(self, who, body):
+        """The model's reasoning is nowhere: not in the response, the kept record, the reopened answer or what MCP ask returns."""
+        class Session:
+            def request(self, path, payload=None):
+                return body
+        for seen in (body, which.kept(self.demo.folder, body['id']), who.call('GET', f'/api/workspace/ask/{body["id"]}')[1], mcp_server.ask(Session(), {'question': 'x'})):
+            self.assertNotIn('MARK', json.dumps(seen, ensure_ascii=False), seen)
+
+    def test_the_models_reasoning_never_reaches_the_person_once_it_was_given_passages(self):
+        self.put()
+        for who in (self.guest, self.admin):
+            for missing in ('ontology', 'query_language'):
+                body, [request] = self.ask(who, '逾期交货怎么罚？', reply={'reasoning': MARK, 'query': None, 'missing': missing})
+                self.assertIn('documents', request)
+                self.assertIn(FIXED_ZH, body['reason'])
+                self.assertNotIn('确认过的文档里没有说到这件事', body['reason'])   # passages matched: the documents did not say nothing
+                self.no_mark(who, body)
+        english, _ = self.ask(self.demo.admin('en'), '逾期交货怎么罚？', reply={'reasoning': MARK, 'query': None, 'missing': 'ontology'})
+        self.assertIn('The assistant did not answer from the passages it was given.', english['reason'])
+        self.put(RULES.replace('罚款', '逾期罚款'), '质量管理制度.md', confirm=False)   # and one that waits, matching too
+        body, _ = self.ask(self.builder, '逾期交货怎么罚？', reply={'reasoning': MARK, 'query': None, 'missing': 'ontology'})
+        self.assertEqual(body['refusal']['kind'], 'document_unconfirmed')
+        self.no_mark(self.builder, body)
+
+    def test_the_models_reasoning_never_reaches_the_person_when_a_document_changes_in_flight(self):
+        document = self.put()
+        def sent_back_meanwhile(request):
+            reply = quoting(self.QUOTE, reasoning=MARK)(request)
+            assert self.builder.call('POST', '/api/workspace/documents/send-back', {'id': document['id'], 'version': document['version'], 'reason': '有误'})[0] == 200
+            return reply
+        body, _ = self.ask(self.admin, '逾期交货怎么罚？', reply_for=sent_back_meanwhile)
+        self.assertEqual(body['refusal']['kind'], 'document_unconfirmed')
+        self.no_mark(self.admin, body)
+
+    def test_a_data_question_keeps_mains_reasoning(self):
+        self.put()
+        body, _ = self.ask(self.admin, '订单的金额一共是多少？', reply={**one.item(one.SUM_AMOUNT), 'reasoning': 'MARK 数据'})
+        self.assertEqual((body['status'], body['reasoning']), ('answered', 'MARK 数据'))
+
+    def test_only_letters_and_digits_count_and_a_repeated_quote_is_refused(self):
+        self.put('# 说明\n\n甲\u200b\u200b\u200b\u200b乙，生效日期为2026年。\n', '说明.md')
+        body, _ = self.ask(self.admin, '说明生效日期', reply_for=quoting('\u200b\u200b\u200b\u200b'))
+        self.assertEqual((body['status'], body['refusal']['kind']), ('refused', 'document_check'), body)
+        body, _ = self.ask(self.admin, '说明生效日期', reply_for=quoting('2026'))
+        self.assertEqual(body['status'], 'from_documents', body)
+        def twice(request):
+            p = next(p for p in request['documents'] if '2026' in p['text'])
+            return {**NO_QUERY, 'document_answer': {'quotes': [{'passage': p['id'], 'quote': '生效日期'}, {'passage': p['id'], 'quote': '生效日期'}]}}
+        body, _ = self.ask(self.admin, '说明生效日期', reply_for=twice)
+        self.assertEqual((body['status'], body['refusal']['kind']), ('refused', 'document_check'), body)
+
+    def test_the_whole_sentence_holding_a_quote_is_shown_with_the_quoted_part_marked(self):
+        self.put('# 第七条\n\n供方不得以任何理由拒绝交货。不可抗力的情形除外！双方另行约定\n', '第七条.md')
+        body, _ = self.ask(self.guest, '拒绝交货', reply_for=quoting('以任何理由拒绝交货'))
+        self.assertEqual(body['status'], 'from_documents', body)
+        [q] = body['documents']['quotes']
+        self.assertEqual(q['sentence'], '供方不得以任何理由拒绝交货。')   # the negation stays in sight
+        self.assertEqual(q['sentence'][q['mark'][0]:q['mark'][1]], '以任何理由拒绝交货')
+        self.assertIn('供方不得以任何理由拒绝交货。', json.dumps(which.kept(self.demo.folder, body['id']), ensure_ascii=False))
+        body, _ = self.ask(self.guest, '拒绝交货', reply_for=quoting('理由拒绝交货。不可抗力'))   # across a sentence end: both sentences
+        [q] = body['documents']['quotes']
+        self.assertEqual(q['sentence'], '供方不得以任何理由拒绝交货。不可抗力的情形除外！')
+
+    def test_a_document_made_builders_only_during_the_question_answers_a_guest_as_words_no_document_has_and_names_no_raw_state(self):
+        drop = lambda body: {k: v for k, v in body.items() if k not in ('id', 'asked_at', 'question')}
+        for who in (self.guest, self.admin):
+            document = self.put(filename=f'供货合同-{len(self.demo.model.requests)}.md')
+            def hidden_meanwhile(request, document=document):
+                reply = quoting(self.QUOTE, reasoning='')(request)
+                status, again = upload(self.admin, filename=document['name'], builders_only=True)
+                assert status == 200, again
+                assert self.builder.call('POST', '/api/workspace/documents/confirm', {'id': again['id'], 'version': again['version']})[0] == 200
+                return reply
+            body, _ = self.ask(who, '逾期交货怎么罚？', reply_for=hidden_meanwhile)
+            self.assertNotEqual(body['status'], 'from_documents')
+            if who is self.guest:
+                none, _ = self.ask(who, '火星上的天气怎么样？', reply={**NO_QUERY, 'reasoning': ''})
+                self.assertEqual(drop(body), drop(none))
+            else:
+                self.assertNotRegex(body['reason'], r'confirmed|：确认$')   # no raw state word
+                self.assertIn('改', body['reason'])
+
+    def test_the_review_queue_refuses_a_document_plainly(self):
+        document = self.put(confirm=False)
+        for path, payload in (('/api/workspace/queue/send-back', {'element': document['id'], 'version': document['version'], 'reason': '有误'}),
+                              ('/api/workspace/queue/confirm', {'element': document['id'], 'version': document['version']})):
+            status, body = self.builder.call('POST', path, payload)
+            self.assertEqual(status, 400, (path, body))
+            self.assertIn('文档', body['error'])
+
+    def test_equal_ranks_are_ordered_by_document_then_place(self):
+        names = sorted(('甲.md', '乙.md', '丙.md'), key=lambda n: hashlib.sha256(n.encode()).hexdigest()[:16], reverse=True)   # uploaded in the reverse of their id order
+        same = '# 题\n\n同样的一句罚款规定。\n\n同样的一句罚款规定。\n'
+        for name in names:
+            self.put(same, name)
+        _, [request] = self.ask(self.guest, '罚款规定')
+        order = [(p['document'], p['id'].split('-')[1]) for p in request['documents']]
+        expected = [(n, f'p{k}') for n in sorted(names, key=lambda n: hashlib.sha256(n.encode()).hexdigest()[:16]) for k in (2, 3)][:5]
+        self.assertEqual(order, expected)
 
 
 if __name__ == '__main__':
