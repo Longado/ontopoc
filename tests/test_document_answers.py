@@ -757,5 +757,25 @@ class Round5(DocumentCase):
         self.no_mark(self.guest, body)
 
 
+class Round6(DocumentCase):
+    def test_an_unrunnable_query_that_ends_in_query_limit_shows_only_the_services_sentence(self):
+        self.put()
+        body, [request] = self.ask(self.guest, '逾期交货怎么罚？', reply={'reasoning': MARK, 'query': 'SELECT ZZMARK', 'missing': 'query_language',
+                                                                          'definitions_used': [{'id': 'MARK', 'direction': 'include', 'basis': 'MARK'}]})
+        self.assertIn('documents', request)
+        self.assertEqual((body['status'], body['reason']), ('query_limit', '现在的查询写法还表达不了这个问题。'))
+        Round4.no_mark(self, self.guest, body)
+
+    def test_the_parts_an_unrunnable_query_leaves_are_dropped(self):
+        result = {'status': 'ontology_gap', 'reason': 'MARK', 'reasoning': 'MARK', 'query': {'start': 'MARK'}, 'path': 'MARK path', 'evidence': ['MARK'],
+                  'understood': [{'definition': 'MARK', 'how': 'MARK'}], 'unmet': ['MARK'], 'definitions_used': [{'id': 'MARK'}], 'steps': [{'name': 'x', 'text': 'MARK'}],
+                  'definitions': [], 'types': [], 'datasets': {}, 'model': 'test-model'}
+        out = document_answers._query_not_run(result)
+        for key in ('path', 'evidence', 'understood', 'unmet', 'definitions_used'):
+            self.assertNotIn(key, out)
+        self.assertEqual((out['query'], out['reasoning']), (None, ''))
+        self.assertNotIn('MARK', json.dumps(out, ensure_ascii=False))
+
+
 if __name__ == '__main__':
     unittest.main()
