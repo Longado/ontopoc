@@ -68,3 +68,16 @@ test("a rule marked report only is sent and read back as such; a rule without th
   assert.equal(reportOnlyTag({ report_only: true }), "Report only: the rows that break it are listed; they do not stop confirming");
   setLocale("zh");
 });
+
+test("a citation's whole sentence comes with the quoted part marked, by the same function a document answer uses", async () => {
+  const { sentenceParts } = await import("./documentModel.js");
+  const { citeParts, citeSource } = await import("./typeModel.js");
+  assert.equal(citeParts, sentenceParts);
+  assert.deepEqual(citeParts({ quote: "必须置为 1", sentence: "DS-1 掉电后，必须置为 1（上锁）。", mark: [9, 15] }), ["DS-1 掉电后，", "必须置为 1", "（上锁）。"]);
+  assert.deepEqual(citeParts({ quote: "必须置为 1" }), ["", "必须置为 1", ""]);
+  setLocale("zh");
+  assert.equal(citeSource({ name: "door-spec.md", where: "第 2 段" }), "依据《door-spec.md》第 2 段：");
+  setLocale("en");
+  assert.equal(citeSource({ name: "door-spec.md", where: "paragraph 2" }), "From “door-spec.md”, paragraph 2:");
+  setLocale("zh");
+});

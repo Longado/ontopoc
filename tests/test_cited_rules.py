@@ -405,6 +405,78 @@ class CitedDocumentMovesTests(CitedCase):
         self.assertNotIn('stale', page['rules'][0]['cite'])
 
 
+class RoundThreeTests(CitedCase):
+    """The doc-answers quote rules shared by citations (one function), the citation's whole sentence with the quote marked, the agent's readout of rules that
+    only report, and a type whose rules all only report read as confirmed before its rules are counted."""
+
+    def test_a_citation_shows_its_whole_sentence_with_the_quote_marked(self):
+        self.start()
+        self.assertEqual(self.ann.post('/api/workspace/types', case_type([when('1', cite=self.cite('1'))]))[0], 200)
+        cite = self.page()['rules'][0]['cite']
+        self.assertEqual(cite['sentence'], 'DS-1 掉电（power_loss）发生后，门锁状态 lock_state 必须置为 1，门保持上锁。')
+        self.assertEqual(cite['sentence'][cite['mark'][0]:cite['mark'][1]], QUOTES['1'])
+        finding_rules = [when('1', cite=self.cite('1'), report_only=True), when('4', cite=self.cite('4'), report_only=True)]
+        self.assertEqual(self.ann.post('/api/workspace/types/update', {**case_type(finding_rules), 'id': 'door_event', 'version': self.page()['version']})[0], 200)
+        c = self.page()['conflicts'][0]['rules'][1]['cite']
+        self.assertEqual(c['sentence'][c['mark'][0]:c['mark'][1]], QUOTES['4'])
+        self.assertEqual(c['sentence'], 'DS-2 控制器失去供电时，lock_state 应保持为 4，维持掉电前的位置。')
+
+    def test_citations_use_the_doc_answers_quote_check_and_a_repeated_quote_is_refused(self):
+        self.start()
+        from unittest import mock
+        from ontology_poc_generator import document_answers
+        with mock.patch.object(document_answers, 'check_quote', return_value=('short', None)):   # the one check both use
+            status, body = self.ann.post('/api/workspace/types', case_type([when('1', cite=self.cite('1'))]))
+        self.assertEqual(status, 400, body)
+        self.assertIn('至少要有 4 个字母、汉字或数字', body['error'])
+        status, body = self.ann.post('/api/workspace/types', case_type([when('1', cite=self.cite('1')), {'column': 'fault', 'check': 'not_empty', 'cite': self.cite('1')}]))
+        self.assertEqual(status, 400, body)
+        self.assertIn('重复', body['error'])
+        status, body = self.ann.post('/api/workspace/types', case_type([when('1', cite=self.cite('1'))]), headers=EN)
+        self.assertEqual(status, 200, body)
+
+    def test_the_agent_readout_lists_rules_that_only_report_under_their_own_heading(self):
+        self.start()
+        rules = [{'column': 'fault', 'check': 'not_empty'}, when('1', cite=self.cite('1'), report_only=True)]
+        self.assertEqual(self.ann.post('/api/workspace/types', case_type(rules))[0], 200)
+        status, body = self.confirm_type()
+        self.assertEqual(status, 200, body)
+        t = next(t for t in self.ann.get('/api/workspace/agent/definitions')[1]['types'] if t['id'] == 'door_event')
+        self.assertEqual(t['value_rules'], ['“fault”不能为空'])
+        self.assertEqual(t['reported_rules'], ['当“fault”是 power_loss 时，“门锁状态”要是 1（只报告）'])
+        from ontology_poc_generator.agent_access import skill_files
+        conn = self.db()
+        text = next(v for k, v in skill_files(conn, None).items() if '门禁事件' in v and k.endswith('.md') and 'door_event' in v and '## 属性' in v)
+        must, reported = text.index('## 值规则（每一行都要满足）'), text.index('## 只报告的规则（列出不满足的行，不要求每一行都满足）')
+        self.assertLess(must, text.index('“fault”不能为空'))
+        self.assertLess(must, reported)
+        self.assertGreater(text.index('当“fault”是 power_loss'), reported)
+        # a type whose rules all only report has no "every row holds them" heading at all
+        page = self.page()
+        self.assertEqual(self.ann.post('/api/workspace/types/update', {**case_type(rules[1:]), 'id': 'door_event', 'version': page['version']})[0], 200)
+        status, body = self.confirm_type()
+        self.assertEqual(status, 200, body)
+        t = next(t for t in self.ann.get('/api/workspace/agent/definitions')[1]['types'] if t['id'] == 'door_event')
+        self.assertNotIn('value_rules', t)
+        text = next(v for k, v in skill_files(conn, None).items() if 'door_event' in v and '## 属性' in v)
+        self.assertNotIn('每一行都要满足', text)
+        self.assertIn('## 只报告的规则', text)
+
+    def test_a_type_whose_rules_all_only_report_reads_as_confirmed_before_they_are_counted(self):
+        self.start()
+        self.assertEqual(self.ann.post('/api/workspace/types', case_type(self.power_loss_rules(report_only=True)))[0], 200)
+        status, body = self.confirm_type()
+        self.assertEqual(status, 200, body)
+        conn = self.db()
+        conn.execute("DELETE FROM check_result WHERE check_type = 'value_rules'")   # as an older version leaves the file: no count of the rules
+        conn.commit()
+        listed = next(t for t in self.vera.get('/api/workspace/types')[1]['types'] if t['id'] == 'door_event')
+        self.assertEqual(listed['state'], 'confirmed')
+        self.assertNotIn('waiting', listed)
+        standing = self.vera.get('/api/workspace/agent/standing')[1]['definitions']
+        self.assertTrue(next(d for d in standing if d['id'] == 'objtype:door_event')['confirmed'])
+
+
 class KnownNoteTests(CitedCase):
     def conflicted(self):
         self.start()
