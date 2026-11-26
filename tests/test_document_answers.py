@@ -6,6 +6,8 @@ import base64
 import json
 import sqlite3
 import unittest
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 from unittest import mock
 
 from ontology_poc_generator import mcp_server
@@ -400,3 +402,36 @@ class SendBackAndRemove(DocumentCase):
         self.assertEqual(self.send_back(self.guest, document)[0], 403)
         self.assertEqual(self.remove(self.guest, document)[0], 403)
         self.assertEqual(self.remove(self.builder, {**document, 'version': document['version'] - 1})[0], 409)
+
+
+class TokenActs(DocumentCase):
+    """The Leader's ruling: sending back takes trust away and is open to a builder's token, logged with the token; removing deletes passages for good and is a
+    person's act, refused to a token with its own sentence."""
+
+    def token_call(self, token, path, body, lang='zh-CN'):
+        request = Request(self.demo.base + path, method='POST', data=json.dumps(body).encode(),
+                          headers={'Content-Type': 'application/json', 'Authorization': f'Bearer {token}', 'Accept-Language': lang})
+        try:
+            with urlopen(request) as response:
+                return response.status, json.load(response)
+        except HTTPError as exc:
+            return exc.code, json.load(exc)
+
+    def test_a_builders_token_sends_a_document_back_and_the_log_names_the_token(self):
+        document = self.put()
+        status, made = self.builder.call('POST', '/api/auth/tokens', {'label': '文档代理'})
+        self.assertEqual(status, 200, made)
+        status, back = self.token_call(made['token'], '/api/workspace/documents/send-back', {'id': document['id'], 'version': document['version'], 'reason': '比例写错了'})
+        self.assertEqual((status, back['state']), (200, 'needs_look'), back)
+        [(who, via)] = sqlite3.connect(self.demo.folder / 'workspace.sqlite').execute("SELECT who, via_token FROM log WHERE element_id = ? AND change = 'sent_back'", (document['id'],)).fetchall()
+        self.assertEqual((who, via), ('Demo builder', '文档代理'))
+
+    def test_removing_a_document_is_refused_to_a_token_with_its_own_sentence(self):
+        document = self.put()
+        status, made = self.builder.call('POST', '/api/auth/tokens', {'label': '文档代理'})
+        self.assertEqual(status, 200, made)
+        for lang, words in (('zh-CN', '移除文档要由本人登录页面来做'), ('en', 'Removing a document is done by a person signed in to the page')):
+            status, body = self.token_call(made['token'], '/api/workspace/documents/remove', {'id': document['id'], 'version': document['version'], 'reason': '作废'}, lang)
+            self.assertEqual((status, body.get('needs_person')), (403, True), body)
+            self.assertIn(words, body['error'])
+        self.assertEqual(len(self.admin.call('GET', '/api/workspace/documents')[1]['documents']), 1)   # still there
