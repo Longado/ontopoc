@@ -737,7 +737,7 @@ class Round5(DocumentCase):
 
     def test_only_decimal_digits_and_letters_count_and_overlapping_quotes_are_refused(self):
         self.put('# 符号\n\n编号½①Ⅳ，条款有效期为三年，期满续签。\n', '符号.md')
-        body, _ = self.ask(self.admin, '条款有效期', reply_for=quoting('½①Ⅳ，'))
+        body, _ = self.ask(self.admin, '条款有效期', reply_for=quoting('号½①Ⅳ'))   # one letter and three characters that are numbers but not digits
         self.assertEqual((body['status'], body['refusal']['kind']), ('refused', 'document_check'), body)
         def overlapping(request):
             p = next(p for p in request['documents'] if '三年' in p['text'])
