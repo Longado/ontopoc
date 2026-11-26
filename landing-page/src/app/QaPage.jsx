@@ -59,7 +59,7 @@ function Refusal({ record, mayBuild }) {
       {r?.kind === "not_in_scope" && (
         <>
           {r.left_out?.some((d) => d.kind === "relation" && d.state === "confirmed") && <p>{t("ask.refusal.relationLeftOut")}</p>}
-          <p className={r.left_out?.some((d) => d.kind === "relation" && d.state === "confirmed") ? "muted" : undefined}>{record.reason}</p>
+          <p className={r.left_out?.some((d) => d.kind === "relation" && d.state === "confirmed") ? "muted reason-text" : "reason-text"}>{record.reason}</p>
           <p className="muted">{t("ask.refusal.inScope", { list: r.in_scope.length ? r.in_scope.join(t("ask.sep")) : t("ask.refusal.noTypes") })}</p>
           {r.left_out?.length > 0 && (
             <>
@@ -77,7 +77,7 @@ function Refusal({ record, mayBuild }) {
           </ul>
         </>
       )}
-      {branch.kind === "reason" && <p>{branch.text}</p>}
+      {branch.kind === "reason" && <p className="reason-text">{branch.text}</p>}
     </div>
   );
 }
@@ -123,8 +123,8 @@ export function Answer({ record }) {
   );
 }
 
-/** An answer from confirmed documents: the line that says so, then each claim with the quotes it rests on and where each comes from (code checked each quote is
- * word for word in its document). No figure: it is never a number from the data. */
+/** An answer from confirmed documents: the line that says so, then the documents' own words, each with where it comes from (code checked each is word for
+ * word in its document). No figure and no sentence of the model's: it is never a number from the data. */
 function DocumentAnswer({ record }) {
   const view = answerFromDocuments(record);
   const notes = staleLines(record);
@@ -133,12 +133,7 @@ function DocumentAnswer({ record }) {
       {notes.length > 0 && <p className="warn">{staleHeading(record)} {notes.join(" ")}</p>}
       <p className="criteria">{view.line}</p>
       <ul className="doc-claims">
-        {view.claims.map((c) => (
-          <li key={c.key}>
-            <p>{c.text}</p>
-            {c.quotes.map((q) => <blockquote key={q.key}><p>{q.quote}</p><footer className="muted small"><a href={q.href}>{q.source}</a></footer></blockquote>)}
-          </li>
-        ))}
+        {view.quotes.map((q) => <li key={q.key}><blockquote><p>{q.quote}</p><footer className="muted small"><a href={q.href}>{q.source}</a></footer></blockquote></li>)}
       </ul>
     </div>
   );

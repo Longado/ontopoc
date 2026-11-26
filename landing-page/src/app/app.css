@@ -2427,3 +2427,4 @@ td .check, .table-wrap label.check { white-space: nowrap; }
 .doc-passages li p { margin: 0.15rem 0 0; white-space: pre-wrap; }
 .doc-reason { display: grid; gap: 0.35rem; max-width: 28rem; margin-top: 0.35rem; }
 .doc-removed { padding-left: 1.25rem; }
+.reason-text { white-space: pre-line; }   /* a service sentence, then on its own line what follows it (document answers) */

@@ -17,7 +17,8 @@ export function docFileProblem(file) {
 
 /** One document in the list: its state, a line of what it holds, who put it forward or confirmed it, and who can confirm it while it waits. */
 export function documentLine(d, { mayBuild = false } = {}) {
-  const meta = [t("documents.passages", { count: d.passages }), t("documents.version", { version: d.version }), ...(d.builders_only ? [t("documents.buildersOnly")] : [])].join(" · ");
+  const count = Array.isArray(d.passages) ? d.passages.length : d.passages;   // a document's own page holds the passages themselves
+  const meta = [t("documents.passages", { count }), t("documents.version", { version: d.version }), ...(d.builders_only ? [t("documents.buildersOnly")] : [])].join(" · ");
   const by = d.state === "confirmed" && d.confirmed_by ? t("documents.confirmedBy", { by: d.confirmed_by, when: d.confirmed_at ? timeText(d.confirmed_at) : "" }).trim()
     : d.proposed_by ? t("documents.proposedBy", { by: d.proposed_by }) : "";
   const who = d.state === "confirmed" || !d.who_can_confirm ? "" : d.who_can_confirm.length ? t("documents.whoCanConfirm", { names: d.who_can_confirm.join(t("ask.sep")) }) : t("documents.nobodyCanConfirm");
@@ -31,16 +32,14 @@ export function removedLine(r) {
   return { name: r.name, text: t("documents.removedBy", { by: r.removed_by ?? "", when: r.removed_at ? timeText(r.removed_at) : "", reason: r.reason }) };
 }
 
-/** An answer from confirmed documents: the service's line ("from the documents, not from the data") and each claim with its quotes and where each comes from.
- * null for anything else: an answer from the data, a refusal, or the line that the documents say nothing (which rides in the refusal's own sentence). */
+/** An answer from confirmed documents: the service's line (the documents' own words, chosen by the assistant, not from the data) and each quote with where it
+ * comes from. There is no sentence of the model's own to show. null for anything else: an answer from the data, a refusal, or the line that the documents say
+ * nothing (which rides in the refusal's own sentence). */
 export function answerFromDocuments(record) {
-  if (record?.status !== "from_documents" || !Array.isArray(record.documents?.claims)) return null;
+  if (record?.status !== "from_documents" || !Array.isArray(record.documents?.quotes)) return null;
   return {
     line: record.documents.line,
-    claims: record.documents.claims.map((c, i) => ({
-      key: `claim-${i}`, text: c.text,
-      quotes: (c.quotes ?? []).map((q, j) => ({ key: `q-${i}-${j}`, quote: q.quote, source: t("ask.documents.source", { name: q.document, where: q.where }), href: documentHref(q.document_id) })),
-    })),
+    quotes: record.documents.quotes.map((q, i) => ({ key: `q-${i}`, quote: q.quote, source: t("ask.documents.source", { name: q.document, where: q.where }), href: documentHref(q.document_id) })),
   };
 }
 
