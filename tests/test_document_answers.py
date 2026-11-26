@@ -95,6 +95,19 @@ class UploadAndConfirm(DocumentCase):
         self.assertEqual(status, 200, opened)
         self.assertIn('每逾期一日，按逾期部分货款的0.5%支付违约金', ' '.join(p['text'] for p in opened['passages']))
 
+    def test_documents_in_the_workspace_break_no_other_page(self):
+        self.put()
+        self.put(RULES, '质量管理制度.md', builders_only=True, confirm=False)
+        self.ask(self.admin, '逾期交货怎么罚？', reply_for=quoting('每逾期一日，按逾期部分货款的0.5%支付违约金'))
+        for who, paths in ((self.admin, ('/api/workspace/types', '/api/workspace/queue', '/api/workspace/receipt', '/api/workspace/graph/lineage', '/api/workspace/graph/relations',
+                                         '/api/workspace/agent/standing', '/api/workspace/agent/definitions', '/api/workspace/agent/unconfirmed', '/api/workspace/ask/tally',
+                                         '/api/workspace/tasks', '/api/workspace/notices', '/api/workspace/ask')),
+                           (self.guest, ('/api/workspace/types', '/api/workspace/graph/lineage', '/api/workspace/agent/standing', '/api/workspace/agent/definitions', '/api/workspace/ask'))):
+            for path in paths:
+                status, body = who.call('GET', path)
+                self.assertEqual(status, 200, (path, body))
+        self.assertEqual(self.admin.call('GET', '/api/workspace/ask/tally')[1]['last_7_days']['answered'], 1)   # an answer from documents is an answer
+
     def test_a_new_version_sends_the_document_back_and_whoever_changed_it_does_not_confirm_it(self):
         first = self.put()
         answered, _ = self.ask(self.admin, '逾期交货怎么罚？', reply_for=quoting('每逾期一日，按逾期部分货款的0.5%支付违约金'))
