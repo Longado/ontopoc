@@ -8,7 +8,8 @@ import { timeText } from "./format.js";
 import { itemHref } from "./relationModel.js";
 import { hrefFor } from "./routeModel.js";
 import { State } from "./TypesPage.jsx";
-import { citeLine, confirmersText, conflictLine, conflictNoteLine } from "./typeModel.js";
+import { confirmersText, conflictLine, conflictNoteLine } from "./typeModel.js";
+import { CiteText } from "./CiteText.jsx";
 import { useLoad } from "./useLoad.js";
 import { waitingText as derivedWaitingText } from "./derivedModel.js";
 import { viewWaitingText } from "./viewModel.js";
@@ -154,7 +155,7 @@ function ConflictRow({ item, onChanged }) {
             <a href={hrefFor({ page: "type", id: item.id, tab: "props" })}>{item.title}</a>
           </div>
           <p className="q-problem q-warn"><Icon name="alert" size={14} /> {conflictLine(c)}</p>
-          {c.rules.map((r) => <p key={r.index} className="q-summary small">{r.says}{r.cite && <span className="muted"> — {citeLine(r.cite)}</span>}</p>)}
+          {c.rules.map((r) => <p key={r.index} className="q-summary small">{r.says}{r.cite && <> — <CiteText cite={r.cite} /></>}</p>)}
           {c.note && <p className="muted small">{conflictNoteLine(c.note)}</p>}
           {error && <p className="error small">{error}</p>}
         </div>

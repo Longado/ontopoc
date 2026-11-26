@@ -380,6 +380,18 @@ def _sentence(text: str, at: int, end: int) -> tuple[str, list[int]]:
     return sentence.strip(), [at - start - lead, end - start - lead]
 
 
+def check_quote(quote: str, text: str) -> tuple[str | None, dict | None]:
+    """The one quote check, for an answer from documents and for a rule's citation (cited_rules): ('short', None) for fewer than MIN_QUOTE letters or digits,
+    ('missing', None) when it is not word for word in `text`, otherwise (None, {'sentence', 'mark'}): the whole sentence that holds it and where the quote is in it."""
+    if _real(quote) < MIN_QUOTE:
+        return 'short', None
+    if quote not in text:
+        return 'missing', None
+    at = text.index(quote)
+    sentence, mark = _sentence(text, at, at + len(quote))
+    return None, {'sentence': sentence, 'mark': mark}
+
+
 def _checked(answer, given: dict) -> tuple[list[dict], list[str]]:
     """(the quotes with where each comes from, the problems): an answer is quotes only, each exactly in the passage it names, which is one the model was given,
     and each with at least MIN_QUOTE letters or digits; the same quote twice is refused. Any problem refuses the whole answer. A problem never repeats what was
@@ -398,14 +410,14 @@ def _checked(answer, given: dict) -> tuple[list[dict], list[str]]:
         seen.add((q['passage'], q['quote']))
         if passage is None:
             problems.append(tr(f'第 {n} 句引用的段落不是给模型的段落', f'Quote {n} names a passage the model was not given'))
-        elif _real(q['quote']) < MIN_QUOTE:
+            continue
+        problem, found = check_quote(q['quote'], passage['text'])
+        if problem == 'short':
             problems.append(tr(f'第 {n} 句引用太短：至少要有 {MIN_QUOTE} 个字母、汉字或数字', f'Quote {n} is too short: it needs at least {MIN_QUOTE} letters or digits'))
-        elif q['quote'] not in passage['text']:
+        elif problem == 'missing':
             problems.append(tr(f'第 {n} 句引用在它的段落原文里找不到', f'Quote {n} is not in the text of its passage'))
         else:
-            at = passage['text'].index(q['quote'])
-            sentence, mark = _sentence(passage['text'], at, at + len(q['quote']))
-            kept.append({'passage': q['passage'], 'quote': q['quote'], 'sentence': sentence, 'mark': mark, 'document': passage['document'], 'document_id': passage['element_id'],
+            kept.append({'passage': q['passage'], 'quote': q['quote'], 'sentence': found['sentence'], 'mark': found['mark'], 'document': passage['document'], 'document_id': passage['element_id'],
                          'version': passage['version'], 'where': passage['where']})
     return kept, problems
 

@@ -44,7 +44,7 @@ export function answerFromDocuments(record) {
 }
 
 /** [before, the quoted part, after] of the sentence that holds a quote; the quote alone when no sentence came with it. */
-function sentenceParts(q) {
+export function sentenceParts(q) {
   const [from, to] = Array.isArray(q.mark) ? q.mark : [];
   if (typeof q.sentence !== "string" || !(from >= 0 && to <= q.sentence.length && from < to)) return ["", q.quote, ""];
   return [q.sentence.slice(0, from), q.sentence.slice(from, to), q.sentence.slice(to)];

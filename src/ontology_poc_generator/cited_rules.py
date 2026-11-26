@@ -1,7 +1,8 @@
 """Rules that cite their requirement, and the conflict check (ops/cards/cited-rules.md). No model anywhere: code checks the quotes, the rules and the conflicts.
 
 A citation: any value rule may cite one passage of a confirmed document, with a quote that is word for word in that passage and has at least
-document_answers.MIN_QUOTE characters that are not punctuation or space (the doc-answers check). It is kept in the rule as
+document_answers.MIN_QUOTE letters or digits (document_answers.check_quote, the one check answers from documents use; a quote cited twice on one type is
+refused, as a repeated quote in an answer is). It is kept in the rule as
 {document, passage, quote, sha256}: the document's id, the passage's number within it ("p3"), the quote and the document's file fingerprint when it was cited.
 It is part of the rule, so of the type's definition: confirming the type confirms it, and the type reads the document (element_dep). When the document is sent
 back, removed or replaced by a new version, a confirmed type that cites it goes to needs another look (document_moved), its readout stops showing the quote
@@ -79,11 +80,17 @@ def reader(conn, user: dict | None, kept: list[dict]):
         found = _passage(conn, document, passage)
         if found is None:
             raise RuleRefused(tr(f'“{column}”的规则引用的《{name}》里没有“{passage}”这个段落', f'The rule on "{column}" cites a passage "{passage}" that "{name}" does not have'))
-        if not isinstance(quote, str) or d._real(quote) < d.MIN_QUOTE:
-            raise RuleRefused(tr(f'“{column}”的规则的引用太短：至少要有 {d.MIN_QUOTE} 个不是标点或空格的字', f'The quote of the rule on "{column}" is too short: it needs at least {d.MIN_QUOTE} characters that are not punctuation or space'))
-        if quote not in found['text']:
+        problem = d.check_quote(quote, found['text'])[0] if isinstance(quote, str) else 'short'
+        if problem == 'short':
+            raise RuleRefused(tr(f'“{column}”的规则的引用太短：至少要有 {d.MIN_QUOTE} 个字母、汉字或数字', f'The quote of the rule on "{column}" is too short: it needs at least {d.MIN_QUOTE} letters or digits'))
+        if problem == 'missing':
             raise RuleRefused(tr(f'“{column}”的规则的引用在《{name}》{found["where"]}的原文里找不到：要一字不差', f'The quote of the rule on "{column}" is not in "{name}", {found["where"]}: it must be word for word'))
+        said = (document, passage, quote)
+        if said in cited:
+            raise RuleRefused(tr(f'“{column}”的规则的引用和另一条规则的引用重复：同一句原话只引用一次', f'The quote of the rule on "{column}" repeats another rule\'s: one quote is cited once'))
+        cited.add(said)
         return {'document': document, 'passage': passage, 'quote': quote, 'sha256': _content(row)['sha256']}
+    cited: set = set()
     return cite
 
 
@@ -96,7 +103,7 @@ def _standing(conn, cite: dict) -> tuple[dict | None, dict | None, str | None]:
     if row['state'] != 'confirmed':
         return row, None, tr('文档被退回或有了新版本，还没有再确认', 'the document was sent back or replaced and is not confirmed again yet')
     found = _passage(conn, cite['document'], cite['passage'])
-    if _content(row).get('sha256') != cite.get('sha256') or found is None or cite['quote'] not in found['text']:
+    if _content(row).get('sha256') != cite.get('sha256') or found is None or _docs().check_quote(cite['quote'], found['text'])[0] is not None:
         return row, None, tr('文档换了新版本，规则是按旧的原话写的：重新引用后保存', 'the document has a new version and the rule quotes the old words: cite it again and save')
     return row, found, None
 
@@ -112,7 +119,7 @@ def shown(conn, user: dict | None, cite: dict) -> dict | None:
     if not d.may_read(conn, user, row):
         return None
     out = {'document': cite['document'], 'passage': cite['passage'], 'name': _content(row)['name']}
-    return {**out, 'where': found['where'], 'quote': cite['quote']} if why is None else {**out, 'stale': why}
+    return {**out, 'where': found['where'], 'quote': cite['quote'], **d.check_quote(cite['quote'], found['text'])[1]} if why is None else {**out, 'stale': why}
 
 
 def readout(conn, user: dict | None, rules: list[dict] | None) -> list[dict] | None:

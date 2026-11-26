@@ -191,6 +191,12 @@ export function ruleReady(rule) {
   return true;
 }
 
+/** [before, the quoted part, after] of the sentence a citation's quote sits in: the same function an answer from documents uses. */
+export { sentenceParts as citeParts } from "./documentModel.js";
+
+/** What a citation that stands is from, before its sentence: the document and where in it. */
+export const citeSource = (cite) => t("types.rules.citeSource", { name: cite.name, where: cite.where });
+
 /** The line under a rule that cites its requirement: the document, where in it, and the quote; while it does not stand, why (no quote). "" with no citation. */
 export function citeLine(cite) {
   if (!cite) return "";

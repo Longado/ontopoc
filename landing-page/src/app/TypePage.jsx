@@ -13,8 +13,9 @@ import { statusOf } from "./statusModel.js";
 import { State } from "./TypesPage.jsx";
 import { TypeDerived } from "./TypeDerived.jsx";
 import { TypeViews } from "./TypeViews.jsx";
-import { alsoCalled, citeLine, reportOnlyTag, conflictLine, conflictNoteLine, confirmersText, joinList, limitedNote, logText, meaningsSummary, offerFirstAction, otherNamesFrom, otherNamesText, reconfirmText, ruleExamples, ruleStanding, stateLine, tabCounts, typeSub, typeTabs, usesSummary } from "./typeModel.js";
+import { alsoCalled, reportOnlyTag, conflictLine, conflictNoteLine, confirmersText, joinList, limitedNote, logText, meaningsSummary, offerFirstAction, otherNamesFrom, otherNamesText, reconfirmText, ruleExamples, ruleStanding, stateLine, tabCounts, typeSub, typeTabs, usesSummary } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
+import { CiteText } from "./CiteText.jsx";
 import { PageHeader } from "./ui/PageHeader.jsx";
 
 const TYPE_CRUMBS = (name) => [{ label: t("types.page.crumbGroup") }, { label: t("types.page.crumbTypes"), href: "#/types" }, { label: name }];
@@ -130,7 +131,7 @@ function Rules({ type }) {
             <span className={r.broken ? "warn" : undefined}>{t("types.rules.line", { says: r.says, standing: ruleStanding(r, type.rows_limited) })}</span>
             {r.examples?.length > 0 && <span className="muted small block">{t("types.rules.examples", { keys: ruleExamples(r) })}</span>}
             {r.report_only && <span className="muted small block">{reportOnlyTag(r)}</span>}
-            {r.cite && <span className={`small block${r.cite.stale ? " warn" : " muted"}`}>{citeLine(r.cite)}</span>}
+            {r.cite && <CiteText cite={r.cite} className="small block" />}
           </li>
         ))}
       </ul>
@@ -164,7 +165,7 @@ function Conflicts({ type, mayBuild, reload }) {
           <li key={c.key}>
             <span className="warn">{conflictLine(c)}</span>
             {c.rules.map((r) => (
-              <span key={r.index} className="small block">{r.says}{r.cite && <span className={r.cite.stale ? " warn" : " muted"}> — {citeLine(r.cite)}</span>}</span>
+              <span key={r.index} className="small block">{r.says}{r.cite && <> — <CiteText cite={r.cite} /></>}</span>
             ))}
             {c.note && <span className="muted small block">{conflictNoteLine(c.note)}</span>}
             {mayBuild && c.note?.may_confirm && <button className="primary" onClick={() => act(() => confirmConflictNote(type.id, c.key))}>{t("types.conflicts.confirm")}</button>}
