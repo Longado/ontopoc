@@ -241,6 +241,8 @@ def _parse(element: str) -> tuple[str, dict]:
 
 
 def _row_for(conn, element: str, user: dict | None) -> dict:
+    if isinstance(element, str) and element.startswith('document:'):   # a document is confirmed, sent back and removed on the Documents page (document_answers)
+        raise TypeRefused(tr('文档不在待确认队列里：请在“文档”页上确认、退回或移除', 'Documents are not in the review queue: confirm, send back or remove them on the Documents page'), 400)
     row = element_row(conn, element) if isinstance(element, str) else None
     item = _item(conn, row, user, light=True) if row and row['state'] in (*IN_QUEUE, 'confirmed', 'rejected') else None
     if row is None or item is None:
