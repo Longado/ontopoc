@@ -2415,3 +2415,13 @@ td .check, .table-wrap label.check { white-space: nowrap; }
 .as-notice.demo-ask-note { display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; max-width: 760px; margin: 0 auto; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-app); color: var(--muted); font-size: 13px; }
 .as-notice.demo-ask-note p { margin: 0; flex: 1 1 280px; }
 .as-notice { border-radius: var(--radius-md); border-left-width: 3px; }
+
+/* answers from documents (QaPage.DocumentAnswer) and the Documents page */
+.doc-claims { list-style: none; padding: 0; margin: 0.5rem 0 0; }
+.doc-claims > li + li { margin-top: 0.75rem; }
+.doc-claims blockquote { margin: 0.35rem 0 0; padding: 0.35rem 0.75rem; border-left: 3px solid var(--border-strong); }
+.doc-claims blockquote p { margin: 0; }
+.doc-upload { display: grid; gap: 0.5rem; max-width: 40rem; margin: 0.75rem 0 1rem; }
+.doc-passages { padding-left: 1.25rem; }
+.doc-passages li { margin-bottom: 0.6rem; }
+.doc-passages li p { margin: 0.15rem 0 0; white-space: pre-wrap; }

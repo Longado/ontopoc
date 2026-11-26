@@ -17,11 +17,12 @@ import { ObjectGraph } from "./ObjectGraph.jsx";
 import { State } from "./TypesPage.jsx";
 import { formatDate, useT } from "./i18n/index.js";
 import { hrefFor } from "./routeModel.js";
+import { answerFromDocuments } from "./documentModel.js";
 import { Icon } from "./ui/Icon.jsx";
 import { useLoad } from "./useLoad.js";
 
 const MODEL_KINDS = ["model", "pipeline", "meanings"];   // the turn kinds that call the model and answer with a card
-const KIND = { type: "ask.kind.type", meaning: "ask.kind.meaning", relation: "ask.kind.relation", view: "ask.kind.view", derived: "ask.kind.derived" };
+const KIND = { type: "ask.kind.type", meaning: "ask.kind.meaning", relation: "ask.kind.relation", view: "ask.kind.view", derived: "ask.kind.derived", document: "ask.kind.document" };
 
 /** The definitions a refusal names, bottom of the chain first: what it is, where it stands and why, who could confirm it. */
 function Named({ list, mayBuild }) {
@@ -118,6 +119,27 @@ export function Answer({ record }) {
       )}
       {rangeNotes(record).map((n) => <p className="warn" key={n}>{n}</p>)}
       {notes.length > 0 && <p className="warn">{then ? notes.join(t("ask.stale.sep")) : t("ask.stale.withHeading", { heading: staleHeading(record), notes: notes.join(t("ask.stale.sep")) })}</p>}
+    </div>
+  );
+}
+
+/** An answer from confirmed documents: the line that says so, then each claim with the quotes it rests on and where each comes from (code checked each quote is
+ * word for word in its document). No figure: it is never a number from the data. */
+function DocumentAnswer({ record }) {
+  const view = answerFromDocuments(record);
+  const notes = staleLines(record);
+  return (
+    <div className={isThenAnswer(record) ? "answer then doc-answer" : "answer doc-answer"}>
+      {notes.length > 0 && <p className="warn">{staleHeading(record)} {notes.join(" ")}</p>}
+      <p className="criteria">{view.line}</p>
+      <ul className="doc-claims">
+        {view.claims.map((c) => (
+          <li key={c.key}>
+            <p>{c.text}</p>
+            {c.quotes.map((q) => <blockquote key={q.key}><p>{q.quote}</p><footer className="muted small"><a href={q.href}>{q.source}</a></footer></blockquote>)}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -255,7 +277,7 @@ function AnswerCardBody({ record, mayBuild, onEdit }) {
     <section className="qa-card">
       {record.withheld ? <p className="warn">{record.reason}</p> : (
         <>
-          {isAnswer(record) ? <Answer record={record} /> : <Refusal record={record} mayBuild={mayBuild} />}
+          {answerFromDocuments(record) ? <DocumentAnswer record={record} /> : isAnswer(record) ? <Answer record={record} /> : <Refusal record={record} mayBuild={mayBuild} />}
           {warning && <p className="time-warn" role="alert">{warning}</p>}
           {line && <p className="criteria">{line}</p>}
           <details className="basis">
@@ -332,7 +354,7 @@ function SavedTurn({ turn, mayBuild, onEdit, followUps, onAsk, last, onLoaded })
   return (
     <>
       <UserBubble text={r.question} />
-      <AssistantMsg><AnswerCard record={r} mayBuild={mayBuild} onEdit={onEdit} /><FollowUps list={last && !isAnswer(r) ? followUps : []} onAsk={onAsk} /></AssistantMsg>
+      <AssistantMsg><AnswerCard record={r} mayBuild={mayBuild} onEdit={onEdit} /><FollowUps list={last && !isAnswer(r) && !answerFromDocuments(r) ? followUps : []} onAsk={onAsk} /></AssistantMsg>
     </>
   );
 }
@@ -357,7 +379,7 @@ function TurnView({ turn, mayBuild, admin, onEdit, followUps, onAsk, busy, last,
     );
   }
   const r = turn.record;
-  const unanswered = r && (!isAnswer(r) || r.status === "no_data");
+  const unanswered = r && !answerFromDocuments(r) && (!isAnswer(r) || r.status === "no_data");
   return (
     <>
       <UserBubble text={turn.text} query={turn.kind === "query"} />

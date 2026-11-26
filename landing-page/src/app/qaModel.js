@@ -83,7 +83,7 @@ export function refusalBranch(record) {
 }
 
 /** The answer, or the refusal, in one word for the history list. */
-export const statusText = (status) => t(status === "answered" ? "ask.status.answered" : status === "no_data" ? "ask.status.noData" : "ask.status.refused");
+export const statusText = (status) => t(status === "answered" ? "ask.status.answered" : status === "no_data" ? "ask.status.noData" : status === "from_documents" ? "ask.status.fromDocuments" : "ask.status.refused");
 export const isAnswer = (record) => record.status === "answered" || record.status === "no_data";
 
 /** What an answer read: "orders v1". */
@@ -111,6 +111,7 @@ export const isThenAnswer = (record) => (record.changed ?? []).length > 0;
 /** Where a definition's own page is: a type or its meanings, or a relation. null for a line that names no definition. */
 export function definitionHref(id, type = null) {
   if (typeof id !== "string") return null;
+  if (id.startsWith("document:")) return `#/documents/${encodeURIComponent(id)}`;   // a document answers have quoted (documentModel)
   if (id.startsWith("objview:")) return `#/types/${encodeURIComponent(type ?? "")}/views`;   // a view is shown on its type's page
   if (id.startsWith("derived:")) return `#/types/${encodeURIComponent(type ?? id.slice("derived:".length).split(":")[0])}/derived`;   // so is a derived property
   if (id.startsWith("relation:")) return `#/relations/${encodeURIComponent(id.slice("relation:".length))}`;

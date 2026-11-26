@@ -6,6 +6,7 @@ export default {
   "group.data": "数据",
   "group.data.hint": "定义建在这些表上；每次上传或拉取都是一个新版本",
   "datasets": "数据集",
+  "documents": "文档",
   "sources": "数据源",
   "pipelines": "管道",
   "schedules": "调度",
