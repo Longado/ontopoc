@@ -32,7 +32,7 @@ MAX_PASSAGES = 5      # passages sent to the model for one question, the best bm
 MAX_CHARS = 200_000   # characters of text in one document (the file itself is capped at company_sources.MAX_BYTES, 10 MB)
 MAX_DOCUMENTS = 50    # documents in one workspace
 MAX_QUOTES = 8        # quotes in one answer: more is refused, not cut
-MIN_QUOTE = 4         # characters a quote must have that are not punctuation or space
+MIN_QUOTE = 4         # letters or digits a quote must have (Unicode letters, Chinese characters included, and digits)
 MAX_NAME = 120
 MAX_REASON = 200   # the reason a document is sent back or removed: one line
 STATES_SEARCHED = ('confirmed',)
@@ -361,29 +361,49 @@ def asking(docs: dict | None, more: tuple[str, str] | None) -> dict:
 
 
 def _real(quote: str) -> int:
-    """How many characters of a quote are not punctuation or space."""
-    return sum(1 for ch in quote if not ch.isspace() and not unicodedata.category(ch).startswith(('P', 'Z')))
+    """How many letters and digits a quote has (Unicode letters, Chinese characters included, and digits): a zero-width space, a mark or a symbol is not one."""
+    return sum(1 for ch in quote if unicodedata.category(ch)[0] in 'LN')
+
+
+_SENTENCE_END = re.compile(r'[。！？；!?;]|\n')
+
+
+def _sentence(text: str, at: int, end: int) -> tuple[str, list[int]]:
+    """The whole sentence (or sentences) of `text` that hold text[at:end], and where the quoted part is in it: a sentence ends after 。！？；!?; or at a line end."""
+    ends = [m.end() for m in _SENTENCE_END.finditer(text)]
+    start = max([e for e in ends if e <= at], default=0)
+    stop = min([e for e in ends if e >= end], default=len(text))
+    sentence = text[start:stop]
+    lead = len(sentence) - len(sentence.lstrip())
+    return sentence.strip(), [at - start - lead, end - start - lead]
 
 
 def _checked(answer, given: dict) -> tuple[list[dict], list[str]]:
     """(the quotes with where each comes from, the problems): an answer is quotes only, each exactly in the passage it names, which is one the model was given,
-    and each with at least MIN_QUOTE characters that are not punctuation or space. Any problem refuses the whole answer. A problem never repeats what was
-    quoted (a refusal is kept)."""
+    and each with at least MIN_QUOTE letters or digits; the same quote twice is refused. Any problem refuses the whole answer. A problem never repeats what was
+    quoted (a refusal is kept). Each kept quote comes with the whole sentence that holds it and where the quote is in it, so a fragment cannot drop a negation
+    or an exception out of sight."""
     quotes = answer.get('quotes') if isinstance(answer, dict) else None
     if not isinstance(quotes, list) or not quotes or len(quotes) > MAX_QUOTES \
             or not all(isinstance(q, dict) and isinstance(q.get('passage'), str) and isinstance(q.get('quote'), str) for q in quotes):
         return [], [tr(f'文档回答要是 1 到 {MAX_QUOTES} 句引用，每句写明段落和原文', f'An answer from the documents must be 1 to {MAX_QUOTES} quotes, each naming its passage and its text')]
-    kept, problems = [], []
+    kept, problems, seen = [], [], set()
     for n, q in enumerate(quotes, start=1):
         passage = given.get(q['passage'])
+        if (q['passage'], q['quote']) in seen:
+            problems.append(tr(f'第 {n} 句引用和前面的一句重复', f'Quote {n} repeats an earlier one'))
+            continue
+        seen.add((q['passage'], q['quote']))
         if passage is None:
             problems.append(tr(f'第 {n} 句引用的段落不是给模型的段落', f'Quote {n} names a passage the model was not given'))
         elif _real(q['quote']) < MIN_QUOTE:
-            problems.append(tr(f'第 {n} 句引用太短：至少要有 {MIN_QUOTE} 个不是标点或空格的字', f'Quote {n} is too short: it needs at least {MIN_QUOTE} characters that are not punctuation or space'))
+            problems.append(tr(f'第 {n} 句引用太短：至少要有 {MIN_QUOTE} 个字母、汉字或数字', f'Quote {n} is too short: it needs at least {MIN_QUOTE} letters or digits'))
         elif q['quote'] not in passage['text']:
             problems.append(tr(f'第 {n} 句引用在它的段落原文里找不到', f'Quote {n} is not in the text of its passage'))
         else:
-            kept.append({'passage': q['passage'], 'quote': q['quote'], 'document': passage['document'], 'document_id': passage['element_id'],
+            at = passage['text'].index(q['quote'])
+            sentence, mark = _sentence(passage['text'], at, at + len(q['quote']))
+            kept.append({'passage': q['passage'], 'quote': q['quote'], 'sentence': sentence, 'mark': mark, 'document': passage['document'], 'document_id': passage['element_id'],
                          'version': passage['version'], 'where': passage['where']})
     return kept, problems
 
@@ -428,10 +448,11 @@ def settled(conn, user: dict | None, docs: dict | None, item: dict, result: dict
             reason = (tr(f'没有回答：要引用的文档「{"、".join(shown)}」刚被移除了。', f'Not answered: the document it would quote ("{", ".join(shown)}") was just removed.') if shown
                       else tr('没有回答：要引用的文档刚被移除了。', 'Not answered: a document it would quote was just removed.'))
             return _refused(result, reason, {'kind': 'document_removed', 'ids': gone, 'names': shown}, tr('核对文档', 'Check documents'))
-        moved = [now[e] for e in used if now[e]['state'] not in STATES_SEARCHED or not may_read(conn, user, now[e])
-                 or now[e]['version'] != next(p['version'] for p in docs['passages'] if p['element_id'] == e)]
+        if any(not may_read(conn, user, now[e]) for e in used):   # no longer theirs to read (made builders-only, or sent back, for a viewer): as words no document has
+            return _as_if_unsent(conn, user, item, result)
+        moved = [now[e] for e in used if now[e]['state'] not in STATES_SEARCHED or now[e]['version'] != next(p['version'] for p in docs['passages'] if p['element_id'] == e)]
         if moved:
-            return _waiting_refusal(conn, user, result, [r for r in moved if may_read(conn, user, r)])
+            return _waiting_refusal(conn, user, result, moved, sent=True, changed={r['element_id'] for r in moved if r['state'] in STATES_SEARCHED})
         names = tr('、', ', ').join(dict.fromkeys(q['document'] for q in quotes))
         definitions = [{'id': e, 'kind': 'document', 'name': _content(now[e])['name'], 'state': 'confirmed', 'version': now[e]['version'],
                         'confirmed_by': now[e]['confirmed_by'], 'confirmed_at': now[e]['confirmed_at']} for e in used]
@@ -441,11 +462,47 @@ def settled(conn, user: dict | None, docs: dict | None, item: dict, result: dict
                           {'name': tr('结果', 'Result'), 'text': tr(f'来自文档：{names}', f'From the documents: {names}')}],
                 'model': result.get('model')}
     if docs['waiting']:
-        return _waiting_refusal(conn, user, result, docs['waiting'])
+        return _waiting_refusal(conn, user, result, docs['waiting'], sent=bool(docs['passages']))
+    if docs['passages']:   # it read passages and answered nothing from them: the service says so, never in the model's words (they may repeat or twist the passages)
+        return _scrubbed(item, result, _unused())
     if not docs['readable']:
         return result
     said = result.get('reason')
     return {**result, 'reason': _nothing() + ('\n' + said if said else ''), 'documents': {'found': False, 'line': _nothing()}}
+
+
+def _unused() -> str:
+    return tr('助手没有用给它的文档段落回答。', 'The assistant did not answer from the passages it was given.')
+
+
+def _model_free(item: dict, result: dict, said: str | None) -> dict:
+    """main's answer for this reply with nothing the model wrote in it: no reasoning, and the reason main took from the reasoning replaced by `said` (or, with
+    `said` None, by what main says when the model gives no reasoning). A reason the service wrote (no query came back) is kept."""
+    from ontology_poc_generator.ontology_questions import _for_reader
+    status = result.get('status')
+    if item.get('reason_from_model'):
+        reason = said if said is not None else (_for_reader('', status) or tr('模型认为本体表达不了这个问题', 'The model thinks the ontology cannot express this question'))
+    else:
+        reason = result.get('reason') if said is None else said + ('\n' + result['reason'] if result.get('reason') else '')
+    out = {**result, 'reason': reason}
+    if 'reasoning' in out:
+        out['reasoning'] = ''
+    out['steps'] = [{'name': tr('理解问题', 'Understand the question'), 'text': said or tr('模型没有写理解', 'The model gave no reading of the question')},
+                    {'name': tr('结果', 'Result'), 'text': reason, 'failed': True}]
+    return out
+
+
+def _scrubbed(item: dict, result: dict, said: str) -> dict:
+    return {**_model_free(item, result, said), 'documents': {'found': True, 'line': said}}
+
+
+def _as_if_unsent(conn, user: dict | None, item: dict, result: dict) -> dict:
+    """The answer this person gets for words no document has, when a document the model quoted stopped being theirs to read while it answered: main's answer
+    without what the model wrote (it read the passage), and "the confirmed documents say nothing" only when they may read a confirmed document now."""
+    out = _model_free(item, result, None)
+    if not any(r['state'] in STATES_SEARCHED and may_read(conn, user, r) for r in _rows(conn)):
+        return out
+    return {**out, 'reason': _nothing() + ('\n' + out['reason'] if out.get('reason') else ''), 'documents': {'found': False, 'line': _nothing()}}
 
 
 def _refused(result: dict, reason: str, refusal: dict, step: str) -> dict:
@@ -453,18 +510,22 @@ def _refused(result: dict, reason: str, refusal: dict, step: str) -> dict:
             'steps': [{'name': step, 'text': reason, 'failed': True}], 'model': result.get('model')}
 
 
-def _waiting_refusal(conn, user: dict | None, result: dict, rows: list[dict]) -> dict:
-    """Refused because the documents that speak of it wait for confirmation: each named, with who can confirm it, to someone who may read it (a builder); a
-    viewer is told only that a document waits. What main says of the reply follows on a line of its own."""
+def _waiting_refusal(conn, user: dict | None, result: dict, rows: list[dict], sent: bool, changed: set | None = None) -> dict:
+    """Refused because the documents that speak of it wait for confirmation (or changed while it was answered: `changed`), each named, with who can confirm it,
+    to someone who may read it (the rows given are theirs to read). What main says of the reply follows on a line of its own, but only when the model was
+    given no passage (`sent` False); when it was, the service's own sentence stands in for anything the model wrote."""
     lines = []
     for row in rows:
         who = _who_can_confirm(conn, row)
         name = _content(row)['name']
-        text = tr(f'文档「{name}」：{_state_text(row["state"])}', f'Document "{name}": {_state_text(row["state"])}') + (tr(f'；可以确认的人：{"、".join(who)}', f'; who can confirm: {", ".join(who)}') if who else '')
+        state = tr('在回答这个问题时改了，请再问一次', 'changed while this question was answered; ask again') if row['element_id'] in (changed or set()) else _state_text(row['state'])
+        text = tr(f'文档「{name}」：{state}', f'Document "{name}": {state}') + (tr(f'；可以确认的人：{"、".join(who)}', f'; who can confirm: {", ".join(who)}') if who and row['element_id'] not in (changed or set()) else '')
         lines.append({'id': row['element_id'], 'kind': 'document', 'name': name, 'state': row['state'], 'who_can_confirm': who, 'text': text})
     reason = (tr('没有回答：能说到这件事的文档还没有确认。', 'Not answered: the documents that speak of this are not confirmed yet. ') + tr('；', '; ').join(l['text'] for l in lines) + tr('。', '.')
               if lines else tr('没有回答：要引用的文档在等确认。', 'Not answered: a document it would quote is waiting to be confirmed.'))
-    if result.get('reason'):   # what main says of the reply too (no query came back, or the model's reason): nothing of it is lost
+    if sent:   # it read passages: the service's sentence, never the model's words
+        reason += '\n' + _unused()
+    elif result.get('reason'):   # what main says of the reply too (no query came back, or the model's reason): nothing of it is lost
         reason += '\n' + result['reason']
     return {**_refused(result, reason, {'kind': 'document_unconfirmed', 'documents': lines}, tr('核对文档', 'Check documents')),
             'steps': [{'name': tr('核对文档', 'Check documents'), 'text': tr('匹配的文档还没有确认，没有用它', 'The matching documents are not confirmed, so they were not used'), 'failed': True}]}
