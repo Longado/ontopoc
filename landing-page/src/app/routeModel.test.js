@@ -82,7 +82,7 @@ test("a page not built yet has an address of its own and says what it will do", 
 
 test("the sidebar groups what the product has, and marks what is built: the gate's daily work (定义) before the data that feeds it", () => {
   assert.deepEqual(NAV.map((g) => g.label ?? null), [null, "定义", "数据", "智能体"]);
-  assert.deepEqual(NAV.flatMap((g) => g.items.map((i) => i.label)), ["首页", "助手", "看板", "消息", "待确认", "要回答的问题", "对象类型", "关系", "血缘", "数据集", "数据源", "管道", "调度", "AI 工具接入"]);
+  assert.deepEqual(NAV.flatMap((g) => g.items.map((i) => i.label)), ["首页", "助手", "看板", "消息", "待确认", "要回答的问题", "对象类型", "关系", "血缘", "数据集", "文档", "数据源", "管道", "调度", "AI 工具接入"]);
   for (const g of [...NAV, ...ADMIN_NAV].filter((g) => g.label)) assert.ok(g.hint && g.icon, g.label);   // a one-line grey explainer and an icon under each group
   for (const i of [...NAV, ...ADMIN_NAV].flatMap((g) => g.items)) assert.ok(i.icon, i.key);
   assert.equal(navKeyOf({ page: "dataset", name: "x" }), "datasets");
@@ -90,12 +90,12 @@ test("the sidebar groups what the product has, and marks what is built: the gate
 
 test("a viewer sees the main line and the definitions they may read, a builder the review queue first, the data and the agents, an admin settings too", () => {
   const names = (user, has) => navFor(user, has).map((g) => [g.label ?? null, g.items.map((i) => i.label)]);
-  assert.deepEqual(names({ role: "viewer" }), [[null, ["首页", "助手", "看板"]], ["定义", ["对象类型", "关系", "血缘"]], ["数据", ["数据集"]]]);   // read-only pages the service serves a viewer; 数据集 stays, as it shipped for viewers
+  assert.deepEqual(names({ role: "viewer" }), [[null, ["首页", "助手", "看板"]], ["定义", ["对象类型", "关系", "血缘"]], ["数据", ["数据集", "文档"]]]);   // read-only pages the service serves a viewer; 数据集 stays, as it shipped for viewers; 文档: the confirmed documents a viewer may read
   assert.deepEqual(names({ role: "builder" }).map((g) => g[0]), [null, "定义", "数据", "智能体"]);
   assert.deepEqual(names({ role: "admin" }).map((g) => g[0]), [null, "定义", "数据", "智能体", "设置"]);
   assert.deepEqual(names({ role: "admin" })[4][1], ["工作区", "用户", "权限"]);
   assert.deepEqual(names({ role: "builder" })[1][1], ["待确认", "要回答的问题", "对象类型", "关系", "血缘"]);   // the queue first, then the questions the definitions must answer; 血缘 says why a definition went back, so it lives here
-  assert.deepEqual(names({ role: "builder" })[2][1], ["数据集", "数据源", "管道", "调度"]);   // no 任务: the page stays at its address
+  assert.deepEqual(names({ role: "builder" })[2][1], ["数据集", "文档", "数据源", "管道", "调度"]);   // no 任务: the page stays at its address
   assert.deepEqual(navFor(null).map((g) => g.label ?? null), [null]);
   for (const role of ["viewer", "builder", "admin"]) for (const g of navFor({ role }, { notices: true })) for (const i of g.items) assert.equal(mayOpen(i.key, { role }), true, `${role} ${i.key}`);   // nothing offered leads to a refusal
 });
@@ -183,7 +183,7 @@ test("the screen that confirms what one dataset version moved has an address und
 
 const ADDRESSES = ["#/home", "#/qa", "#/qa/3", "#/datasets", "#/datasets/x", "#/tasks", "#/notices", "#/types", "#/types/new", "#/types/x/edit", "#/types/x/props", "#/types/x/objects/2",
   "#/relations", "#/relations/new", "#/relations/x", "#/relations/x/edit", "#/lineage", "#/confirm", "#/confirm/group/x/2", "#/pipelines", "#/pipelines/new",
-  "#/pipelines/x", "#/sources", "#/sources/x", "#/schedules", "#/permissions", "#/account", "#/users", "#/settings", "#/boards", "#/boards/new", "#/boards/3", "#/boards/3/edit", "#/agents", "#/needed"];
+  "#/pipelines/x", "#/sources", "#/sources/x", "#/schedules", "#/permissions", "#/account", "#/users", "#/settings", "#/boards", "#/boards/new", "#/boards/3", "#/boards/3/edit", "#/agents", "#/needed", "#/documents", "#/documents/document%3Aabc"];
 
 test("every page an address can open has one entry in the page table, and the table has no page no address opens", () => {
   const opened = new Set(ADDRESSES.map((a) => parseRoute(a).page));
@@ -263,4 +263,12 @@ test("a builder a rule limits is not offered the questions we need, which the se
   assert.ok(keys({ role: "builder" }).includes("needed"));
   assert.ok(!keys({ role: "builder", limited: true }).includes("needed"));
   assert.ok(keys({ role: "builder", limited: true }).includes("confirm"));
+});
+
+test("the documents have an address, and one document has its own under it", () => {
+  assert.deepEqual(parseRoute("#/documents"), { page: "documents" });
+  assert.deepEqual(parseRoute("#/documents/document%3Aabc"), { page: "document", id: "document:abc" });
+  assert.equal(hrefFor({ page: "document", id: "document:abc" }), "#/documents/document%3Aabc");
+  assert.equal(parseRoute("#/documents/a/b").page, "notfound");
+  for (const role of ["viewer", "builder", "admin"]) assert.equal(mayOpen("documents", { role }) && mayOpen("document", { role }), true);   // the service decides which documents each may read
 });
