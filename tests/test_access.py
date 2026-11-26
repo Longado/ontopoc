@@ -30,11 +30,12 @@ class RouteTableTests(unittest.TestCase):
             literals |= set(re.findall(r"""['"](/api/[A-Za-z0-9_/-]*)['"]""", (SOURCES / name).read_text(encoding='utf-8')))
         literals -= {'/api/ontology', '/api/workspace', '/api/auth/', '/api/users/', '/api/workspace/', '/api/ontology/runs/', '/api/ontology/library/',
                      '/api/ontology/jobs/', '/api/workspace/datasets/', '/api/workspace/types/', '/api/workspace/relations/', '/api/workspace/ask/', '/api/workspace/actions/', '/api/workspace/pipelines/',
-                     '/api/workspace/explore'}   # prefixes the code compares against; their routes are checked below
+                     '/api/workspace/explore', '/api/workspace/documents/'}   # prefixes the code compares against; their routes are checked below
         self.assertGreater(len(literals), 25)
         missing = sorted(p for p in literals if route_role('GET', p) is None and route_role('POST', p) is None)
         self.assertEqual(missing, [])
-        for prefix in ('/api/ontology/runs/', '/api/ontology/library/', '/api/ontology/jobs/', '/api/workspace/datasets/', '/api/workspace/types/', '/api/workspace/relations/', '/api/workspace/ask/', '/api/workspace/actions/', '/api/workspace/pipelines/'):
+        for prefix in ('/api/ontology/runs/', '/api/ontology/library/', '/api/ontology/jobs/', '/api/workspace/datasets/', '/api/workspace/types/', '/api/workspace/relations/', '/api/workspace/ask/', '/api/workspace/actions/', '/api/workspace/pipelines/',
+                       '/api/workspace/documents/'):
             self.assertIsNotNone(route_role('GET', prefix + 'x'), prefix)
 
     def test_a_route_not_in_the_table_needs_an_admin(self):

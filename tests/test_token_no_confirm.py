@@ -22,7 +22,7 @@ except ImportError:   # before 3.11
 
 COVERED = ('/api/workspace/types/confirm', '/api/workspace/types/views/confirm', '/api/workspace/types/derived/confirm', '/api/workspace/relations/confirm',
            '/api/workspace/pipelines/confirm', '/api/workspace/actions/confirm', '/api/workspace/actions/decide', '/api/workspace/queue/confirm',
-           '/api/workspace/queue/confirm-group', '/api/workspace/checked', '/api/workspace/needed/confirm')
+           '/api/workspace/queue/confirm-group', '/api/workspace/checked', '/api/workspace/needed/confirm', '/api/workspace/documents/confirm')
 REFUSED_ZH = '确认和批准要由本人登录页面来做'
 REFUSED_EN = 'Confirming and approving are done by a person signed in to the page'
 CHECKED = '/api/workspace/checked'   # a checked number is recorded on a board card or a saved answer, not in the review queue: its own sentence
