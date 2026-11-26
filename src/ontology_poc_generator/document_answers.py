@@ -361,21 +361,22 @@ def asking(docs: dict | None, more: tuple[str, str] | None) -> dict:
 
 
 def _real(quote: str) -> int:
-    """How many letters and digits a quote has (Unicode letters, Chinese characters included, and digits): a zero-width space, a mark or a symbol is not one."""
-    return sum(1 for ch in quote if unicodedata.category(ch)[0] in 'LN')
+    """How many letters and decimal digits a quote has (Unicode letters, Chinese characters included; 0-9 in any script): a zero-width space, a mark, a symbol,
+    a fraction, a circled number or a Roman numeral is not one."""
+    return sum(1 for ch in quote if unicodedata.category(ch)[0] == 'L' or unicodedata.category(ch) == 'Nd')
 
 
-_SENTENCE_END = re.compile(r'[。！？；!?;]|\n')
+_SENTENCE_END = re.compile(r'[。！？!?]|\n')   # not ； or ;: a proviso after one ("…按日计算；但…除外。") belongs to the sentence
 
 
-def _sentence(text: str, at: int, end: int) -> tuple[str, list[int]]:
-    """The whole sentence (or sentences) of `text` that hold text[at:end], and where the quoted part is in it: a sentence ends after 。！？；!?; or at a line end."""
+def sentence_parts(text: str, at: int, end: int) -> dict:
+    """The whole sentence (or sentences) of `text` that hold text[at:end], as three strings {'before', 'quote', 'after'}: what precedes the quoted part in its
+    sentence, the quoted part as written, and what follows it. A sentence ends after 。！？!? or at a line end. Strings, not offsets, so a reader that counts
+    characters differently (a page counting UTF-16 units) cannot mark the wrong ones. Also used by cited rules."""
     ends = [m.end() for m in _SENTENCE_END.finditer(text)]
     start = max([e for e in ends if e <= at], default=0)
     stop = min([e for e in ends if e >= end], default=len(text))
-    sentence = text[start:stop]
-    lead = len(sentence) - len(sentence.lstrip())
-    return sentence.strip(), [at - start - lead, end - start - lead]
+    return {'before': text[start:at].lstrip(), 'quote': text[at:end], 'after': text[end:stop].rstrip()}
 
 
 def _checked(answer, given: dict) -> tuple[list[dict], list[str]]:
@@ -387,13 +388,15 @@ def _checked(answer, given: dict) -> tuple[list[dict], list[str]]:
     if not isinstance(quotes, list) or not quotes or len(quotes) > MAX_QUOTES \
             or not all(isinstance(q, dict) and isinstance(q.get('passage'), str) and isinstance(q.get('quote'), str) for q in quotes):
         return [], [tr(f'文档回答要是 1 到 {MAX_QUOTES} 句引用，每句写明段落和原文', f'An answer from the documents must be 1 to {MAX_QUOTES} quotes, each naming its passage and its text')]
-    kept, problems, seen = [], [], set()
+    kept, problems, spans = [], [], {}
     for n, q in enumerate(quotes, start=1):
         passage = given.get(q['passage'])
-        if (q['passage'], q['quote']) in seen:
-            problems.append(tr(f'第 {n} 句引用和前面的一句重复', f'Quote {n} repeats an earlier one'))
+        at = passage['text'].find(q['quote']) if passage is not None and q['quote'] else -1
+        if at >= 0 and any(at < e and s < at + len(q['quote']) for s, e in spans.get(q['passage'], [])):   # the same words, or words that overlap ones already quoted
+            problems.append(tr(f'第 {n} 句引用和前面的一句重复或重叠', f'Quote {n} repeats or overlaps an earlier one'))
             continue
-        seen.add((q['passage'], q['quote']))
+        if at >= 0:
+            spans.setdefault(q['passage'], []).append((at, at + len(q['quote'])))
         if passage is None:
             problems.append(tr(f'第 {n} 句引用的段落不是给模型的段落', f'Quote {n} names a passage the model was not given'))
         elif _real(q['quote']) < MIN_QUOTE:
@@ -401,9 +404,7 @@ def _checked(answer, given: dict) -> tuple[list[dict], list[str]]:
         elif q['quote'] not in passage['text']:
             problems.append(tr(f'第 {n} 句引用在它的段落原文里找不到', f'Quote {n} is not in the text of its passage'))
         else:
-            at = passage['text'].index(q['quote'])
-            sentence, mark = _sentence(passage['text'], at, at + len(q['quote']))
-            kept.append({'passage': q['passage'], 'quote': q['quote'], 'sentence': sentence, 'mark': mark, 'document': passage['document'], 'document_id': passage['element_id'],
+            kept.append({'passage': q['passage'], 'quote': q['quote'], 'sentence': sentence_parts(passage['text'], at, at + len(q['quote'])), 'document': passage['document'], 'document_id': passage['element_id'],
                          'version': passage['version'], 'where': passage['where']})
     return kept, problems
 
@@ -429,6 +430,8 @@ def settled(conn, user: dict | None, docs: dict | None, item: dict, result: dict
     - a document answer that fails them: refused, saying why, nothing of it shown;
     - no document answer: when a document waiting for confirmation matches, refused naming it and who can confirm it; otherwise main's answer, said to be
       one the confirmed documents say nothing about (when the person may read any)."""
+    if docs is not None and docs['passages'] and item.get('query') is not None and result.get('status') in ('ontology_gap', 'query_limit'):
+        return _query_not_run(result)   # it read passages and wrote a query the engine cannot run: the service's sentence, nothing the model wrote
     if docs is None or item.get('query') is not None or item.get('from_relation_check') or item.get('status') not in ('ontology_gap', 'query_limit', 'no_query'):
         return result
     answer = item.get('document_answer') if docs['passages'] else None
@@ -469,6 +472,19 @@ def settled(conn, user: dict | None, docs: dict | None, item: dict, result: dict
         return result
     said = result.get('reason')
     return {**result, 'reason': _nothing() + ('\n' + said if said else ''), 'documents': {'found': False, 'line': _nothing()}}
+
+
+def _query_not_run(result: dict) -> dict:
+    """main's refusal of a query the engine cannot run, with nothing the model wrote: not its reasoning, not the query (it may hold the model's words), not a reason
+    that names what the query named; the service's plain sentence for the case instead."""
+    plain = (tr('现在的查询写法还表达不了这个问题。', 'The query format cannot express this question yet.') if result.get('status') == 'query_limit'
+             else tr('已确认的对象类型、关系和属性回答不了这个问题。', 'The confirmed object types, relations and properties cannot answer this question.'))
+    out = {k: v for k, v in result.items() if k not in ('path', 'evidence', 'understood', 'unmet', 'definitions_used')}
+    out.update(reason=plain, query=None, **({'reasoning': ''} if 'reasoning' in result else {}),
+               steps=[{'name': tr('理解问题', 'Understand the question'), 'text': _unused()}, {'name': tr('结果', 'Result'), 'text': plain, 'failed': True}])
+    if isinstance(out.get('refusal'), dict) and out['refusal'].get('kind') == 'definition_unmet':
+        out.pop('refusal')
+    return out
 
 
 def _unused() -> str:
