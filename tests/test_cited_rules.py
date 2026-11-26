@@ -330,7 +330,7 @@ class CitedDocumentMovesTests(CitedCase):
         self.assertEqual(status, 200, back)
         state, reason = self.state()
         self.assertEqual(state, 'needs_look')
-        self.assertEqual(reason, '它的定义依据的内容变了，要重新确认')   # the stored reason names no document: every reader of the type's state reads it (a board, an answer)
+        self.assertEqual(reason, '定义改了')   # the stored reason names no document and no citation: the words every change of a definition shows (Leader, round 5)
         rule = self.page()['rules'][0]
         self.assertEqual(rule['cite']['name'], 'door-spec.md')   # the type's page names it, to whoever may read it
         self.assertNotIn('quote', rule['cite'])   # its check result stops showing the quote
