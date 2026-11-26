@@ -388,7 +388,7 @@ def _column_info(columns: list[dict], ctx: dict) -> list[dict]:
     """The columns a person sees with their types, the badge (new or replaced) a step gave them, and what each may be used for: its confirmed meanings, the
     aggregations it may have."""
     options = aggregation_options(columns, ctx['codes'])
-    return [{**{k: c[k] for k in ('name', 'type', 'badge', 'aggregation', 'origin', 'english_name') if k in c},
+    return [{**{k: c[k] for k in ('name', 'type', 'badge', 'aggregation', 'origin', 'english_name', 'extracted') if k in c},
              'code': c.get('origin') in ctx['codes'], 'meanings': ctx['meanings'].get(c.get('origin')), 'aggregations': options[c['name']]} for c in visible(columns)]
 
 

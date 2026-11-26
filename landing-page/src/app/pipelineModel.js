@@ -174,7 +174,7 @@ export function stepTitle(step, steps = []) {
   return n ? step.operators.map(operatorName).join(t("pipeline.m.sep.list")) : t("pipeline.m.title.no_ops");
 }
 
-export const OP_NAME = labels("op", ["filter", "fill_null", "text_clean", "cast", "calc", "aggregate", "dedupe", "label"]);
+export const OP_NAME = labels("op", ["filter", "fill_null", "text_clean", "cast", "calc", "aggregate", "dedupe", "label", "extract"]);
 export const operatorName = (op) => OP_NAME[op.op] ?? op.op;
 
 /** The conditions of a filter, flattened in the order the form shows them. */
@@ -230,6 +230,9 @@ export function stepIssues(step) {
     if (op.op === "calc") return [...(op.name ? [] : [t("pipeline.m.issue.calc_name", { who })]), ...(op.expression ? [] : [t("pipeline.m.issue.calc_expr", { who })])];
     if (["cast", "label"].includes(op.op)) return op.column ? [] : [t("pipeline.m.issue.pick_col", { who })];
     if (["fill_null", "text_clean"].includes(op.op)) return op.columns?.length ? [] : [t("pipeline.m.issue.pick_col", { who })];
+    if (op.op === "extract") {
+      return [...(op.column ? [] : [t("pipeline.m.issue.pick_col", { who })]), ...(op.separator ? [] : [t("pipeline.m.issue.separator", { who })]), ...(op.as ? [] : [t("pipeline.m.issue.calc_name", { who })])];
+    }
     return [];
   });
 }
@@ -350,6 +353,7 @@ export function newOperator(kind) {
     aggregate: { group_by: [], aggregations: [{ fn: "count", as: t("pipeline.m.default.agg_rows") }] },
     dedupe: { keys: [], keep: "first", order_by: "" },
     label: { column: "", from_meaning: true, unmapped: "null" },
+    extract: { column: "", separator: "", part: 1, as: "" },
   };
   return { op: kind, ...structuredClone(starts[kind]) };
 }
@@ -370,7 +374,28 @@ export function operatorTitle(op) {
   if (op.op === "aggregate") return t("pipeline.m.op.agg_title", { group: op.group_by?.length ? t("pipeline.m.op.agg_group", { cols: list(op.group_by) }) : t("pipeline.m.op.agg_all"), aggs: (op.aggregations ?? []).map((a) => `${a.as ?? aggDefaultName(a)}`).join(t("pipeline.m.sep.list")) });
   if (op.op === "dedupe") return op.keys?.length ? t("pipeline.m.op.dedupe_title", { keys: list(op.keys), which: op.keep === "last" ? t("pipeline.m.op.dedupe_last") : t("pipeline.m.op.dedupe_first"), order: op.order_by || unset }) : t("pipeline.m.op.dedupe_all");
   if (op.op === "label") return t("pipeline.m.op.label_title", { column: op.column || unset, meaning: op.from_meaning ? t("pipeline.m.op.label_meaning") : "" });
+  if (op.op === "extract") return t(op.part === "last" ? "pipeline.m.op.extract_title_last" : "pipeline.m.op.extract_title", { column: op.column || unset, separator: op.separator ?? "", part: op.part, as: op.as || unset });
   return operatorName(op);
+}
+
+/** What the service would refuse in an extract, said before it is sent: a separator longer than 10 characters, a part that is not 1 to 100 or the last. A separator
+ * not written yet is for stepIssues. The separator is taken as written: a space is a separator, and nothing in it is read as a pattern. */
+export function extractProblems(op) {
+  const sep = op.separator ?? "";
+  return [
+    ...(sep.length > 10 ? [t("pipeline.m.extract.separator_length")] : []),
+    ...(op.part === "last" || (Number.isInteger(op.part) && op.part >= 1 && op.part <= 100) ? [] : [t("pipeline.m.extract.part_range")]),
+  ];
+}
+
+/** Where a column a person sees came from, for the columns table: the stored column, the column a part was extracted from, or the statistic that made it. */
+export function columnFrom(c) {
+  if (c.origin != null) return c.origin;
+  if (c.extracted) {
+    const { column, origin, separator, part } = c.extracted;
+    return t(part === "last" ? "pipeline.m.from.extracted_last" : "pipeline.m.from.extracted", { source: origin ?? column, separator, part });
+  }
+  return c.aggregation ? `${c.aggregation.fn} (${c.aggregation.column ?? t("pipeline.panel.wholeRow")})` : "";
 }
 
 const AGG_SUFFIXES = ["sum", "count", "count_distinct", "avg", "min", "max", "median", "p25", "p75"];
@@ -545,6 +570,7 @@ export const OPERATOR_PARAMS = {
   get aggregate() { return [t("pipeline.m.params.aggregate.0"), t("pipeline.m.params.aggregate.1"), t("pipeline.m.params.aggregate.2")]; },
   get dedupe() { return [t("pipeline.m.params.dedupe.0"), t("pipeline.m.params.dedupe.1"), t("pipeline.m.params.dedupe.2")]; },
   get label() { return [t("pipeline.m.params.label.0"), t("pipeline.m.params.label.1"), t("pipeline.m.params.label.2")]; },
+  get extract() { return [t("pipeline.m.params.extract.0"), t("pipeline.m.params.extract.1"), t("pipeline.m.params.extract.2")]; },
 };
 
 export const durationText = (ms) => (ms == null ? "" : ms < 1000 ? t("pipeline.m.dur.ms", { ms }) : t("pipeline.m.dur.s", { s: (ms / 1000).toFixed(1) }));
