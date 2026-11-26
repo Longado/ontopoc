@@ -559,13 +559,16 @@ class RoundThreeTests(CitedCase):
         self.start()
         self.assertEqual(self.ann.post('/api/workspace/types', case_type([when('1', cite=self.cite('1'))]))[0], 200)
         cite = self.page()['rules'][0]['cite']
-        self.assertEqual(cite['sentence'], 'DS-1 掉电（power_loss）发生后，门锁状态 lock_state 必须置为 1，门保持上锁。')
-        self.assertEqual(cite['sentence'][cite['mark'][0]:cite['mark'][1]], QUOTES['1'])
+        self.assertEqual(cite['sentence'], {'before': 'DS-1 掉电（power_loss）发生后，', 'quote': QUOTES['1'], 'after': '，门保持上锁。'})   # three strings, no offsets
+        self.assertNotIn('mark', cite)
+        from unittest import mock
+        from ontology_poc_generator import document_answers
+        with mock.patch.object(document_answers, 'sentence_parts', return_value={'before': 'B', 'quote': 'Q', 'after': 'A'}):   # the one function answers use
+            self.assertEqual(self.page()['rules'][0]['cite']['sentence'], {'before': 'B', 'quote': 'Q', 'after': 'A'})
         finding_rules = [when('1', cite=self.cite('1'), report_only=True), when('4', cite=self.cite('4'), report_only=True)]
         self.assertEqual(self.ann.post('/api/workspace/types/update', {**case_type(finding_rules), 'id': 'door_event', 'version': self.page()['version']})[0], 200)
         c = self.page()['conflicts'][0]['rules'][1]['cite']
-        self.assertEqual(c['sentence'][c['mark'][0]:c['mark'][1]], QUOTES['4'])
-        self.assertEqual(c['sentence'], 'DS-2 控制器失去供电时，lock_state 应保持为 4，维持掉电前的位置。')
+        self.assertEqual(c['sentence'], {'before': 'DS-2 控制器失去供电时，', 'quote': QUOTES['4'], 'after': '。'})
 
     def test_citations_use_the_doc_answers_quote_check_and_one_quote_may_justify_two_rules(self):
         self.start()

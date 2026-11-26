@@ -73,7 +73,7 @@ test("a citation's whole sentence comes with the quoted part marked, by the same
   const { sentenceParts } = await import("./documentModel.js");
   const { citeParts, citeSource } = await import("./typeModel.js");
   assert.equal(citeParts, sentenceParts);
-  assert.deepEqual(citeParts({ quote: "必须置为 1", sentence: "DS-1 掉电后，必须置为 1（上锁）。", mark: [9, 15] }), ["DS-1 掉电后，", "必须置为 1", "（上锁）。"]);
+  assert.deepEqual(citeParts({ quote: "必须置为 1", sentence: { before: "DS-1 掉电后，", quote: "必须置为 1", after: "（上锁）。" } }), ["DS-1 掉电后，", "必须置为 1", "（上锁）。"]);
   assert.deepEqual(citeParts({ quote: "必须置为 1" }), ["", "必须置为 1", ""]);
   setLocale("zh");
   assert.equal(citeSource({ name: "door-spec.md", where: "第 2 段" }), "依据《door-spec.md》第 2 段：");
