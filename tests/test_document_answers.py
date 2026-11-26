@@ -651,7 +651,7 @@ class Round4(DocumentCase):
         self.assertEqual(body['status'], 'from_documents', body)
         [q] = body['documents']['quotes']
         self.assertEqual(q['sentence'], {'before': '供方不得', 'quote': '以任何理由拒绝交货', 'after': '。'})   # the negation stays in sight
-        self.assertIn('供方不得以任何理由拒绝交货。', json.dumps(which.kept(self.demo.folder, body['id']), ensure_ascii=False))
+        self.assertIn('"before": "供方不得"', json.dumps(which.kept(self.demo.folder, body['id']), ensure_ascii=False))   # kept as the reopen shows it
         body, _ = self.ask(self.guest, '拒绝交货', reply_for=quoting('理由拒绝交货。不可抗力'))   # across a sentence end: both sentences
         [q] = body['documents']['quotes']
         self.assertEqual(''.join(q['sentence'].values()), '供方不得以任何理由拒绝交货。不可抗力的情形除外！')
