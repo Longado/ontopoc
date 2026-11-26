@@ -48,7 +48,7 @@ def quoting(quote, said=None, prose=None):
     the quotes, which is never shown, returned or kept."""
     def reply(request):
         passage = next(p for p in request.get('documents') or [] if quote in p['text'])
-        return {**NO_QUERY, 'document_answer': {'quotes': [{'passage': passage['id'], 'quote': said or quote}], **({'answer': prose} if prose else {})}}
+        return {**NO_QUERY, 'document_answer': {'quotes': [{'passage': passage['id'], 'quote': quote if said is None else said}], **({'answer': prose} if prose else {})}}
     return reply
 
 
