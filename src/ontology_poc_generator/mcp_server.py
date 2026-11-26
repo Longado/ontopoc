@@ -715,7 +715,7 @@ TOOLS = [
           '问“哪些”时 answer 是对象列表：answer.total 是令牌主人能看到的全部符合的个数，answer.objects 有 columns（代码列带确认过的 meanings）和这一页的 rows（按主键排，一页最多 50 个）；'
           '问某一个编号的对象（例如 订单 DD20260004 的状态）时 answer.lookup 是那个主键，answer.objects 里是它能看的属性，看不到的和不存在的编号回答一样，都是 no_data。'
           '后面的页用 ontopoc_query 跑 query_text 并给 page。条件里用了 today 时，today 字段说用的是哪一天。'
-          'status 是 from_documents 时回答来自已确认的文档，不是数据：documents.claims 每条说法带 quotes（文档名 document、位置 where、原文 quote，代码核对过逐字在原文里），转述时说明出处，不要说成数据算出的数。'
+          'status 是 from_documents 时回答是已确认文档里的原话，不是数据：documents.quotes 每句带文档名 document、位置 where 和原文 quote（代码核对过逐字在原文里）；没有模型自己写的话。转述时照原话说并说明出处，不要改写成别的意思，也不要说成数据算出的数。'
           '会调用模型，慢且花钱；每问一次都记进问答历史、算一次提问，不要为了重试再问。',
           {'question': {'type': 'string', 'maxLength': 300, 'description': '要问的业务问题'}}, ('question',)),
     _tool(ontopoc_query, '用本体查询（OntoPoc Query，像 SQL）直接算一个数：代码按令牌主人能看的行和已确认的定义算，不调用模型，快，结果和 ask 一样带 definitions 和 limited_by_rule；没有条件时还带 beside（这个类型上每个已确认视图各自的数）。'
