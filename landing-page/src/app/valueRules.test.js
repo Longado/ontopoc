@@ -11,11 +11,11 @@ const columns = [
 const col = (name) => columns.find((c) => c.name === name);
 
 test("a property is offered only the rules its type can take", () => {
-  assert.deepEqual(ruleChecks(col("金额"), columns), ["not_empty", "gt", "ge", "lt", "le", "between"]);
-  assert.deepEqual(ruleChecks(col("状态"), columns), ["not_empty", "in_codes"]);
-  assert.deepEqual(ruleChecks(col("备注"), columns), ["not_empty"]);   // a text column: only "not empty"
-  assert.deepEqual(ruleChecks(col("下单日期"), columns), ["not_empty", "not_before"]);
-  assert.deepEqual(ruleChecks(col("月份"), columns), ["not_empty"]);   // no other month to compare with
+  assert.deepEqual(ruleChecks(col("金额"), columns), ["not_empty", "gt", "ge", "lt", "le", "between", "when"]);
+  assert.deepEqual(ruleChecks(col("状态"), columns), ["not_empty", "in_codes", "when"]);
+  assert.deepEqual(ruleChecks(col("备注"), columns), ["not_empty", "when"]);   // a text column: only "not empty" (and, as any property, a conditional rule)
+  assert.deepEqual(ruleChecks(col("下单日期"), columns), ["not_empty", "not_before", "when"]);
+  assert.deepEqual(ruleChecks(col("月份"), columns), ["not_empty", "when"]);   // no other month to compare with
   assert.deepEqual(dateMates(columns, col("下单日期")).map((c) => c.name), ["发货时间"]);
 });
 

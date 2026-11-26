@@ -1,0 +1,4113 @@
+{
+ "confirm_again": [
+  200,
+  {
+   "state": "confirmed"
+  }
+ ],
+ "confirm_broken": [
+  409,
+  {
+   "error": "按现在的数据过不了检查，不能确认：值规则“金额”要大于 0：查了全部 160 行，有 3 行不满足，例如 DD20260001、DD20260002、DD20260003"
+  }
+ ],
+ "confirm_broken_en": [
+  409,
+  {
+   "error": "It fails the checks on the current data and cannot be confirmed: The value rule \"金额\" must be greater than 0: of all 160 rows checked, 3 break it, for example DD20260001, DD20260002, DD20260003"
+  }
+ ],
+ "confirm_meanings": [
+  200,
+  {
+   "state": "confirmed"
+  }
+ ],
+ "confirm_own": [
+  403,
+  {
+   "error": "这一条是你自己提的，要另一位来确认"
+  }
+ ],
+ "confirm_type": [
+  200,
+  {
+   "state": "confirmed"
+  }
+ ],
+ "create": [
+  200,
+  {
+   "id": "order",
+   "rules": [
+    {
+     "broken": 0,
+     "check": "not_empty",
+     "column": "金额",
+     "examples": [],
+     "says": "“金额”不能为空"
+    },
+    {
+     "broken": 0,
+     "check": "gt",
+     "column": "金额",
+     "examples": [],
+     "says": "“金额”要大于 0",
+     "value": 0
+    },
+    {
+     "broken": 0,
+     "check": "between",
+     "column": "数量",
+     "examples": [],
+     "high": 50,
+     "low": 1,
+     "says": "“数量”要在 1 到 50 之间（含两端）"
+    },
+    {
+     "broken": 0,
+     "check": "ge",
+     "column": "交付天数",
+     "examples": [],
+     "says": "“交付天数”要至少是 0",
+     "value": 0
+    },
+    {
+     "broken": 0,
+     "check": "in_codes",
+     "column": "状态码",
+     "examples": [],
+     "says": "“状态码”要是写了含义的代码之一"
+    },
+    {
+     "broken": 0,
+     "check": "not_empty",
+     "column": "下单日期",
+     "examples": [],
+     "says": "“下单日期”不能为空"
+    }
+   ],
+   "warnings": []
+  }
+ ],
+ "definitions_ann": [
+  200,
+  {
+   "derived": [],
+   "relations": [],
+   "rules": [
+    "只按这里列出的、已经确认的定义回答。定义里没有的东西，不要猜。",
+    "问到的对象类型、关系、视图或派生属性不在这里：回答“这个还没有确认的定义”，不要用常识或字面意思补一个；可以说一句让谁去确认（见 list_unconfirmed）。",
+    "代码列（例如 状态码）只用这里写出的含义。取值没有写含义，或者含义不在这里：不解释它，不从取值的大小或排列推测含义。",
+    "数字一定带上口径：它按哪些确认的定义算出（视图的条件、派生属性的算式）。口径里有任何一条不在这里，就不要报这个数。",
+    "定义被标成“需要再看”或还没确认时，它背后的数据可能已经变了：不要用它回答，告诉人它现在不是已确认的状态。",
+    "这里没有数据行，也没有全部数据的行数。要数字，先用 ontopoc_query 写本体查询（不调用模型），写不出来再用 ask；要某个对象的派生属性的值，用 read_derived_property。被拒绝就把拒绝的原因原样转告。"
+   ],
+   "types": [
+    {
+     "confirmed_by": "Bob",
+     "confirmed_on": "订单 v1",
+     "dataset": "订单",
+     "description": "客户下的一张订单",
+     "id": "order",
+     "key": [
+      "订单号"
+     ],
+     "meanings": {
+      "状态码": {
+       "confirmed_by": "Bob",
+       "confirmed_on": "订单 v1",
+       "values": {
+        "0": "已交付",
+        "1": "生产中",
+        "2": "已取消"
+       }
+      }
+     },
+     "name": "订单",
+     "properties": [
+      {
+       "code": false,
+       "column": "订单号",
+       "name": "订单号",
+       "type": "text"
+      },
+      {
+       "code": false,
+       "column": "金额",
+       "name": "金额",
+       "type": "integer"
+      },
+      {
+       "code": true,
+       "column": "状态码",
+       "name": "状态码",
+       "type": "integer"
+      },
+      {
+       "code": false,
+       "column": "数量",
+       "name": "数量",
+       "type": "integer"
+      },
+      {
+       "code": false,
+       "column": "交付天数",
+       "name": "交付天数",
+       "type": "integer"
+      },
+      {
+       "code": false,
+       "column": "下单日期",
+       "name": "下单日期",
+       "type": "date"
+      }
+     ],
+     "value_rules": [
+      "“金额”不能为空",
+      "“金额”要大于 0",
+      "“数量”要在 1 到 50 之间（含两端）",
+      "“交付天数”要至少是 0",
+      "“状态码”要是写了含义的代码之一",
+      "“下单日期”不能为空"
+     ]
+    }
+   ],
+   "views": []
+  }
+ ],
+ "definitions_vera": [
+  200,
+  {
+   "derived": [],
+   "relations": [],
+   "rules": [
+    "只按这里列出的、已经确认的定义回答。定义里没有的东西，不要猜。",
+    "问到的对象类型、关系、视图或派生属性不在这里：回答“这个还没有确认的定义”，不要用常识或字面意思补一个；可以说一句让谁去确认（见 list_unconfirmed）。",
+    "代码列（例如 状态码）只用这里写出的含义。取值没有写含义，或者含义不在这里：不解释它，不从取值的大小或排列推测含义。",
+    "数字一定带上口径：它按哪些确认的定义算出（视图的条件、派生属性的算式）。口径里有任何一条不在这里，就不要报这个数。",
+    "定义被标成“需要再看”或还没确认时，它背后的数据可能已经变了：不要用它回答，告诉人它现在不是已确认的状态。",
+    "这里没有数据行，也没有全部数据的行数。要数字，先用 ontopoc_query 写本体查询（不调用模型），写不出来再用 ask；要某个对象的派生属性的值，用 read_derived_property。被拒绝就把拒绝的原因原样转告。"
+   ],
+   "types": [
+    {
+     "confirmed_by": "Bob",
+     "confirmed_on": "订单 v1",
+     "dataset": "订单",
+     "description": "客户下的一张订单",
+     "id": "order",
+     "key": [
+      "订单号"
+     ],
+     "meanings": {
+      "状态码": {
+       "confirmed_by": "Bob",
+       "confirmed_on": "订单 v1",
+       "values": {
+        "0": "已交付",
+        "1": "生产中",
+        "2": "已取消"
+       }
+      }
+     },
+     "name": "订单",
+     "properties": [
+      {
+       "code": false,
+       "column": "订单号",
+       "name": "订单号",
+       "type": "text"
+      },
+      {
+       "code": false,
+       "column": "金额",
+       "name": "金额",
+       "type": "integer"
+      },
+      {
+       "code": true,
+       "column": "状态码",
+       "name": "状态码",
+       "type": "integer"
+      },
+      {
+       "code": false,
+       "column": "数量",
+       "name": "数量",
+       "type": "integer"
+      },
+      {
+       "code": false,
+       "column": "交付天数",
+       "name": "交付天数",
+       "type": "integer"
+      },
+      {
+       "code": false,
+       "column": "下单日期",
+       "name": "下单日期",
+       "type": "date"
+      }
+     ],
+     "value_rules": [
+      "“金额”不能为空",
+      "“金额”要大于 0",
+      "“数量”要在 1 到 50 之间（含两端）",
+      "“交付天数”要至少是 0",
+      "“状态码”要是写了含义的代码之一",
+      "“下单日期”不能为空"
+     ]
+    }
+   ],
+   "views": []
+  }
+ ],
+ "doc_confirm": 200,
+ "doc_upload": 200,
+ "doc_waiting": 200,
+ "documents_vera": [
+  200,
+  {
+   "available": true,
+   "documents": [
+    {
+     "builders_only": false,
+     "chars": 59,
+     "confirmed_at": "<time>",
+     "confirmed_by": "Bob",
+     "id": "document:34f0850fe8fd066a",
+     "kind": "md",
+     "name": "订单管理规定.md",
+     "passages": 3,
+     "proposed_by": "Ann",
+     "state": "confirmed",
+     "version": 2
+    }
+   ],
+   "limits": {
+    "max_chars": 200000,
+    "max_documents": 50,
+    "passage_chars": 600,
+    "passages_to_model": 5
+   },
+   "may_upload": false,
+   "sent_to_model": "确认过的文档里，和问题相关的段落（每次最多 5 段）会连同问题发给模型；数据行从不发给模型。"
+  }
+ ],
+ "edit_names": [
+  200,
+  {
+   "id": "order",
+   "reset": [
+    "名称或说明"
+   ],
+   "rules": [
+    {
+     "broken": 0,
+     "check": "not_empty",
+     "column": "金额",
+     "examples": [],
+     "says": "“金额”不能为空"
+    },
+    {
+     "broken": 0,
+     "check": "gt",
+     "column": "金额",
+     "examples": [],
+     "says": "“金额”要大于 0",
+     "value": 0
+    },
+    {
+     "broken": 0,
+     "check": "between",
+     "column": "数量",
+     "examples": [],
+     "high": 50,
+     "low": 1,
+     "says": "“数量”要在 1 到 50 之间（含两端）"
+    },
+    {
+     "broken": 0,
+     "check": "ge",
+     "column": "交付天数",
+     "examples": [],
+     "says": "“交付天数”要至少是 0",
+     "value": 0
+    },
+    {
+     "broken": 0,
+     "check": "in_codes",
+     "column": "状态码",
+     "examples": [],
+     "says": "“状态码”要是写了含义的代码之一"
+    },
+    {
+     "broken": 0,
+     "check": "not_empty",
+     "column": "下单日期",
+     "examples": [],
+     "says": "“下单日期”不能为空"
+    }
+   ],
+   "state": "checked",
+   "warnings": []
+  }
+ ],
+ "edit_rules": [
+  200,
+  {
+   "id": "order",
+   "reset": [
+    "值规则"
+   ],
+   "rules": [
+    {
+     "broken": 0,
+     "check": "not_empty",
+     "column": "金额",
+     "examples": [],
+     "says": "“金额”不能为空"
+    },
+    {
+     "broken": 0,
+     "check": "gt",
+     "column": "金额",
+     "examples": [],
+     "says": "“金额”要大于 0",
+     "value": 0
+    },
+    {
+     "broken": 0,
+     "check": "between",
+     "column": "数量",
+     "examples": [],
+     "high": 50,
+     "low": 1,
+     "says": "“数量”要在 1 到 50 之间（含两端）"
+    },
+    {
+     "broken": 0,
+     "check": "ge",
+     "column": "交付天数",
+     "examples": [],
+     "says": "“交付天数”要至少是 0",
+     "value": 0
+    },
+    {
+     "broken": 0,
+     "check": "in_codes",
+     "column": "状态码",
+     "examples": [],
+     "says": "“状态码”要是写了含义的代码之一"
+    },
+    {
+     "broken": 0,
+     "check": "not_empty",
+     "column": "下单日期",
+     "examples": [],
+     "says": "“下单日期”不能为空"
+    },
+    {
+     "broken": 0,
+     "check": "le",
+     "column": "交付天数",
+     "examples": [],
+     "says": "“交付天数”要最多是 60",
+     "value": 60
+    }
+   ],
+   "state": "checked",
+   "warnings": []
+  }
+ ],
+ "list_ann": [
+  200,
+  {
+   "hidden": 0,
+   "types": [
+    {
+     "can_confirm": false,
+     "cause": null,
+     "cause_word": null,
+     "confirmed_at": null,
+     "confirmed_by": null,
+     "confirmed_on": null,
+     "confirmers": [],
+     "dataset": "订单",
+     "dataset_version": 1,
+     "drafted": null,
+     "evidence": null,
+     "held": null,
+     "id": "order",
+     "limited_by_rule": false,
+     "meanings_blocking": [
+      "状态码"
+     ],
+     "meanings_waiting": 1,
+     "model_draft": false,
+     "name": "订单",
+     "pipelines_blocking": [],
+     "proposed_by": "Ann",
+     "reason": null,
+     "reason_hidden": null,
+     "rows": 160,
+     "stale_word": null,
+     "state": "checked",
+     "version": 1,
+     "via": null,
+     "written_at": "<time>"
+    }
+   ]
+  }
+ ],
+ "list_vera": [
+  200,
+  {
+   "hidden": 0,
+   "types": [
+    {
+     "can_confirm": false,
+     "cause": null,
+     "cause_word": null,
+     "confirmed_at": "<time>",
+     "confirmed_by": "Bob",
+     "confirmed_on": {
+      "订单": 1
+     },
+     "confirmers": [],
+     "dataset": "订单",
+     "dataset_version": 1,
+     "drafted": null,
+     "evidence": "check_result:24,check_result:25,dataset:订单@v1",
+     "held": null,
+     "id": "order",
+     "limited_by_rule": false,
+     "meanings_blocking": [],
+     "meanings_waiting": 0,
+     "model_draft": false,
+     "name": "订单",
+     "pipelines_blocking": [],
+     "proposed_by": "Ann",
+     "reason": null,
+     "reason_hidden": null,
+     "rows": 160,
+     "stale_word": null,
+     "state": "confirmed",
+     "version": 2,
+     "via": null,
+     "written_at": "<time>"
+    }
+   ]
+  }
+ ],
+ "log_bob": [
+  200,
+  {
+   "log": [
+    {
+     "at": "<time>",
+     "caused_by": null,
+     "change": "import v3: 160 rows in the file, 160 stored, 0 dropped",
+     "column": null,
+     "element": "dataset",
+     "from": null,
+     "reason": null,
+     "record": null,
+     "self_confirmed": false,
+     "text": "import v3: 160 rows in the file, 160 stored, 0 dropped",
+     "to": null,
+     "visible_to": null,
+     "who": "Ann",
+     "with_token": null
+    },
+    {
+     "at": "<time>",
+     "caused_by": "Ann",
+     "change": "needs_look",
+     "column": null,
+     "element": "type",
+     "from": "confirmed",
+     "reason": "值规则“金额”要大于 0：查了全部 160 行，有 3 行不满足，例如 DD20260001、DD20260002、DD20260003",
+     "record": null,
+     "self_confirmed": false,
+     "text": null,
+     "to": "needs_look",
+     "visible_to": null,
+     "who": "system",
+     "with_token": null
+    },
+    {
+     "at": "<time>",
+     "caused_by": null,
+     "change": "import v2: 160 rows in the file, 160 stored, 0 dropped",
+     "column": null,
+     "element": "dataset",
+     "from": null,
+     "reason": null,
+     "record": null,
+     "self_confirmed": false,
+     "text": "import v2: 160 rows in the file, 160 stored, 0 dropped",
+     "to": null,
+     "visible_to": null,
+     "who": "Ann",
+     "with_token": null
+    },
+    {
+     "at": "<time>",
+     "caused_by": null,
+     "change": "confirmed",
+     "column": null,
+     "element": "type",
+     "from": "checked",
+     "reason": null,
+     "record": null,
+     "self_confirmed": false,
+     "text": null,
+     "to": "confirmed",
+     "visible_to": null,
+     "who": "Bob",
+     "with_token": null
+    },
+    {
+     "at": "<time>",
+     "caused_by": null,
+     "change": "checked",
+     "column": null,
+     "element": "type",
+     "from": "checked",
+     "reason": null,
+     "record": null,
+     "self_confirmed": false,
+     "text": null,
+     "to": "checked",
+     "visible_to": null,
+     "who": "Ann",
+     "with_token": null
+    },
+    {
+     "at": "<time>",
+     "caused_by": null,
+     "change": "checked",
+     "column": null,
+     "element": "type",
+     "from": "confirmed",
+     "reason": null,
+     "record": null,
+     "self_confirmed": false,
+     "text": null,
+     "to": "checked",
+     "visible_to": null,
+     "who": "Ann",
+     "with_token": null
+    },
+    {
+     "at": "<time>",
+     "caused_by": null,
+     "change": "confirmed",
+     "column": null,
+     "element": "type",
+     "from": "checked",
+     "reason": null,
+     "record": null,
+     "self_confirmed": false,
+     "text": null,
+     "to": "confirmed",
+     "visible_to": null,
+     "who": "Bob",
+     "with_token": null
+    },
+    {
+     "at": "<time>",
+     "caused_by": null,
+     "change": "confirmed",
+     "column": "状态码",
+     "element": "meaning",
+     "from": "checked",
+     "reason": null,
+     "record": null,
+     "self_confirmed": false,
+     "text": null,
+     "to": "confirmed",
+     "visible_to": null,
+     "who": "Bob",
+     "with_token": null
+    },
+    {
+     "at": "<time>",
+     "caused_by": null,
+     "change": "checked",
+     "column": "状态码",
+     "element": "meaning",
+     "from": null,
+     "reason": null,
+     "record": null,
+     "self_confirmed": false,
+     "text": null,
+     "to": "checked",
+     "visible_to": null,
+     "who": "Ann",
+     "with_token": null
+    },
+    {
+     "at": "<time>",
+     "caused_by": null,
+     "change": "checked",
+     "column": null,
+     "element": "type",
+     "from": null,
+     "reason": null,
+     "record": null,
+     "self_confirmed": false,
+     "text": null,
+     "to": "checked",
+     "visible_to": null,
+     "who": "Ann",
+     "with_token": null
+    },
+    {
+     "at": "<time>",
+     "caused_by": null,
+     "change": "import v1: 160 rows in the file, 160 stored, 0 dropped",
+     "column": null,
+     "element": "dataset",
+     "from": null,
+     "reason": null,
+     "record": null,
+     "self_confirmed": false,
+     "text": "import v1: 160 rows in the file, 160 stored, 0 dropped",
+     "to": null,
+     "visible_to": null,
+     "who": "Ann",
+     "with_token": null
+    }
+   ]
+  }
+ ],
+ "mended": 200,
+ "negative_amount": 200,
+ "notices_ann": [
+  200,
+  {
+   "notices": [],
+   "unread": 0
+  }
+ ],
+ "notices_bob": [
+  200,
+  {
+   "notices": [
+    {
+     "action": null,
+     "at": "<time>",
+     "definition": {
+      "can_confirm": true,
+      "id": "order",
+      "kind": "type",
+      "state": "needs_look"
+     },
+     "id": 2,
+     "read": false,
+     "record": null,
+     "text": "“订单”类型退回到“需要再看”（数据变了）：值规则“金额”要大于 0：查了全部 160 行，有 3 行不满足，例如 DD20260001、DD20260002、DD20260003。"
+    }
+   ],
+   "unread": 1
+  }
+ ],
+ "page_after_edit": [
+  200,
+  {
+   "can_confirm": true,
+   "cause": null,
+   "cause_word": null,
+   "columns": [
+    {
+     "enum_candidate": false,
+     "name": "订单号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": false,
+     "name": "客户编号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": true,
+     "name": "产品编号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": true,
+     "name": "数量",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "金额",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "下单日期",
+     "type": "date"
+    },
+    {
+     "enum_candidate": true,
+     "name": "状态码",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "交付天数",
+     "type": "integer"
+    }
+   ],
+   "columns_kept": 0,
+   "confirmed_at": "<time>",
+   "confirmed_by": "Bob",
+   "confirmed_on": {
+    "订单": 1
+   },
+   "confirmers": [
+    "Bob",
+    "管理员"
+   ],
+   "dataset": "订单",
+   "dataset_version": 1,
+   "description": "一张订单",
+   "drafted": null,
+   "evidence": "check_result:24,check_result:25,dataset:订单@v1",
+   "held": null,
+   "id": "order",
+   "key": [
+    "订单号"
+   ],
+   "limited_by_rule": false,
+   "limited_reads": [],
+   "meanings_blocking": [],
+   "model_draft": false,
+   "name": "订单",
+   "pipelines_blocking": [],
+   "properties": [
+    {
+     "column": "订单号",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": true,
+     "meanings": null,
+     "name": "订单号",
+     "type": "text"
+    },
+    {
+     "column": "金额",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "金额",
+     "type": "integer"
+    },
+    {
+     "column": "状态码",
+     "enum": true,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": {
+      "can_confirm": false,
+      "cause": null,
+      "cause_word": null,
+      "column": "状态码",
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "confirmed_on": {
+       "订单": 1
+      },
+      "confirmers": [],
+      "drafted": null,
+      "evidence": "dataset:订单@v1",
+      "held": null,
+      "limited_by_rule": false,
+      "meanings_blocking": [],
+      "model_draft": false,
+      "pipelines_blocking": [],
+      "proposed_by": "Ann",
+      "reason": null,
+      "reason_hidden": null,
+      "seen": {
+       "counts": {
+        "0": 96,
+        "1": 48,
+        "2": 16
+       },
+       "dataset_version": 1
+      },
+      "stale_word": null,
+      "state": "confirmed",
+      "values": [
+       {
+        "description": "",
+        "in_data": true,
+        "label": "已交付",
+        "rows": 96,
+        "rows_at_confirmation": 96,
+        "value": "0"
+       },
+       {
+        "description": "",
+        "in_data": true,
+        "label": "生产中",
+        "rows": 48,
+        "rows_at_confirmation": 48,
+        "value": "1"
+       },
+       {
+        "description": "",
+        "in_data": true,
+        "label": "已取消",
+        "rows": 16,
+        "rows_at_confirmation": 16,
+        "value": "2"
+       }
+      ],
+      "version": 2,
+      "via": null,
+      "written_at": "<time>"
+     },
+     "name": "状态码",
+     "type": "integer"
+    },
+    {
+     "column": "数量",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "数量",
+     "type": "integer"
+    },
+    {
+     "column": "交付天数",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "交付天数",
+     "type": "integer"
+    },
+    {
+     "column": "下单日期",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "下单日期",
+     "type": "date"
+    }
+   ],
+   "proposed_by": "Ann",
+   "reason": null,
+   "reason_hidden": null,
+   "rows": 160,
+   "rows_limited": false,
+   "rules": [
+    {
+     "broken": 0,
+     "check": "not_empty",
+     "column": "金额",
+     "examples": [],
+     "says": "“金额”不能为空"
+    },
+    {
+     "broken": 0,
+     "check": "gt",
+     "column": "金额",
+     "examples": [],
+     "says": "“金额”要大于 0",
+     "value": 0
+    },
+    {
+     "broken": 0,
+     "check": "between",
+     "column": "数量",
+     "examples": [],
+     "high": 50,
+     "low": 1,
+     "says": "“数量”要在 1 到 50 之间（含两端）"
+    },
+    {
+     "broken": 0,
+     "check": "ge",
+     "column": "交付天数",
+     "examples": [],
+     "says": "“交付天数”要至少是 0",
+     "value": 0
+    },
+    {
+     "broken": 0,
+     "check": "in_codes",
+     "column": "状态码",
+     "examples": [],
+     "says": "“状态码”要是写了含义的代码之一"
+    },
+    {
+     "broken": 0,
+     "check": "not_empty",
+     "column": "下单日期",
+     "examples": [],
+     "says": "“下单日期”不能为空"
+    },
+    {
+     "broken": 0,
+     "check": "le",
+     "column": "交付天数",
+     "examples": [],
+     "says": "“交付天数”要最多是 60",
+     "value": 60
+    }
+   ],
+   "rules_note": "空着的格子只算违反“不能为空”，其他规则不判断它；填了但不是数字的格子违反数字规则；不是真实日期的格子（例如 2026-02-30）违反日期规则；只有日期没有时间的，按当天开始算。有一条规则不满足，这个对象类型就不能确认；确认之后新数据违反了它，对象类型会退回“需要再看”。",
+   "seen": {
+    "dataset_version": 1,
+    "rows": 160
+   },
+   "stale_word": null,
+   "state": "checked",
+   "version": 4,
+   "via": null,
+   "visible_to": "everyone",
+   "written_at": "<time>"
+  }
+ ],
+ "page_after_negative": [
+  200,
+  {
+   "can_confirm": false,
+   "cause": "data",
+   "cause_word": "数据变了",
+   "columns": [
+    {
+     "enum_candidate": false,
+     "name": "订单号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": false,
+     "name": "客户编号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": true,
+     "name": "产品编号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": true,
+     "name": "数量",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "金额",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "下单日期",
+     "type": "date"
+    },
+    {
+     "enum_candidate": true,
+     "name": "状态码",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "交付天数",
+     "type": "integer"
+    }
+   ],
+   "columns_kept": 0,
+   "confirmed_at": "<time>",
+   "confirmed_by": "Bob",
+   "confirmed_on": {
+    "订单": 1
+   },
+   "confirmers": [
+    "Bob",
+    "管理员"
+   ],
+   "dataset": "订单",
+   "dataset_version": 2,
+   "description": "一张订单",
+   "drafted": null,
+   "evidence": "check_result:32,check_result:33,dataset:订单@v1",
+   "held": null,
+   "id": "order",
+   "key": [
+    "订单号"
+   ],
+   "limited_by_rule": false,
+   "limited_reads": [],
+   "meanings_blocking": [],
+   "model_draft": false,
+   "name": "订单",
+   "pipelines_blocking": [],
+   "properties": [
+    {
+     "column": "订单号",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": true,
+     "meanings": null,
+     "name": "订单号",
+     "type": "text"
+    },
+    {
+     "column": "金额",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "金额",
+     "type": "integer"
+    },
+    {
+     "column": "状态码",
+     "enum": true,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": {
+      "can_confirm": false,
+      "cause": null,
+      "cause_word": null,
+      "column": "状态码",
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "confirmed_on": {
+       "订单": 1
+      },
+      "confirmers": [],
+      "drafted": null,
+      "evidence": "dataset:订单@v1",
+      "held": null,
+      "limited_by_rule": false,
+      "meanings_blocking": [],
+      "model_draft": false,
+      "pipelines_blocking": [],
+      "proposed_by": "Ann",
+      "reason": null,
+      "reason_hidden": null,
+      "seen": {
+       "counts": {
+        "0": 96,
+        "1": 48,
+        "2": 16
+       },
+       "dataset_version": 2
+      },
+      "stale_word": null,
+      "state": "confirmed",
+      "values": [
+       {
+        "description": "",
+        "in_data": true,
+        "label": "已交付",
+        "rows": 96,
+        "rows_at_confirmation": 96,
+        "value": "0"
+       },
+       {
+        "description": "",
+        "in_data": true,
+        "label": "生产中",
+        "rows": 48,
+        "rows_at_confirmation": 48,
+        "value": "1"
+       },
+       {
+        "description": "",
+        "in_data": true,
+        "label": "已取消",
+        "rows": 16,
+        "rows_at_confirmation": 16,
+        "value": "2"
+       }
+      ],
+      "version": 2,
+      "via": null,
+      "written_at": "<time>"
+     },
+     "name": "状态码",
+     "type": "integer"
+    },
+    {
+     "column": "数量",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "数量",
+     "type": "integer"
+    },
+    {
+     "column": "交付天数",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "交付天数",
+     "type": "integer"
+    },
+    {
+     "column": "下单日期",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "下单日期",
+     "type": "date"
+    }
+   ],
+   "proposed_by": "Ann",
+   "reason": "值规则“金额”要大于 0：查了全部 160 行，有 3 行不满足，例如 DD20260001、DD20260002、DD20260003",
+   "reason_hidden": null,
+   "rows": 160,
+   "rows_limited": false,
+   "rules": [
+    {
+     "broken": 0,
+     "check": "not_empty",
+     "column": "金额",
+     "examples": [],
+     "says": "“金额”不能为空"
+    },
+    {
+     "broken": 3,
+     "check": "gt",
+     "column": "金额",
+     "examples": [
+      [
+       "DD20260001"
+      ],
+      [
+       "DD20260002"
+      ],
+      [
+       "DD20260003"
+      ]
+     ],
+     "says": "“金额”要大于 0",
+     "value": 0
+    },
+    {
+     "broken": 0,
+     "check": "between",
+     "column": "数量",
+     "examples": [],
+     "high": 50,
+     "low": 1,
+     "says": "“数量”要在 1 到 50 之间（含两端）"
+    },
+    {
+     "broken": 0,
+     "check": "ge",
+     "column": "交付天数",
+     "examples": [],
+     "says": "“交付天数”要至少是 0",
+     "value": 0
+    },
+    {
+     "broken": 0,
+     "check": "in_codes",
+     "column": "状态码",
+     "examples": [],
+     "says": "“状态码”要是写了含义的代码之一"
+    },
+    {
+     "broken": 0,
+     "check": "not_empty",
+     "column": "下单日期",
+     "examples": [],
+     "says": "“下单日期”不能为空"
+    },
+    {
+     "broken": 0,
+     "check": "le",
+     "column": "交付天数",
+     "examples": [],
+     "says": "“交付天数”要最多是 60",
+     "value": 60
+    }
+   ],
+   "rules_note": "空着的格子只算违反“不能为空”，其他规则不判断它；填了但不是数字的格子违反数字规则；不是真实日期的格子（例如 2026-02-30）违反日期规则；只有日期没有时间的，按当天开始算。有一条规则不满足，这个对象类型就不能确认；确认之后新数据违反了它，对象类型会退回“需要再看”。",
+   "seen": {
+    "dataset_version": 2,
+    "rows": 160
+   },
+   "stale_word": "数据变了",
+   "state": "needs_look",
+   "version": 6,
+   "via": "self",
+   "visible_to": "everyone",
+   "written_at": "<time>"
+  }
+ ],
+ "page_after_negative_vera": [
+  200,
+  {
+   "id": "order",
+   "name": "订单",
+   "state": "needs_look",
+   "waiting": true,
+   "waiting_for": [
+    "Bob",
+    "管理员"
+   ]
+  }
+ ],
+ "page_ann": [
+  200,
+  {
+   "can_confirm": false,
+   "cause": null,
+   "cause_word": null,
+   "columns": [
+    {
+     "enum_candidate": false,
+     "name": "订单号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": false,
+     "name": "客户编号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": true,
+     "name": "产品编号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": true,
+     "name": "数量",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "金额",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "下单日期",
+     "type": "date"
+    },
+    {
+     "enum_candidate": true,
+     "name": "状态码",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "交付天数",
+     "type": "integer"
+    }
+   ],
+   "columns_kept": 0,
+   "confirmed_at": null,
+   "confirmed_by": null,
+   "confirmed_on": null,
+   "confirmers": [],
+   "dataset": "订单",
+   "dataset_version": 1,
+   "description": "客户下的一张订单",
+   "drafted": null,
+   "evidence": null,
+   "held": null,
+   "id": "order",
+   "key": [
+    "订单号"
+   ],
+   "limited_by_rule": false,
+   "limited_reads": [],
+   "meanings_blocking": [
+    "状态码"
+   ],
+   "model_draft": false,
+   "name": "订单",
+   "pipelines_blocking": [],
+   "properties": [
+    {
+     "column": "订单号",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": true,
+     "meanings": null,
+     "name": "订单号",
+     "type": "text"
+    },
+    {
+     "column": "金额",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "金额",
+     "type": "integer"
+    },
+    {
+     "column": "状态码",
+     "enum": true,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": {
+      "can_confirm": false,
+      "cause": null,
+      "cause_word": null,
+      "column": "状态码",
+      "confirmed_at": null,
+      "confirmed_by": null,
+      "confirmed_on": null,
+      "confirmers": [
+       "Bob",
+       "管理员"
+      ],
+      "drafted": null,
+      "evidence": null,
+      "held": null,
+      "limited_by_rule": false,
+      "meanings_blocking": [],
+      "model_draft": false,
+      "pipelines_blocking": [],
+      "proposed_by": "Ann",
+      "reason": null,
+      "reason_hidden": null,
+      "seen": {
+       "counts": {
+        "0": 96,
+        "1": 48,
+        "2": 16
+       },
+       "dataset_version": 1
+      },
+      "stale_word": null,
+      "state": "checked",
+      "values": [
+       {
+        "description": "",
+        "in_data": true,
+        "label": "已交付",
+        "rows": 96,
+        "rows_at_confirmation": 96,
+        "value": "0"
+       },
+       {
+        "description": "",
+        "in_data": true,
+        "label": "生产中",
+        "rows": 48,
+        "rows_at_confirmation": 48,
+        "value": "1"
+       },
+       {
+        "description": "",
+        "in_data": true,
+        "label": "已取消",
+        "rows": 16,
+        "rows_at_confirmation": 16,
+        "value": "2"
+       }
+      ],
+      "version": 1,
+      "via": null,
+      "written_at": "<time>"
+     },
+     "name": "状态码",
+     "type": "integer"
+    },
+    {
+     "column": "数量",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "数量",
+     "type": "integer"
+    },
+    {
+     "column": "交付天数",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "交付天数",
+     "type": "integer"
+    },
+    {
+     "column": "下单日期",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "下单日期",
+     "type": "date"
+    }
+   ],
+   "proposed_by": "Ann",
+   "reason": null,
+   "reason_hidden": null,
+   "rows": 160,
+   "rows_limited": false,
+   "rules": [
+    {
+     "broken": 0,
+     "check": "not_empty",
+     "column": "金额",
+     "examples": [],
+     "says": "“金额”不能为空"
+    },
+    {
+     "broken": 0,
+     "check": "gt",
+     "column": "金额",
+     "examples": [],
+     "says": "“金额”要大于 0",
+     "value": 0
+    },
+    {
+     "broken": 0,
+     "check": "between",
+     "column": "数量",
+     "examples": [],
+     "high": 50,
+     "low": 1,
+     "says": "“数量”要在 1 到 50 之间（含两端）"
+    },
+    {
+     "broken": 0,
+     "check": "ge",
+     "column": "交付天数",
+     "examples": [],
+     "says": "“交付天数”要至少是 0",
+     "value": 0
+    },
+    {
+     "broken": 0,
+     "check": "in_codes",
+     "column": "状态码",
+     "examples": [],
+     "says": "“状态码”要是写了含义的代码之一"
+    },
+    {
+     "broken": 0,
+     "check": "not_empty",
+     "column": "下单日期",
+     "examples": [],
+     "says": "“下单日期”不能为空"
+    }
+   ],
+   "rules_note": "空着的格子只算违反“不能为空”，其他规则不判断它；填了但不是数字的格子违反数字规则；不是真实日期的格子（例如 2026-02-30）违反日期规则；只有日期没有时间的，按当天开始算。有一条规则不满足，这个对象类型就不能确认；确认之后新数据违反了它，对象类型会退回“需要再看”。",
+   "seen": {
+    "dataset_version": 1,
+    "rows": 160
+   },
+   "stale_word": null,
+   "state": "checked",
+   "version": 1,
+   "via": null,
+   "visible_to": "everyone",
+   "written_at": "<time>"
+  }
+ ],
+ "page_bob": [
+  200,
+  {
+   "can_confirm": false,
+   "cause": null,
+   "cause_word": null,
+   "columns": [
+    {
+     "enum_candidate": false,
+     "name": "订单号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": false,
+     "name": "客户编号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": true,
+     "name": "产品编号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": true,
+     "name": "数量",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "金额",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "下单日期",
+     "type": "date"
+    },
+    {
+     "enum_candidate": true,
+     "name": "状态码",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "交付天数",
+     "type": "integer"
+    }
+   ],
+   "columns_kept": 0,
+   "confirmed_at": null,
+   "confirmed_by": null,
+   "confirmed_on": null,
+   "confirmers": [],
+   "dataset": "订单",
+   "dataset_version": 1,
+   "description": "客户下的一张订单",
+   "drafted": null,
+   "evidence": null,
+   "held": null,
+   "id": "order",
+   "key": [
+    "订单号"
+   ],
+   "limited_by_rule": false,
+   "limited_reads": [],
+   "meanings_blocking": [
+    "状态码"
+   ],
+   "model_draft": false,
+   "name": "订单",
+   "pipelines_blocking": [],
+   "properties": [
+    {
+     "column": "订单号",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": true,
+     "meanings": null,
+     "name": "订单号",
+     "type": "text"
+    },
+    {
+     "column": "金额",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "金额",
+     "type": "integer"
+    },
+    {
+     "column": "状态码",
+     "enum": true,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": {
+      "can_confirm": true,
+      "cause": null,
+      "cause_word": null,
+      "column": "状态码",
+      "confirmed_at": null,
+      "confirmed_by": null,
+      "confirmed_on": null,
+      "confirmers": [
+       "Bob",
+       "管理员"
+      ],
+      "drafted": null,
+      "evidence": null,
+      "held": null,
+      "limited_by_rule": false,
+      "meanings_blocking": [],
+      "model_draft": false,
+      "pipelines_blocking": [],
+      "proposed_by": "Ann",
+      "reason": null,
+      "reason_hidden": null,
+      "seen": {
+       "counts": {
+        "0": 96,
+        "1": 48,
+        "2": 16
+       },
+       "dataset_version": 1
+      },
+      "stale_word": null,
+      "state": "checked",
+      "values": [
+       {
+        "description": "",
+        "in_data": true,
+        "label": "已交付",
+        "rows": 96,
+        "rows_at_confirmation": 96,
+        "value": "0"
+       },
+       {
+        "description": "",
+        "in_data": true,
+        "label": "生产中",
+        "rows": 48,
+        "rows_at_confirmation": 48,
+        "value": "1"
+       },
+       {
+        "description": "",
+        "in_data": true,
+        "label": "已取消",
+        "rows": 16,
+        "rows_at_confirmation": 16,
+        "value": "2"
+       }
+      ],
+      "version": 1,
+      "via": null,
+      "written_at": "<time>"
+     },
+     "name": "状态码",
+     "type": "integer"
+    },
+    {
+     "column": "数量",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "数量",
+     "type": "integer"
+    },
+    {
+     "column": "交付天数",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "交付天数",
+     "type": "integer"
+    },
+    {
+     "column": "下单日期",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "下单日期",
+     "type": "date"
+    }
+   ],
+   "proposed_by": "Ann",
+   "reason": null,
+   "reason_hidden": null,
+   "rows": 160,
+   "rows_limited": false,
+   "rules": [
+    {
+     "broken": 0,
+     "check": "not_empty",
+     "column": "金额",
+     "examples": [],
+     "says": "“金额”不能为空"
+    },
+    {
+     "broken": 0,
+     "check": "gt",
+     "column": "金额",
+     "examples": [],
+     "says": "“金额”要大于 0",
+     "value": 0
+    },
+    {
+     "broken": 0,
+     "check": "between",
+     "column": "数量",
+     "examples": [],
+     "high": 50,
+     "low": 1,
+     "says": "“数量”要在 1 到 50 之间（含两端）"
+    },
+    {
+     "broken": 0,
+     "check": "ge",
+     "column": "交付天数",
+     "examples": [],
+     "says": "“交付天数”要至少是 0",
+     "value": 0
+    },
+    {
+     "broken": 0,
+     "check": "in_codes",
+     "column": "状态码",
+     "examples": [],
+     "says": "“状态码”要是写了含义的代码之一"
+    },
+    {
+     "broken": 0,
+     "check": "not_empty",
+     "column": "下单日期",
+     "examples": [],
+     "says": "“下单日期”不能为空"
+    }
+   ],
+   "rules_note": "空着的格子只算违反“不能为空”，其他规则不判断它；填了但不是数字的格子违反数字规则；不是真实日期的格子（例如 2026-02-30）违反日期规则；只有日期没有时间的，按当天开始算。有一条规则不满足，这个对象类型就不能确认；确认之后新数据违反了它，对象类型会退回“需要再看”。",
+   "seen": {
+    "dataset_version": 1,
+    "rows": 160
+   },
+   "stale_word": null,
+   "state": "checked",
+   "version": 1,
+   "via": null,
+   "visible_to": "everyone",
+   "written_at": "<time>"
+  }
+ ],
+ "page_bob_en": [
+  200,
+  {
+   "can_confirm": false,
+   "cause": null,
+   "cause_word": null,
+   "columns": [
+    {
+     "enum_candidate": false,
+     "name": "订单号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": false,
+     "name": "客户编号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": true,
+     "name": "产品编号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": true,
+     "name": "数量",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "金额",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "下单日期",
+     "type": "date"
+    },
+    {
+     "enum_candidate": true,
+     "name": "状态码",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "交付天数",
+     "type": "integer"
+    }
+   ],
+   "columns_kept": 0,
+   "confirmed_at": null,
+   "confirmed_by": null,
+   "confirmed_on": null,
+   "confirmers": [],
+   "dataset": "订单",
+   "dataset_version": 1,
+   "description": "客户下的一张订单",
+   "drafted": null,
+   "evidence": null,
+   "held": null,
+   "id": "order",
+   "key": [
+    "订单号"
+   ],
+   "limited_by_rule": false,
+   "limited_reads": [],
+   "meanings_blocking": [
+    "状态码"
+   ],
+   "model_draft": false,
+   "name": "订单",
+   "pipelines_blocking": [],
+   "properties": [
+    {
+     "column": "订单号",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": true,
+     "meanings": null,
+     "name": "订单号",
+     "type": "text"
+    },
+    {
+     "column": "金额",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "金额",
+     "type": "integer"
+    },
+    {
+     "column": "状态码",
+     "enum": true,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": {
+      "can_confirm": true,
+      "cause": null,
+      "cause_word": null,
+      "column": "状态码",
+      "confirmed_at": null,
+      "confirmed_by": null,
+      "confirmed_on": null,
+      "confirmers": [
+       "Bob",
+       "管理员"
+      ],
+      "drafted": null,
+      "evidence": null,
+      "held": null,
+      "limited_by_rule": false,
+      "meanings_blocking": [],
+      "model_draft": false,
+      "pipelines_blocking": [],
+      "proposed_by": "Ann",
+      "reason": null,
+      "reason_hidden": null,
+      "seen": {
+       "counts": {
+        "0": 96,
+        "1": 48,
+        "2": 16
+       },
+       "dataset_version": 1
+      },
+      "stale_word": null,
+      "state": "checked",
+      "values": [
+       {
+        "description": "",
+        "in_data": true,
+        "label": "已交付",
+        "rows": 96,
+        "rows_at_confirmation": 96,
+        "value": "0"
+       },
+       {
+        "description": "",
+        "in_data": true,
+        "label": "生产中",
+        "rows": 48,
+        "rows_at_confirmation": 48,
+        "value": "1"
+       },
+       {
+        "description": "",
+        "in_data": true,
+        "label": "已取消",
+        "rows": 16,
+        "rows_at_confirmation": 16,
+        "value": "2"
+       }
+      ],
+      "version": 1,
+      "via": null,
+      "written_at": "<time>"
+     },
+     "name": "状态码",
+     "type": "integer"
+    },
+    {
+     "column": "数量",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "数量",
+     "type": "integer"
+    },
+    {
+     "column": "交付天数",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "交付天数",
+     "type": "integer"
+    },
+    {
+     "column": "下单日期",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "下单日期",
+     "type": "date"
+    }
+   ],
+   "proposed_by": "Ann",
+   "reason": null,
+   "reason_hidden": null,
+   "rows": 160,
+   "rows_limited": false,
+   "rules": [
+    {
+     "broken": 0,
+     "check": "not_empty",
+     "column": "金额",
+     "examples": [],
+     "says": "\"金额\" must not be empty"
+    },
+    {
+     "broken": 0,
+     "check": "gt",
+     "column": "金额",
+     "examples": [],
+     "says": "\"金额\" must be greater than 0",
+     "value": 0
+    },
+    {
+     "broken": 0,
+     "check": "between",
+     "column": "数量",
+     "examples": [],
+     "high": 50,
+     "low": 1,
+     "says": "\"数量\" must be between 1 and 50, both included"
+    },
+    {
+     "broken": 0,
+     "check": "ge",
+     "column": "交付天数",
+     "examples": [],
+     "says": "\"交付天数\" must be at least 0",
+     "value": 0
+    },
+    {
+     "broken": 0,
+     "check": "in_codes",
+     "column": "状态码",
+     "examples": [],
+     "says": "\"状态码\" must be one of the codes that have a meaning"
+    },
+    {
+     "broken": 0,
+     "check": "not_empty",
+     "column": "下单日期",
+     "examples": [],
+     "says": "\"下单日期\" must not be empty"
+    }
+   ],
+   "rules_note": "An empty cell breaks only \"not empty\"; other rules do not judge it. A filled cell that is not a number breaks a number rule, and one that is not a real date (such as 2026-02-30) breaks a date rule; a date without a time counts as the start of that day. While any rule is broken the object type cannot be confirmed; once it is confirmed, new data that breaks a rule sends it back for another look.",
+   "seen": {
+    "dataset_version": 1,
+    "rows": 160
+   },
+   "stale_word": null,
+   "state": "checked",
+   "version": 1,
+   "via": null,
+   "visible_to": "everyone",
+   "written_at": "<time>"
+  }
+ ],
+ "page_mended": [
+  200,
+  {
+   "can_confirm": true,
+   "cause": "data",
+   "cause_word": "数据变了",
+   "columns": [
+    {
+     "enum_candidate": false,
+     "name": "订单号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": false,
+     "name": "客户编号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": true,
+     "name": "产品编号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": true,
+     "name": "数量",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "金额",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "下单日期",
+     "type": "date"
+    },
+    {
+     "enum_candidate": true,
+     "name": "状态码",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "交付天数",
+     "type": "integer"
+    }
+   ],
+   "columns_kept": 0,
+   "confirmed_at": "<time>",
+   "confirmed_by": "Bob",
+   "confirmed_on": {
+    "订单": 1
+   },
+   "confirmers": [
+    "Bob",
+    "管理员"
+   ],
+   "dataset": "订单",
+   "dataset_version": 3,
+   "description": "一张订单",
+   "drafted": null,
+   "evidence": "check_result:32,check_result:33,dataset:订单@v1",
+   "held": null,
+   "id": "order",
+   "key": [
+    "订单号"
+   ],
+   "limited_by_rule": false,
+   "limited_reads": [],
+   "meanings_blocking": [],
+   "model_draft": false,
+   "name": "订单",
+   "pipelines_blocking": [],
+   "properties": [
+    {
+     "column": "订单号",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": true,
+     "meanings": null,
+     "name": "订单号",
+     "type": "text"
+    },
+    {
+     "column": "金额",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "金额",
+     "type": "integer"
+    },
+    {
+     "column": "状态码",
+     "enum": true,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": {
+      "can_confirm": false,
+      "cause": null,
+      "cause_word": null,
+      "column": "状态码",
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "confirmed_on": {
+       "订单": 1
+      },
+      "confirmers": [],
+      "drafted": null,
+      "evidence": "dataset:订单@v1",
+      "held": null,
+      "limited_by_rule": false,
+      "meanings_blocking": [],
+      "model_draft": false,
+      "pipelines_blocking": [],
+      "proposed_by": "Ann",
+      "reason": null,
+      "reason_hidden": null,
+      "seen": {
+       "counts": {
+        "0": 96,
+        "1": 48,
+        "2": 16
+       },
+       "dataset_version": 3
+      },
+      "stale_word": null,
+      "state": "confirmed",
+      "values": [
+       {
+        "description": "",
+        "in_data": true,
+        "label": "已交付",
+        "rows": 96,
+        "rows_at_confirmation": 96,
+        "value": "0"
+       },
+       {
+        "description": "",
+        "in_data": true,
+        "label": "生产中",
+        "rows": 48,
+        "rows_at_confirmation": 48,
+        "value": "1"
+       },
+       {
+        "description": "",
+        "in_data": true,
+        "label": "已取消",
+        "rows": 16,
+        "rows_at_confirmation": 16,
+        "value": "2"
+       }
+      ],
+      "version": 2,
+      "via": null,
+      "written_at": "<time>"
+     },
+     "name": "状态码",
+     "type": "integer"
+    },
+    {
+     "column": "数量",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "数量",
+     "type": "integer"
+    },
+    {
+     "column": "交付天数",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "交付天数",
+     "type": "integer"
+    },
+    {
+     "column": "下单日期",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "下单日期",
+     "type": "date"
+    }
+   ],
+   "proposed_by": "Ann",
+   "reason": "值规则“金额”要大于 0：查了全部 160 行，有 3 行不满足，例如 DD20260001、DD20260002、DD20260003",
+   "reason_hidden": null,
+   "rows": 160,
+   "rows_limited": false,
+   "rules": [
+    {
+     "broken": 0,
+     "check": "not_empty",
+     "column": "金额",
+     "examples": [],
+     "says": "“金额”不能为空"
+    },
+    {
+     "broken": 0,
+     "check": "gt",
+     "column": "金额",
+     "examples": [],
+     "says": "“金额”要大于 0",
+     "value": 0
+    },
+    {
+     "broken": 0,
+     "check": "between",
+     "column": "数量",
+     "examples": [],
+     "high": 50,
+     "low": 1,
+     "says": "“数量”要在 1 到 50 之间（含两端）"
+    },
+    {
+     "broken": 0,
+     "check": "ge",
+     "column": "交付天数",
+     "examples": [],
+     "says": "“交付天数”要至少是 0",
+     "value": 0
+    },
+    {
+     "broken": 0,
+     "check": "in_codes",
+     "column": "状态码",
+     "examples": [],
+     "says": "“状态码”要是写了含义的代码之一"
+    },
+    {
+     "broken": 0,
+     "check": "not_empty",
+     "column": "下单日期",
+     "examples": [],
+     "says": "“下单日期”不能为空"
+    },
+    {
+     "broken": 0,
+     "check": "le",
+     "column": "交付天数",
+     "examples": [],
+     "says": "“交付天数”要最多是 60",
+     "value": 60
+    }
+   ],
+   "rules_note": "空着的格子只算违反“不能为空”，其他规则不判断它；填了但不是数字的格子违反数字规则；不是真实日期的格子（例如 2026-02-30）违反日期规则；只有日期没有时间的，按当天开始算。有一条规则不满足，这个对象类型就不能确认；确认之后新数据违反了它，对象类型会退回“需要再看”。",
+   "seen": {
+    "dataset_version": 3,
+    "rows": 160
+   },
+   "stale_word": "数据变了",
+   "state": "needs_look",
+   "version": 6,
+   "via": "self",
+   "visible_to": "everyone",
+   "written_at": "<time>"
+  }
+ ],
+ "page_vera": [
+  200,
+  {
+   "can_confirm": false,
+   "cause": null,
+   "cause_word": null,
+   "columns": [
+    {
+     "enum_candidate": false,
+     "name": "订单号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": false,
+     "name": "客户编号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": true,
+     "name": "产品编号",
+     "type": "text"
+    },
+    {
+     "enum_candidate": true,
+     "name": "数量",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "金额",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "下单日期",
+     "type": "date"
+    },
+    {
+     "enum_candidate": true,
+     "name": "状态码",
+     "type": "integer"
+    },
+    {
+     "enum_candidate": false,
+     "name": "交付天数",
+     "type": "integer"
+    }
+   ],
+   "columns_kept": 0,
+   "confirmed_at": "<time>",
+   "confirmed_by": "Bob",
+   "confirmed_on": {
+    "订单": 1
+   },
+   "confirmers": [],
+   "dataset": "订单",
+   "dataset_version": 1,
+   "description": "客户下的一张订单",
+   "drafted": null,
+   "evidence": "check_result:24,check_result:25,dataset:订单@v1",
+   "held": null,
+   "id": "order",
+   "key": [
+    "订单号"
+   ],
+   "limited_by_rule": false,
+   "limited_reads": [],
+   "meanings_blocking": [],
+   "model_draft": false,
+   "name": "订单",
+   "pipelines_blocking": [],
+   "properties": [
+    {
+     "column": "订单号",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": true,
+     "meanings": null,
+     "name": "订单号",
+     "type": "text"
+    },
+    {
+     "column": "金额",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "金额",
+     "type": "integer"
+    },
+    {
+     "column": "状态码",
+     "enum": true,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": {
+      "can_confirm": false,
+      "cause": null,
+      "cause_word": null,
+      "column": "状态码",
+      "confirmed_at": "<time>",
+      "confirmed_by": "Bob",
+      "confirmed_on": {
+       "订单": 1
+      },
+      "confirmers": [],
+      "drafted": null,
+      "evidence": "dataset:订单@v1",
+      "held": null,
+      "limited_by_rule": false,
+      "meanings_blocking": [],
+      "model_draft": false,
+      "pipelines_blocking": [],
+      "proposed_by": "Ann",
+      "reason": null,
+      "reason_hidden": null,
+      "seen": {
+       "counts": {
+        "0": 96,
+        "1": 48,
+        "2": 16
+       },
+       "dataset_version": 1
+      },
+      "stale_word": null,
+      "state": "confirmed",
+      "values": [
+       {
+        "description": "",
+        "in_data": true,
+        "label": "已交付",
+        "rows": 96,
+        "rows_at_confirmation": 96,
+        "value": "0"
+       },
+       {
+        "description": "",
+        "in_data": true,
+        "label": "生产中",
+        "rows": 48,
+        "rows_at_confirmation": 48,
+        "value": "1"
+       },
+       {
+        "description": "",
+        "in_data": true,
+        "label": "已取消",
+        "rows": 16,
+        "rows_at_confirmation": 16,
+        "value": "2"
+       }
+      ],
+      "version": 2,
+      "via": null,
+      "written_at": "<time>"
+     },
+     "name": "状态码",
+     "type": "integer"
+    },
+    {
+     "column": "数量",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "数量",
+     "type": "integer"
+    },
+    {
+     "column": "交付天数",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "交付天数",
+     "type": "integer"
+    },
+    {
+     "column": "下单日期",
+     "enum": false,
+     "fan": null,
+     "hide_values": false,
+     "key": false,
+     "meanings": null,
+     "name": "下单日期",
+     "type": "date"
+    }
+   ],
+   "proposed_by": "Ann",
+   "reason": null,
+   "reason_hidden": null,
+   "rows": 160,
+   "rows_limited": false,
+   "rules": [
+    {
+     "broken": 0,
+     "check": "not_empty",
+     "column": "金额",
+     "examples": [],
+     "says": "“金额”不能为空"
+    },
+    {
+     "broken": 0,
+     "check": "gt",
+     "column": "金额",
+     "examples": [],
+     "says": "“金额”要大于 0",
+     "value": 0
+    },
+    {
+     "broken": 0,
+     "check": "between",
+     "column": "数量",
+     "examples": [],
+     "high": 50,
+     "low": 1,
+     "says": "“数量”要在 1 到 50 之间（含两端）"
+    },
+    {
+     "broken": 0,
+     "check": "ge",
+     "column": "交付天数",
+     "examples": [],
+     "says": "“交付天数”要至少是 0",
+     "value": 0
+    },
+    {
+     "broken": 0,
+     "check": "in_codes",
+     "column": "状态码",
+     "examples": [],
+     "says": "“状态码”要是写了含义的代码之一"
+    },
+    {
+     "broken": 0,
+     "check": "not_empty",
+     "column": "下单日期",
+     "examples": [],
+     "says": "“下单日期”不能为空"
+    }
+   ],
+   "rules_note": "空着的格子只算违反“不能为空”，其他规则不判断它；填了但不是数字的格子违反数字规则；不是真实日期的格子（例如 2026-02-30）违反日期规则；只有日期没有时间的，按当天开始算。有一条规则不满足，这个对象类型就不能确认；确认之后新数据违反了它，对象类型会退回“需要再看”。",
+   "seen": {
+    "dataset_version": 1,
+    "rows": 160
+   },
+   "stale_word": null,
+   "state": "confirmed",
+   "version": 2,
+   "via": null,
+   "visible_to": null,
+   "written_at": "<time>"
+  }
+ ],
+ "queue_after": [
+  200,
+  {
+   "count": 0,
+   "groups": [],
+   "hidden_by_rules": 0,
+   "items": [
+    {
+     "can_confirm": false,
+     "cause": "data",
+     "cause_word": "数据变了",
+     "confirmed_at": "<time>",
+     "confirmed_by": "Bob",
+     "confirmed_on": {
+      "订单": 1
+     },
+     "confirmers": [
+      "Bob",
+      "管理员"
+     ],
+     "drafted": null,
+     "element": "objtype:order",
+     "evidence": "check_result:32,check_result:33,dataset:订单@v1",
+     "held": null,
+     "id": "order",
+     "kind": "type",
+     "limited_by_rule": false,
+     "lines": [
+      {
+       "ok": false,
+       "text": "值规则“金额”要大于 0：查了全部 160 行，有 3 行不满足，例如 DD20260001、DD20260002、DD20260003"
+      },
+      {
+       "ok": true,
+       "text": "6 个属性，来自 订单"
+      },
+      {
+       "ok": true,
+       "text": "“状态码”的含义已确认"
+      },
+      {
+       "ok": true,
+       "text": "“金额”不能为空：现在没有行不满足"
+      },
+      {
+       "ok": false,
+       "text": "“金额”要大于 0：现在有 3 行不满足"
+      },
+      {
+       "ok": true,
+       "text": "“数量”要在 1 到 50 之间（含两端）：现在没有行不满足"
+      },
+      {
+       "ok": true,
+       "text": "“交付天数”要至少是 0：现在没有行不满足"
+      },
+      {
+       "ok": true,
+       "text": "“状态码”要是写了含义的代码之一：现在没有行不满足"
+      },
+      {
+       "ok": true,
+       "text": "“下单日期”不能为空：现在没有行不满足"
+      },
+      {
+       "ok": true,
+       "text": "“交付天数”要最多是 60：现在没有行不满足"
+      }
+     ],
+     "meanings_blocking": [],
+     "model_draft": false,
+     "pipelines_blocking": [],
+     "proposed_by": "Ann",
+     "reason": "值规则“金额”要大于 0：查了全部 160 行，有 3 行不满足，例如 DD20260001、DD20260002、DD20260003",
+     "reason_hidden": null,
+     "seen": {
+      "dataset_version": 2,
+      "rows": 160
+     },
+     "stale_word": "数据变了",
+     "state": "needs_look",
+     "title": "订单",
+     "version": 6,
+     "via": "self",
+     "written_at": "<time>"
+    }
+   ]
+  }
+ ],
+ "queue_bob": [
+  200,
+  {
+   "count": 1,
+   "groups": [],
+   "hidden_by_rules": 0,
+   "items": [
+    {
+     "can_confirm": true,
+     "cause": null,
+     "cause_word": null,
+     "column": "状态码",
+     "confirmed_at": null,
+     "confirmed_by": null,
+     "confirmed_on": null,
+     "confirmers": [
+      "Bob",
+      "管理员"
+     ],
+     "drafted": null,
+     "element": "enum:order:状态码",
+     "evidence": null,
+     "held": null,
+     "id": "order",
+     "kind": "meaning",
+     "limited_by_rule": false,
+     "lines": [
+      {
+       "ok": true,
+       "text": "0 = 已交付（提出时 96 行）"
+      },
+      {
+       "ok": true,
+       "text": "1 = 生产中（提出时 48 行）"
+      },
+      {
+       "ok": true,
+       "text": "2 = 已取消（提出时 16 行）"
+      }
+     ],
+     "meanings_blocking": [],
+     "model_draft": false,
+     "pipelines_blocking": [],
+     "proposed_by": "Ann",
+     "reason": null,
+     "reason_hidden": null,
+     "seen": {
+      "counts": {
+       "0": 96,
+       "1": 48,
+       "2": 16
+      },
+      "dataset_version": 1
+     },
+     "stale_word": null,
+     "state": "checked",
+     "title": "订单.状态码",
+     "version": 1,
+     "via": null,
+     "written_at": "<time>"
+    },
+    {
+     "can_confirm": false,
+     "cause": null,
+     "cause_word": null,
+     "confirmed_at": null,
+     "confirmed_by": null,
+     "confirmed_on": null,
+     "confirmers": [],
+     "drafted": null,
+     "element": "objtype:order",
+     "evidence": null,
+     "held": null,
+     "id": "order",
+     "kind": "type",
+     "limited_by_rule": false,
+     "lines": [
+      {
+       "ok": true,
+       "text": "主键“订单号”在 订单 第 1 版的全部 160 行上唯一，没有空值"
+      },
+      {
+       "ok": true,
+       "text": "6 个属性，来自 订单"
+      },
+      {
+       "ok": false,
+       "text": "“状态码”的含义还没有确认"
+      },
+      {
+       "ok": true,
+       "text": "“金额”不能为空：现在没有行不满足"
+      },
+      {
+       "ok": true,
+       "text": "“金额”要大于 0：现在没有行不满足"
+      },
+      {
+       "ok": true,
+       "text": "“数量”要在 1 到 50 之间（含两端）：现在没有行不满足"
+      },
+      {
+       "ok": true,
+       "text": "“交付天数”要至少是 0：现在没有行不满足"
+      },
+      {
+       "ok": true,
+       "text": "“状态码”要是写了含义的代码之一：现在没有行不满足"
+      },
+      {
+       "ok": true,
+       "text": "“下单日期”不能为空：现在没有行不满足"
+      }
+     ],
+     "meanings_blocking": [
+      "状态码"
+     ],
+     "model_draft": false,
+     "pipelines_blocking": [],
+     "proposed_by": "Ann",
+     "reason": null,
+     "reason_hidden": null,
+     "seen": {
+      "dataset_version": 1,
+      "rows": 160
+     },
+     "stale_word": null,
+     "state": "checked",
+     "title": "订单",
+     "version": 1,
+     "via": null,
+     "written_at": "<time>"
+    }
+   ]
+  }
+ ],
+ "queue_bob_en": [
+  200,
+  {
+   "count": 1,
+   "groups": [],
+   "hidden_by_rules": 0,
+   "items": [
+    {
+     "can_confirm": true,
+     "cause": null,
+     "cause_word": null,
+     "column": "状态码",
+     "confirmed_at": null,
+     "confirmed_by": null,
+     "confirmed_on": null,
+     "confirmers": [
+      "Bob",
+      "管理员"
+     ],
+     "drafted": null,
+     "element": "enum:order:状态码",
+     "evidence": null,
+     "held": null,
+     "id": "order",
+     "kind": "meaning",
+     "limited_by_rule": false,
+     "lines": [
+      {
+       "ok": true,
+       "text": "0 = 已交付 (96 rows when put forward)"
+      },
+      {
+       "ok": true,
+       "text": "1 = 生产中 (48 rows when put forward)"
+      },
+      {
+       "ok": true,
+       "text": "2 = 已取消 (16 rows when put forward)"
+      }
+     ],
+     "meanings_blocking": [],
+     "model_draft": false,
+     "pipelines_blocking": [],
+     "proposed_by": "Ann",
+     "reason": null,
+     "reason_hidden": null,
+     "seen": {
+      "counts": {
+       "0": 96,
+       "1": 48,
+       "2": 16
+      },
+      "dataset_version": 1
+     },
+     "stale_word": null,
+     "state": "checked",
+     "title": "订单.状态码",
+     "version": 1,
+     "via": null,
+     "written_at": "<time>"
+    },
+    {
+     "can_confirm": false,
+     "cause": null,
+     "cause_word": null,
+     "confirmed_at": null,
+     "confirmed_by": null,
+     "confirmed_on": null,
+     "confirmers": [],
+     "drafted": null,
+     "element": "objtype:order",
+     "evidence": null,
+     "held": null,
+     "id": "order",
+     "kind": "type",
+     "limited_by_rule": false,
+     "lines": [
+      {
+       "ok": true,
+       "text": "The key \"订单号\" is unique on all 160 rows of 订单 version 1, with no empty values"
+      },
+      {
+       "ok": true,
+       "text": "6 properties, from 订单"
+      },
+      {
+       "ok": false,
+       "text": "The meanings of \"状态码\" are not confirmed yet"
+      },
+      {
+       "ok": true,
+       "text": "\"金额\" must not be empty: no row breaks it now"
+      },
+      {
+       "ok": true,
+       "text": "\"金额\" must be greater than 0: no row breaks it now"
+      },
+      {
+       "ok": true,
+       "text": "\"数量\" must be between 1 and 50, both included: no row breaks it now"
+      },
+      {
+       "ok": true,
+       "text": "\"交付天数\" must be at least 0: no row breaks it now"
+      },
+      {
+       "ok": true,
+       "text": "\"状态码\" must be one of the codes that have a meaning: no row breaks it now"
+      },
+      {
+       "ok": true,
+       "text": "\"下单日期\" must not be empty: no row breaks it now"
+      }
+     ],
+     "meanings_blocking": [
+      "状态码"
+     ],
+     "model_draft": false,
+     "pipelines_blocking": [],
+     "proposed_by": "Ann",
+     "reason": null,
+     "reason_hidden": null,
+     "seen": {
+      "dataset_version": 1,
+      "rows": 160
+     },
+     "stale_word": null,
+     "state": "checked",
+     "title": "订单",
+     "version": 1,
+     "via": null,
+     "written_at": "<time>"
+    }
+   ]
+  }
+ ],
+ "refused_0": [
+  400,
+  {
+   "error": "值规则写的“没有这列”不是这个对象类型的属性"
+  }
+ ],
+ "refused_0_en": [
+  400,
+  {
+   "error": "The value rule names \"没有这列\", which is not a property of this object type"
+  }
+ ],
+ "refused_1": [
+  400,
+  {
+   "error": "“金额”的规则种类只能是 not_empty, gt, ge, lt, le, between, in_codes, not_before"
+  }
+ ],
+ "refused_1_en": [
+  400,
+  {
+   "error": "The kind of rule on \"金额\" must be one of not_empty, gt, ge, lt, le, between, in_codes, not_before"
+  }
+ ],
+ "refused_2": [
+  400,
+  {
+   "error": "“下单日期”不是数字属性，只能写“不能为空”"
+  }
+ ],
+ "refused_2_en": [
+  400,
+  {
+   "error": "\"下单日期\" is not a number property: it can only be \"not empty\""
+  }
+ ],
+ "refused_3": [
+  400,
+  {
+   "error": "“数量”的范围要从小写到大：9 比 1 大"
+  }
+ ],
+ "refused_3_en": [
+  400,
+  {
+   "error": "The range on \"数量\" must go from low to high: 9 is more than 1"
+  }
+ ],
+ "refused_4": [
+  400,
+  {
+   "error": "“金额”的规则要写一个数，例如 0 或 12.5"
+  }
+ ],
+ "refused_4_en": [
+  400,
+  {
+   "error": "The rule on \"金额\" needs a number, for example 0 or 12.5"
+  }
+ ],
+ "refused_5": [
+  400,
+  {
+   "error": "“金额”的同一条规则写了两次"
+  }
+ ],
+ "refused_5_en": [
+  400,
+  {
+   "error": "The same rule on \"金额\" is written twice"
+  }
+ ],
+ "refused_6": [
+  400,
+  {
+   "error": "“数量”不是代码列，不能要求它是写了含义的代码之一"
+  }
+ ],
+ "refused_6_en": [
+  400,
+  {
+   "error": "\"数量\" is not a code column, so it cannot be required to be one of its codes"
+  }
+ ],
+ "refused_7": [
+  400,
+  {
+   "error": "“下单日期”和“金额”要都是日期（或都是月份），才能比先后"
+  }
+ ],
+ "refused_7_en": [
+  400,
+  {
+   "error": "\"下单日期\" and \"金额\" must both be dates (or both months) to be put in order"
+  }
+ ],
+ "refused_8": [
+  400,
+  {
+   "error": "值规则要写成列表：[{column, check, ...}]"
+  }
+ ],
+ "refused_8_en": [
+  400,
+  {
+   "error": "Value rules must be a list: [{column, check, ...}]"
+  }
+ ],
+ "standing_ann": [
+  200,
+  {
+   "definitions": [
+    {
+     "cause_word": "数据变了",
+     "confirmed": false,
+     "confirmed_at": "<time>",
+     "confirmed_by": "Bob",
+     "data_versions": {
+      "订单": 1
+     },
+     "id": "objtype:order",
+     "kind": "type",
+     "name": "订单",
+     "proposed_by": "Ann",
+     "proposed_with_token": null,
+     "reason": "值规则“金额”要大于 0：查了全部 160 行，有 3 行不满足，例如 DD20260001、DD20260002、DD20260003",
+     "reason_hidden": null,
+     "stale_word": "数据变了",
+     "state": "needs_look",
+     "who_can_confirm": [
+      "Bob",
+      "管理员"
+     ]
+    }
+   ],
+   "note": "这是现在的状态：只有 confirmed 为 true 的定义可以拿来回答；技能包是导出那天的快照，以这里为准。"
+  }
+ ],
+ "standing_vera": [
+  200,
+  {
+   "definitions": [],
+   "note": "这是现在的状态：只有 confirmed 为 true 的定义可以拿来回答；技能包是导出那天的快照，以这里为准。"
+  }
+ ],
+ "stored": {
+  "check_result": [
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "key:订单(订单号)",
+    "id": 1,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_6\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "key:订单(订单号)",
+    "id": 2,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_6\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "key:订单(订单号)",
+    "id": 3,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_6\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "key:订单(订单号)",
+    "id": 4,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_6\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "key:订单(订单号)",
+    "id": 5,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_6\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "key:订单(订单号)",
+    "id": 6,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_6\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "key:订单(订单号)",
+    "id": 7,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_6\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "key:订单(订单号)",
+    "id": 8,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_6\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "key:订单(订单号)",
+    "id": 9,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_6\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "key:订单(订单号)",
+    "id": 10,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_6\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "key:订单(订单号)",
+    "id": 11,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_6\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "key:订单(订单号)",
+    "id": 12,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_6\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "key:订单(订单号)",
+    "id": 13,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_6\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "key:订单(订单号)",
+    "id": 14,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_6\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "key:订单(订单号)",
+    "id": 15,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_6\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "key:订单(订单号)",
+    "id": 16,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_6\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "key:订单(订单号)",
+    "id": 17,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_6\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "key:订单(订单号)",
+    "id": 18,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_6\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "key:订单(订单号)",
+    "id": 19,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_6\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "value_rules",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "objtype:order",
+    "id": 20,
+    "null_key_rows": null,
+    "query": "SELECT COUNT(*), COALESCE(SUM(CASE WHEN (c0 IS NULL OR c0 = '') THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c0 IS NULL OR c0 = '') AND NOT COALESCE(CASE WHEN ((c0 GLOB '[0-9]*' OR c0 GLOB '-[0-9]*') AND substr(c0, 2) NOT GLOB '*[^0-9.]*' AND c0 NOT GLOB '*.*.*' AND c0 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c0 AS REAL) - ?) <= ? THEN value_rule_order(c0, ?) > 0 ELSE CAST(c0 AS REAL) > ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c1 IS NULL OR c1 = '') AND NOT COALESCE(CASE WHEN ((c1 GLOB '[0-9]*' OR c1 GLOB '-[0-9]*') AND substr(c1, 2) NOT GLOB '*[^0-9.]*' AND c1 NOT GLOB '*.*.*' AND c1 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c1 AS REAL) - ?) <= ? THEN value_rule_order(c1, ?) >= 0 ELSE CAST(c1 AS REAL) >= ? END) AND (CASE WHEN abs(CAST(c1 AS REAL) - ?) <= ? THEN value_rule_order(c1, ?) <= 0 ELSE CAST(c1 AS REAL) <= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c2 IS NULL OR c2 = '') AND NOT COALESCE(CASE WHEN ((c2 GLOB '[0-9]*' OR c2 GLOB '-[0-9]*') AND substr(c2, 2) NOT GLOB '*[^0-9.]*' AND c2 NOT GLOB '*.*.*' AND c2 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c2 AS REAL) - ?) <= ? THEN value_rule_order(c2, ?) >= 0 ELSE CAST(c2 AS REAL) >= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c3 IS NULL OR c3 = '') AND v3 NOT IN (?, ?, ?)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (c4 IS NULL OR c4 = '') THEN 1 ELSE 0 END), 0) FROM (SELECT rowid AS r, \"订单号\" AS k0, (CASE WHEN \"金额\" GLOB '*[^ -~]*' THEN trim(\"金额\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"金额\") END) AS c0, \"金额\" AS v0, (CASE WHEN \"数量\" GLOB '*[^ -~]*' THEN trim(\"数量\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"数量\") END) AS c1, \"数量\" AS v1, (CASE WHEN \"交付天数\" GLOB '*[^ -~]*' THEN trim(\"交付天数\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"交付天数\") END) AS c2, \"交付天数\" AS v2, (CASE WHEN \"状态码\" GLOB '*[^ -~]*' THEN trim(\"状态码\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"状态码\") END) AS c3, \"状态码\" AS v3, (CASE WHEN \"下单日期\" GLOB '*[^ -~]*' THEN trim(\"下单日期\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"下单日期\") END) AS c4, \"下单日期\" AS v4 FROM \"ds_6\" ORDER BY rowid LIMIT -1 OFFSET 0)",
+    "rows_checked": 160,
+    "samples_json": "{\"rules\": [{\"column\": \"金额\", \"check\": \"not_empty\"}, {\"column\": \"金额\", \"check\": \"gt\", \"value\": 0}, {\"column\": \"数量\", \"check\": \"between\", \"low\": 1, \"high\": 50}, {\"column\": \"交付天数\", \"check\": \"ge\", \"value\": 0}, {\"column\": \"状态码\", \"check\": \"in_codes\"}, {\"column\": \"下单日期\", \"check\": \"not_empty\"}], \"codes\": {\"状态码\": [\"0\", \"1\", \"2\"]}, \"broken\": [0, 0, 0, 0, 0, 0]}",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "value_rules",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "objtype:order",
+    "id": 21,
+    "null_key_rows": null,
+    "query": "SELECT COUNT(*), COALESCE(SUM(CASE WHEN (c0 IS NULL OR c0 = '') THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c0 IS NULL OR c0 = '') AND NOT COALESCE(CASE WHEN ((c0 GLOB '[0-9]*' OR c0 GLOB '-[0-9]*') AND substr(c0, 2) NOT GLOB '*[^0-9.]*' AND c0 NOT GLOB '*.*.*' AND c0 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c0 AS REAL) - ?) <= ? THEN value_rule_order(c0, ?) > 0 ELSE CAST(c0 AS REAL) > ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c1 IS NULL OR c1 = '') AND NOT COALESCE(CASE WHEN ((c1 GLOB '[0-9]*' OR c1 GLOB '-[0-9]*') AND substr(c1, 2) NOT GLOB '*[^0-9.]*' AND c1 NOT GLOB '*.*.*' AND c1 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c1 AS REAL) - ?) <= ? THEN value_rule_order(c1, ?) >= 0 ELSE CAST(c1 AS REAL) >= ? END) AND (CASE WHEN abs(CAST(c1 AS REAL) - ?) <= ? THEN value_rule_order(c1, ?) <= 0 ELSE CAST(c1 AS REAL) <= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c2 IS NULL OR c2 = '') AND NOT COALESCE(CASE WHEN ((c2 GLOB '[0-9]*' OR c2 GLOB '-[0-9]*') AND substr(c2, 2) NOT GLOB '*[^0-9.]*' AND c2 NOT GLOB '*.*.*' AND c2 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c2 AS REAL) - ?) <= ? THEN value_rule_order(c2, ?) >= 0 ELSE CAST(c2 AS REAL) >= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c3 IS NULL OR c3 = '') AND v3 NOT IN (?, ?, ?)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (c4 IS NULL OR c4 = '') THEN 1 ELSE 0 END), 0) FROM (SELECT rowid AS r, \"订单号\" AS k0, (CASE WHEN \"金额\" GLOB '*[^ -~]*' THEN trim(\"金额\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"金额\") END) AS c0, \"金额\" AS v0, (CASE WHEN \"数量\" GLOB '*[^ -~]*' THEN trim(\"数量\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"数量\") END) AS c1, \"数量\" AS v1, (CASE WHEN \"交付天数\" GLOB '*[^ -~]*' THEN trim(\"交付天数\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"交付天数\") END) AS c2, \"交付天数\" AS v2, (CASE WHEN \"状态码\" GLOB '*[^ -~]*' THEN trim(\"状态码\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"状态码\") END) AS c3, \"状态码\" AS v3, (CASE WHEN \"下单日期\" GLOB '*[^ -~]*' THEN trim(\"下单日期\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"下单日期\") END) AS c4, \"下单日期\" AS v4 FROM \"ds_6\" ORDER BY rowid LIMIT -1 OFFSET 0)",
+    "rows_checked": 160,
+    "samples_json": "{\"rules\": [{\"check\": \"not_empty\", \"column\": \"金额\"}, {\"check\": \"gt\", \"column\": \"金额\", \"value\": 0}, {\"check\": \"between\", \"column\": \"数量\", \"high\": 50, \"low\": 1}, {\"check\": \"ge\", \"column\": \"交付天数\", \"value\": 0}, {\"check\": \"in_codes\", \"column\": \"状态码\"}, {\"check\": \"not_empty\", \"column\": \"下单日期\"}], \"codes\": {\"状态码\": [\"0\", \"1\", \"2\"]}, \"broken\": [0, 0, 0, 0, 0, 0]}",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "key:订单(订单号)",
+    "id": 22,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_6\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "value_rules",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "objtype:order",
+    "id": 23,
+    "null_key_rows": null,
+    "query": "SELECT COUNT(*), COALESCE(SUM(CASE WHEN (c0 IS NULL OR c0 = '') THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c0 IS NULL OR c0 = '') AND NOT COALESCE(CASE WHEN ((c0 GLOB '[0-9]*' OR c0 GLOB '-[0-9]*') AND substr(c0, 2) NOT GLOB '*[^0-9.]*' AND c0 NOT GLOB '*.*.*' AND c0 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c0 AS REAL) - ?) <= ? THEN value_rule_order(c0, ?) > 0 ELSE CAST(c0 AS REAL) > ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c1 IS NULL OR c1 = '') AND NOT COALESCE(CASE WHEN ((c1 GLOB '[0-9]*' OR c1 GLOB '-[0-9]*') AND substr(c1, 2) NOT GLOB '*[^0-9.]*' AND c1 NOT GLOB '*.*.*' AND c1 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c1 AS REAL) - ?) <= ? THEN value_rule_order(c1, ?) >= 0 ELSE CAST(c1 AS REAL) >= ? END) AND (CASE WHEN abs(CAST(c1 AS REAL) - ?) <= ? THEN value_rule_order(c1, ?) <= 0 ELSE CAST(c1 AS REAL) <= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c2 IS NULL OR c2 = '') AND NOT COALESCE(CASE WHEN ((c2 GLOB '[0-9]*' OR c2 GLOB '-[0-9]*') AND substr(c2, 2) NOT GLOB '*[^0-9.]*' AND c2 NOT GLOB '*.*.*' AND c2 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c2 AS REAL) - ?) <= ? THEN value_rule_order(c2, ?) >= 0 ELSE CAST(c2 AS REAL) >= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c3 IS NULL OR c3 = '') AND v3 NOT IN (?, ?, ?)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (c4 IS NULL OR c4 = '') THEN 1 ELSE 0 END), 0) FROM (SELECT rowid AS r, \"订单号\" AS k0, (CASE WHEN \"金额\" GLOB '*[^ -~]*' THEN trim(\"金额\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"金额\") END) AS c0, \"金额\" AS v0, (CASE WHEN \"数量\" GLOB '*[^ -~]*' THEN trim(\"数量\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"数量\") END) AS c1, \"数量\" AS v1, (CASE WHEN \"交付天数\" GLOB '*[^ -~]*' THEN trim(\"交付天数\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"交付天数\") END) AS c2, \"交付天数\" AS v2, (CASE WHEN \"状态码\" GLOB '*[^ -~]*' THEN trim(\"状态码\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"状态码\") END) AS c3, \"状态码\" AS v3, (CASE WHEN \"下单日期\" GLOB '*[^ -~]*' THEN trim(\"下单日期\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"下单日期\") END) AS c4, \"下单日期\" AS v4 FROM \"ds_6\" ORDER BY rowid LIMIT -1 OFFSET 0)",
+    "rows_checked": 160,
+    "samples_json": "{\"rules\": [{\"check\": \"not_empty\", \"column\": \"金额\"}, {\"check\": \"gt\", \"column\": \"金额\", \"value\": 0}, {\"check\": \"between\", \"column\": \"数量\", \"high\": 50, \"low\": 1}, {\"check\": \"ge\", \"column\": \"交付天数\", \"value\": 0}, {\"check\": \"in_codes\", \"column\": \"状态码\"}, {\"check\": \"not_empty\", \"column\": \"下单日期\"}], \"codes\": {\"状态码\": [\"0\", \"1\", \"2\"]}, \"broken\": [0, 0, 0, 0, 0, 0]}",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "key:订单(订单号)",
+    "id": 24,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_6\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "value_rules",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "objtype:order",
+    "id": 25,
+    "null_key_rows": null,
+    "query": "SELECT COUNT(*), COALESCE(SUM(CASE WHEN (c0 IS NULL OR c0 = '') THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c0 IS NULL OR c0 = '') AND NOT COALESCE(CASE WHEN ((c0 GLOB '[0-9]*' OR c0 GLOB '-[0-9]*') AND substr(c0, 2) NOT GLOB '*[^0-9.]*' AND c0 NOT GLOB '*.*.*' AND c0 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c0 AS REAL) - ?) <= ? THEN value_rule_order(c0, ?) > 0 ELSE CAST(c0 AS REAL) > ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c1 IS NULL OR c1 = '') AND NOT COALESCE(CASE WHEN ((c1 GLOB '[0-9]*' OR c1 GLOB '-[0-9]*') AND substr(c1, 2) NOT GLOB '*[^0-9.]*' AND c1 NOT GLOB '*.*.*' AND c1 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c1 AS REAL) - ?) <= ? THEN value_rule_order(c1, ?) >= 0 ELSE CAST(c1 AS REAL) >= ? END) AND (CASE WHEN abs(CAST(c1 AS REAL) - ?) <= ? THEN value_rule_order(c1, ?) <= 0 ELSE CAST(c1 AS REAL) <= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c2 IS NULL OR c2 = '') AND NOT COALESCE(CASE WHEN ((c2 GLOB '[0-9]*' OR c2 GLOB '-[0-9]*') AND substr(c2, 2) NOT GLOB '*[^0-9.]*' AND c2 NOT GLOB '*.*.*' AND c2 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c2 AS REAL) - ?) <= ? THEN value_rule_order(c2, ?) >= 0 ELSE CAST(c2 AS REAL) >= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c3 IS NULL OR c3 = '') AND v3 NOT IN (?, ?, ?)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (c4 IS NULL OR c4 = '') THEN 1 ELSE 0 END), 0) FROM (SELECT rowid AS r, \"订单号\" AS k0, (CASE WHEN \"金额\" GLOB '*[^ -~]*' THEN trim(\"金额\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"金额\") END) AS c0, \"金额\" AS v0, (CASE WHEN \"数量\" GLOB '*[^ -~]*' THEN trim(\"数量\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"数量\") END) AS c1, \"数量\" AS v1, (CASE WHEN \"交付天数\" GLOB '*[^ -~]*' THEN trim(\"交付天数\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"交付天数\") END) AS c2, \"交付天数\" AS v2, (CASE WHEN \"状态码\" GLOB '*[^ -~]*' THEN trim(\"状态码\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"状态码\") END) AS c3, \"状态码\" AS v3, (CASE WHEN \"下单日期\" GLOB '*[^ -~]*' THEN trim(\"下单日期\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"下单日期\") END) AS c4, \"下单日期\" AS v4 FROM \"ds_6\" ORDER BY rowid LIMIT -1 OFFSET 0)",
+    "rows_checked": 160,
+    "samples_json": "{\"rules\": [{\"check\": \"not_empty\", \"column\": \"金额\"}, {\"check\": \"gt\", \"column\": \"金额\", \"value\": 0}, {\"check\": \"between\", \"column\": \"数量\", \"high\": 50, \"low\": 1}, {\"check\": \"ge\", \"column\": \"交付天数\", \"value\": 0}, {\"check\": \"in_codes\", \"column\": \"状态码\"}, {\"check\": \"not_empty\", \"column\": \"下单日期\"}], \"codes\": {\"状态码\": [\"0\", \"1\", \"2\"]}, \"broken\": [0, 0, 0, 0, 0, 0]}",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "key:订单(订单号)",
+    "id": 26,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_6\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "value_rules",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "objtype:order",
+    "id": 27,
+    "null_key_rows": null,
+    "query": "SELECT COUNT(*), COALESCE(SUM(CASE WHEN (c0 IS NULL OR c0 = '') THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c0 IS NULL OR c0 = '') AND NOT COALESCE(CASE WHEN ((c0 GLOB '[0-9]*' OR c0 GLOB '-[0-9]*') AND substr(c0, 2) NOT GLOB '*[^0-9.]*' AND c0 NOT GLOB '*.*.*' AND c0 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c0 AS REAL) - ?) <= ? THEN value_rule_order(c0, ?) > 0 ELSE CAST(c0 AS REAL) > ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c1 IS NULL OR c1 = '') AND NOT COALESCE(CASE WHEN ((c1 GLOB '[0-9]*' OR c1 GLOB '-[0-9]*') AND substr(c1, 2) NOT GLOB '*[^0-9.]*' AND c1 NOT GLOB '*.*.*' AND c1 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c1 AS REAL) - ?) <= ? THEN value_rule_order(c1, ?) >= 0 ELSE CAST(c1 AS REAL) >= ? END) AND (CASE WHEN abs(CAST(c1 AS REAL) - ?) <= ? THEN value_rule_order(c1, ?) <= 0 ELSE CAST(c1 AS REAL) <= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c2 IS NULL OR c2 = '') AND NOT COALESCE(CASE WHEN ((c2 GLOB '[0-9]*' OR c2 GLOB '-[0-9]*') AND substr(c2, 2) NOT GLOB '*[^0-9.]*' AND c2 NOT GLOB '*.*.*' AND c2 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c2 AS REAL) - ?) <= ? THEN value_rule_order(c2, ?) >= 0 ELSE CAST(c2 AS REAL) >= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c3 IS NULL OR c3 = '') AND v3 NOT IN (?, ?, ?)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (c4 IS NULL OR c4 = '') THEN 1 ELSE 0 END), 0) FROM (SELECT rowid AS r, \"订单号\" AS k0, (CASE WHEN \"金额\" GLOB '*[^ -~]*' THEN trim(\"金额\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"金额\") END) AS c0, \"金额\" AS v0, (CASE WHEN \"数量\" GLOB '*[^ -~]*' THEN trim(\"数量\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"数量\") END) AS c1, \"数量\" AS v1, (CASE WHEN \"交付天数\" GLOB '*[^ -~]*' THEN trim(\"交付天数\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"交付天数\") END) AS c2, \"交付天数\" AS v2, (CASE WHEN \"状态码\" GLOB '*[^ -~]*' THEN trim(\"状态码\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"状态码\") END) AS c3, \"状态码\" AS v3, (CASE WHEN \"下单日期\" GLOB '*[^ -~]*' THEN trim(\"下单日期\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"下单日期\") END) AS c4, \"下单日期\" AS v4 FROM \"ds_6\" ORDER BY rowid LIMIT -1 OFFSET 0)",
+    "rows_checked": 160,
+    "samples_json": "{\"rules\": [{\"column\": \"金额\", \"check\": \"not_empty\"}, {\"column\": \"金额\", \"check\": \"gt\", \"value\": 0}, {\"column\": \"数量\", \"check\": \"between\", \"low\": 1, \"high\": 50}, {\"column\": \"交付天数\", \"check\": \"ge\", \"value\": 0}, {\"column\": \"状态码\", \"check\": \"in_codes\"}, {\"column\": \"下单日期\", \"check\": \"not_empty\"}], \"codes\": {\"状态码\": [\"0\", \"1\", \"2\"]}, \"broken\": [0, 0, 0, 0, 0, 0]}",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "value_rules",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "objtype:order",
+    "id": 28,
+    "null_key_rows": null,
+    "query": "SELECT COUNT(*), COALESCE(SUM(CASE WHEN (c0 IS NULL OR c0 = '') THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c0 IS NULL OR c0 = '') AND NOT COALESCE(CASE WHEN ((c0 GLOB '[0-9]*' OR c0 GLOB '-[0-9]*') AND substr(c0, 2) NOT GLOB '*[^0-9.]*' AND c0 NOT GLOB '*.*.*' AND c0 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c0 AS REAL) - ?) <= ? THEN value_rule_order(c0, ?) > 0 ELSE CAST(c0 AS REAL) > ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c1 IS NULL OR c1 = '') AND NOT COALESCE(CASE WHEN ((c1 GLOB '[0-9]*' OR c1 GLOB '-[0-9]*') AND substr(c1, 2) NOT GLOB '*[^0-9.]*' AND c1 NOT GLOB '*.*.*' AND c1 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c1 AS REAL) - ?) <= ? THEN value_rule_order(c1, ?) >= 0 ELSE CAST(c1 AS REAL) >= ? END) AND (CASE WHEN abs(CAST(c1 AS REAL) - ?) <= ? THEN value_rule_order(c1, ?) <= 0 ELSE CAST(c1 AS REAL) <= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c2 IS NULL OR c2 = '') AND NOT COALESCE(CASE WHEN ((c2 GLOB '[0-9]*' OR c2 GLOB '-[0-9]*') AND substr(c2, 2) NOT GLOB '*[^0-9.]*' AND c2 NOT GLOB '*.*.*' AND c2 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c2 AS REAL) - ?) <= ? THEN value_rule_order(c2, ?) >= 0 ELSE CAST(c2 AS REAL) >= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c3 IS NULL OR c3 = '') AND v3 NOT IN (?, ?, ?)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (c4 IS NULL OR c4 = '') THEN 1 ELSE 0 END), 0) FROM (SELECT rowid AS r, \"订单号\" AS k0, (CASE WHEN \"金额\" GLOB '*[^ -~]*' THEN trim(\"金额\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"金额\") END) AS c0, \"金额\" AS v0, (CASE WHEN \"数量\" GLOB '*[^ -~]*' THEN trim(\"数量\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"数量\") END) AS c1, \"数量\" AS v1, (CASE WHEN \"交付天数\" GLOB '*[^ -~]*' THEN trim(\"交付天数\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"交付天数\") END) AS c2, \"交付天数\" AS v2, (CASE WHEN \"状态码\" GLOB '*[^ -~]*' THEN trim(\"状态码\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"状态码\") END) AS c3, \"状态码\" AS v3, (CASE WHEN \"下单日期\" GLOB '*[^ -~]*' THEN trim(\"下单日期\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"下单日期\") END) AS c4, \"下单日期\" AS v4 FROM \"ds_6\" ORDER BY rowid LIMIT -1 OFFSET 0)",
+    "rows_checked": 160,
+    "samples_json": "{\"rules\": [{\"check\": \"not_empty\", \"column\": \"金额\"}, {\"check\": \"gt\", \"column\": \"金额\", \"value\": 0}, {\"check\": \"between\", \"column\": \"数量\", \"high\": 50, \"low\": 1}, {\"check\": \"ge\", \"column\": \"交付天数\", \"value\": 0}, {\"check\": \"in_codes\", \"column\": \"状态码\"}, {\"check\": \"not_empty\", \"column\": \"下单日期\"}], \"codes\": {\"状态码\": [\"0\", \"1\", \"2\"]}, \"broken\": [0, 0, 0, 0, 0, 0]}",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "key:订单(订单号)",
+    "id": 29,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_6\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "value_rules",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "objtype:order",
+    "id": 30,
+    "null_key_rows": null,
+    "query": "SELECT COUNT(*), COALESCE(SUM(CASE WHEN (c0 IS NULL OR c0 = '') THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c0 IS NULL OR c0 = '') AND NOT COALESCE(CASE WHEN ((c0 GLOB '[0-9]*' OR c0 GLOB '-[0-9]*') AND substr(c0, 2) NOT GLOB '*[^0-9.]*' AND c0 NOT GLOB '*.*.*' AND c0 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c0 AS REAL) - ?) <= ? THEN value_rule_order(c0, ?) > 0 ELSE CAST(c0 AS REAL) > ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c1 IS NULL OR c1 = '') AND NOT COALESCE(CASE WHEN ((c1 GLOB '[0-9]*' OR c1 GLOB '-[0-9]*') AND substr(c1, 2) NOT GLOB '*[^0-9.]*' AND c1 NOT GLOB '*.*.*' AND c1 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c1 AS REAL) - ?) <= ? THEN value_rule_order(c1, ?) >= 0 ELSE CAST(c1 AS REAL) >= ? END) AND (CASE WHEN abs(CAST(c1 AS REAL) - ?) <= ? THEN value_rule_order(c1, ?) <= 0 ELSE CAST(c1 AS REAL) <= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c2 IS NULL OR c2 = '') AND NOT COALESCE(CASE WHEN ((c2 GLOB '[0-9]*' OR c2 GLOB '-[0-9]*') AND substr(c2, 2) NOT GLOB '*[^0-9.]*' AND c2 NOT GLOB '*.*.*' AND c2 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c2 AS REAL) - ?) <= ? THEN value_rule_order(c2, ?) >= 0 ELSE CAST(c2 AS REAL) >= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c3 IS NULL OR c3 = '') AND v3 NOT IN (?, ?, ?)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (c4 IS NULL OR c4 = '') THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c2 IS NULL OR c2 = '') AND NOT COALESCE(CASE WHEN ((c2 GLOB '[0-9]*' OR c2 GLOB '-[0-9]*') AND substr(c2, 2) NOT GLOB '*[^0-9.]*' AND c2 NOT GLOB '*.*.*' AND c2 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c2 AS REAL) - ?) <= ? THEN value_rule_order(c2, ?) <= 0 ELSE CAST(c2 AS REAL) <= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0) FROM (SELECT rowid AS r, \"订单号\" AS k0, (CASE WHEN \"金额\" GLOB '*[^ -~]*' THEN trim(\"金额\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"金额\") END) AS c0, \"金额\" AS v0, (CASE WHEN \"数量\" GLOB '*[^ -~]*' THEN trim(\"数量\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"数量\") END) AS c1, \"数量\" AS v1, (CASE WHEN \"交付天数\" GLOB '*[^ -~]*' THEN trim(\"交付天数\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"交付天数\") END) AS c2, \"交付天数\" AS v2, (CASE WHEN \"状态码\" GLOB '*[^ -~]*' THEN trim(\"状态码\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"状态码\") END) AS c3, \"状态码\" AS v3, (CASE WHEN \"下单日期\" GLOB '*[^ -~]*' THEN trim(\"下单日期\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"下单日期\") END) AS c4, \"下单日期\" AS v4 FROM \"ds_6\" ORDER BY rowid LIMIT -1 OFFSET 0)",
+    "rows_checked": 160,
+    "samples_json": "{\"rules\": [{\"column\": \"金额\", \"check\": \"not_empty\"}, {\"column\": \"金额\", \"check\": \"gt\", \"value\": 0}, {\"column\": \"数量\", \"check\": \"between\", \"low\": 1, \"high\": 50}, {\"column\": \"交付天数\", \"check\": \"ge\", \"value\": 0}, {\"column\": \"状态码\", \"check\": \"in_codes\"}, {\"column\": \"下单日期\", \"check\": \"not_empty\"}, {\"column\": \"交付天数\", \"check\": \"le\", \"value\": 60}], \"codes\": {\"状态码\": [\"0\", \"1\", \"2\"]}, \"broken\": [0, 0, 0, 0, 0, 0, 0]}",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "value_rules",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "objtype:order",
+    "id": 31,
+    "null_key_rows": null,
+    "query": "SELECT COUNT(*), COALESCE(SUM(CASE WHEN (c0 IS NULL OR c0 = '') THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c0 IS NULL OR c0 = '') AND NOT COALESCE(CASE WHEN ((c0 GLOB '[0-9]*' OR c0 GLOB '-[0-9]*') AND substr(c0, 2) NOT GLOB '*[^0-9.]*' AND c0 NOT GLOB '*.*.*' AND c0 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c0 AS REAL) - ?) <= ? THEN value_rule_order(c0, ?) > 0 ELSE CAST(c0 AS REAL) > ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c1 IS NULL OR c1 = '') AND NOT COALESCE(CASE WHEN ((c1 GLOB '[0-9]*' OR c1 GLOB '-[0-9]*') AND substr(c1, 2) NOT GLOB '*[^0-9.]*' AND c1 NOT GLOB '*.*.*' AND c1 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c1 AS REAL) - ?) <= ? THEN value_rule_order(c1, ?) >= 0 ELSE CAST(c1 AS REAL) >= ? END) AND (CASE WHEN abs(CAST(c1 AS REAL) - ?) <= ? THEN value_rule_order(c1, ?) <= 0 ELSE CAST(c1 AS REAL) <= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c2 IS NULL OR c2 = '') AND NOT COALESCE(CASE WHEN ((c2 GLOB '[0-9]*' OR c2 GLOB '-[0-9]*') AND substr(c2, 2) NOT GLOB '*[^0-9.]*' AND c2 NOT GLOB '*.*.*' AND c2 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c2 AS REAL) - ?) <= ? THEN value_rule_order(c2, ?) >= 0 ELSE CAST(c2 AS REAL) >= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c3 IS NULL OR c3 = '') AND v3 NOT IN (?, ?, ?)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (c4 IS NULL OR c4 = '') THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c2 IS NULL OR c2 = '') AND NOT COALESCE(CASE WHEN ((c2 GLOB '[0-9]*' OR c2 GLOB '-[0-9]*') AND substr(c2, 2) NOT GLOB '*[^0-9.]*' AND c2 NOT GLOB '*.*.*' AND c2 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c2 AS REAL) - ?) <= ? THEN value_rule_order(c2, ?) <= 0 ELSE CAST(c2 AS REAL) <= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0) FROM (SELECT rowid AS r, \"订单号\" AS k0, (CASE WHEN \"金额\" GLOB '*[^ -~]*' THEN trim(\"金额\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"金额\") END) AS c0, \"金额\" AS v0, (CASE WHEN \"数量\" GLOB '*[^ -~]*' THEN trim(\"数量\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"数量\") END) AS c1, \"数量\" AS v1, (CASE WHEN \"交付天数\" GLOB '*[^ -~]*' THEN trim(\"交付天数\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"交付天数\") END) AS c2, \"交付天数\" AS v2, (CASE WHEN \"状态码\" GLOB '*[^ -~]*' THEN trim(\"状态码\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"状态码\") END) AS c3, \"状态码\" AS v3, (CASE WHEN \"下单日期\" GLOB '*[^ -~]*' THEN trim(\"下单日期\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"下单日期\") END) AS c4, \"下单日期\" AS v4 FROM \"ds_6\" ORDER BY rowid LIMIT -1 OFFSET 0)",
+    "rows_checked": 160,
+    "samples_json": "{\"rules\": [{\"check\": \"not_empty\", \"column\": \"金额\"}, {\"check\": \"gt\", \"column\": \"金额\", \"value\": 0}, {\"check\": \"between\", \"column\": \"数量\", \"high\": 50, \"low\": 1}, {\"check\": \"ge\", \"column\": \"交付天数\", \"value\": 0}, {\"check\": \"in_codes\", \"column\": \"状态码\"}, {\"check\": \"not_empty\", \"column\": \"下单日期\"}, {\"check\": \"le\", \"column\": \"交付天数\", \"value\": 60}], \"codes\": {\"状态码\": [\"0\", \"1\", \"2\"]}, \"broken\": [0, 0, 0, 0, 0, 0, 0]}",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "key:订单(订单号)",
+    "id": 32,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_6\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "value_rules",
+    "checked_at": "<time>",
+    "dataset_id": 6,
+    "element_id": "objtype:order",
+    "id": 33,
+    "null_key_rows": null,
+    "query": "SELECT COUNT(*), COALESCE(SUM(CASE WHEN (c0 IS NULL OR c0 = '') THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c0 IS NULL OR c0 = '') AND NOT COALESCE(CASE WHEN ((c0 GLOB '[0-9]*' OR c0 GLOB '-[0-9]*') AND substr(c0, 2) NOT GLOB '*[^0-9.]*' AND c0 NOT GLOB '*.*.*' AND c0 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c0 AS REAL) - ?) <= ? THEN value_rule_order(c0, ?) > 0 ELSE CAST(c0 AS REAL) > ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c1 IS NULL OR c1 = '') AND NOT COALESCE(CASE WHEN ((c1 GLOB '[0-9]*' OR c1 GLOB '-[0-9]*') AND substr(c1, 2) NOT GLOB '*[^0-9.]*' AND c1 NOT GLOB '*.*.*' AND c1 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c1 AS REAL) - ?) <= ? THEN value_rule_order(c1, ?) >= 0 ELSE CAST(c1 AS REAL) >= ? END) AND (CASE WHEN abs(CAST(c1 AS REAL) - ?) <= ? THEN value_rule_order(c1, ?) <= 0 ELSE CAST(c1 AS REAL) <= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c2 IS NULL OR c2 = '') AND NOT COALESCE(CASE WHEN ((c2 GLOB '[0-9]*' OR c2 GLOB '-[0-9]*') AND substr(c2, 2) NOT GLOB '*[^0-9.]*' AND c2 NOT GLOB '*.*.*' AND c2 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c2 AS REAL) - ?) <= ? THEN value_rule_order(c2, ?) >= 0 ELSE CAST(c2 AS REAL) >= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c3 IS NULL OR c3 = '') AND v3 NOT IN (?, ?, ?)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (c4 IS NULL OR c4 = '') THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c2 IS NULL OR c2 = '') AND NOT COALESCE(CASE WHEN ((c2 GLOB '[0-9]*' OR c2 GLOB '-[0-9]*') AND substr(c2, 2) NOT GLOB '*[^0-9.]*' AND c2 NOT GLOB '*.*.*' AND c2 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c2 AS REAL) - ?) <= ? THEN value_rule_order(c2, ?) <= 0 ELSE CAST(c2 AS REAL) <= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0) FROM (SELECT rowid AS r, \"订单号\" AS k0, (CASE WHEN \"金额\" GLOB '*[^ -~]*' THEN trim(\"金额\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"金额\") END) AS c0, \"金额\" AS v0, (CASE WHEN \"数量\" GLOB '*[^ -~]*' THEN trim(\"数量\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"数量\") END) AS c1, \"数量\" AS v1, (CASE WHEN \"交付天数\" GLOB '*[^ -~]*' THEN trim(\"交付天数\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"交付天数\") END) AS c2, \"交付天数\" AS v2, (CASE WHEN \"状态码\" GLOB '*[^ -~]*' THEN trim(\"状态码\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"状态码\") END) AS c3, \"状态码\" AS v3, (CASE WHEN \"下单日期\" GLOB '*[^ -~]*' THEN trim(\"下单日期\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"下单日期\") END) AS c4, \"下单日期\" AS v4 FROM \"ds_6\" ORDER BY rowid LIMIT -1 OFFSET 0)",
+    "rows_checked": 160,
+    "samples_json": "{\"rules\": [{\"check\": \"not_empty\", \"column\": \"金额\"}, {\"check\": \"gt\", \"column\": \"金额\", \"value\": 0}, {\"check\": \"between\", \"column\": \"数量\", \"high\": 50, \"low\": 1}, {\"check\": \"ge\", \"column\": \"交付天数\", \"value\": 0}, {\"check\": \"in_codes\", \"column\": \"状态码\"}, {\"check\": \"not_empty\", \"column\": \"下单日期\"}, {\"check\": \"le\", \"column\": \"交付天数\", \"value\": 60}], \"codes\": {\"状态码\": [\"0\", \"1\", \"2\"]}, \"broken\": [0, 0, 0, 0, 0, 0, 0]}",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 8,
+    "element_id": "key:订单(订单号)",
+    "id": 34,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_8\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "value_rules",
+    "checked_at": "<time>",
+    "dataset_id": 8,
+    "element_id": "objtype:order",
+    "id": 35,
+    "null_key_rows": null,
+    "query": "SELECT COUNT(*), COALESCE(SUM(CASE WHEN (c0 IS NULL OR c0 = '') THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c0 IS NULL OR c0 = '') AND NOT COALESCE(CASE WHEN ((c0 GLOB '[0-9]*' OR c0 GLOB '-[0-9]*') AND substr(c0, 2) NOT GLOB '*[^0-9.]*' AND c0 NOT GLOB '*.*.*' AND c0 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c0 AS REAL) - ?) <= ? THEN value_rule_order(c0, ?) > 0 ELSE CAST(c0 AS REAL) > ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c1 IS NULL OR c1 = '') AND NOT COALESCE(CASE WHEN ((c1 GLOB '[0-9]*' OR c1 GLOB '-[0-9]*') AND substr(c1, 2) NOT GLOB '*[^0-9.]*' AND c1 NOT GLOB '*.*.*' AND c1 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c1 AS REAL) - ?) <= ? THEN value_rule_order(c1, ?) >= 0 ELSE CAST(c1 AS REAL) >= ? END) AND (CASE WHEN abs(CAST(c1 AS REAL) - ?) <= ? THEN value_rule_order(c1, ?) <= 0 ELSE CAST(c1 AS REAL) <= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c2 IS NULL OR c2 = '') AND NOT COALESCE(CASE WHEN ((c2 GLOB '[0-9]*' OR c2 GLOB '-[0-9]*') AND substr(c2, 2) NOT GLOB '*[^0-9.]*' AND c2 NOT GLOB '*.*.*' AND c2 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c2 AS REAL) - ?) <= ? THEN value_rule_order(c2, ?) >= 0 ELSE CAST(c2 AS REAL) >= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c3 IS NULL OR c3 = '') AND v3 NOT IN (?, ?, ?)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (c4 IS NULL OR c4 = '') THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c2 IS NULL OR c2 = '') AND NOT COALESCE(CASE WHEN ((c2 GLOB '[0-9]*' OR c2 GLOB '-[0-9]*') AND substr(c2, 2) NOT GLOB '*[^0-9.]*' AND c2 NOT GLOB '*.*.*' AND c2 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c2 AS REAL) - ?) <= ? THEN value_rule_order(c2, ?) <= 0 ELSE CAST(c2 AS REAL) <= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0) FROM (SELECT rowid AS r, \"订单号\" AS k0, (CASE WHEN \"金额\" GLOB '*[^ -~]*' THEN trim(\"金额\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"金额\") END) AS c0, \"金额\" AS v0, (CASE WHEN \"数量\" GLOB '*[^ -~]*' THEN trim(\"数量\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"数量\") END) AS c1, \"数量\" AS v1, (CASE WHEN \"交付天数\" GLOB '*[^ -~]*' THEN trim(\"交付天数\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"交付天数\") END) AS c2, \"交付天数\" AS v2, (CASE WHEN \"状态码\" GLOB '*[^ -~]*' THEN trim(\"状态码\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"状态码\") END) AS c3, \"状态码\" AS v3, (CASE WHEN \"下单日期\" GLOB '*[^ -~]*' THEN trim(\"下单日期\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"下单日期\") END) AS c4, \"下单日期\" AS v4 FROM \"ds_8\" ORDER BY rowid LIMIT -1 OFFSET 0)",
+    "rows_checked": 160,
+    "samples_json": "{\"rules\": [{\"check\": \"not_empty\", \"column\": \"金额\"}, {\"check\": \"gt\", \"column\": \"金额\", \"value\": 0}, {\"check\": \"between\", \"column\": \"数量\", \"high\": 50, \"low\": 1}, {\"check\": \"ge\", \"column\": \"交付天数\", \"value\": 0}, {\"check\": \"in_codes\", \"column\": \"状态码\"}, {\"check\": \"not_empty\", \"column\": \"下单日期\"}, {\"check\": \"le\", \"column\": \"交付天数\", \"value\": 60}], \"codes\": {\"状态码\": [\"0\", \"1\", \"2\"]}, \"broken\": [0, 3, 0, 0, 0, 0, 0]}",
+    "status": "failed",
+    "violations": 3
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 8,
+    "element_id": "key:订单(订单号)",
+    "id": 36,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_8\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "value_rules",
+    "checked_at": "<time>",
+    "dataset_id": 8,
+    "element_id": "objtype:order",
+    "id": 37,
+    "null_key_rows": null,
+    "query": "SELECT COUNT(*), COALESCE(SUM(CASE WHEN (c0 IS NULL OR c0 = '') THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c0 IS NULL OR c0 = '') AND NOT COALESCE(CASE WHEN ((c0 GLOB '[0-9]*' OR c0 GLOB '-[0-9]*') AND substr(c0, 2) NOT GLOB '*[^0-9.]*' AND c0 NOT GLOB '*.*.*' AND c0 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c0 AS REAL) - ?) <= ? THEN value_rule_order(c0, ?) > 0 ELSE CAST(c0 AS REAL) > ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c1 IS NULL OR c1 = '') AND NOT COALESCE(CASE WHEN ((c1 GLOB '[0-9]*' OR c1 GLOB '-[0-9]*') AND substr(c1, 2) NOT GLOB '*[^0-9.]*' AND c1 NOT GLOB '*.*.*' AND c1 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c1 AS REAL) - ?) <= ? THEN value_rule_order(c1, ?) >= 0 ELSE CAST(c1 AS REAL) >= ? END) AND (CASE WHEN abs(CAST(c1 AS REAL) - ?) <= ? THEN value_rule_order(c1, ?) <= 0 ELSE CAST(c1 AS REAL) <= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c2 IS NULL OR c2 = '') AND NOT COALESCE(CASE WHEN ((c2 GLOB '[0-9]*' OR c2 GLOB '-[0-9]*') AND substr(c2, 2) NOT GLOB '*[^0-9.]*' AND c2 NOT GLOB '*.*.*' AND c2 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c2 AS REAL) - ?) <= ? THEN value_rule_order(c2, ?) >= 0 ELSE CAST(c2 AS REAL) >= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c3 IS NULL OR c3 = '') AND v3 NOT IN (?, ?, ?)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (c4 IS NULL OR c4 = '') THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c2 IS NULL OR c2 = '') AND NOT COALESCE(CASE WHEN ((c2 GLOB '[0-9]*' OR c2 GLOB '-[0-9]*') AND substr(c2, 2) NOT GLOB '*[^0-9.]*' AND c2 NOT GLOB '*.*.*' AND c2 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c2 AS REAL) - ?) <= ? THEN value_rule_order(c2, ?) <= 0 ELSE CAST(c2 AS REAL) <= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0) FROM (SELECT rowid AS r, \"订单号\" AS k0, (CASE WHEN \"金额\" GLOB '*[^ -~]*' THEN trim(\"金额\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"金额\") END) AS c0, \"金额\" AS v0, (CASE WHEN \"数量\" GLOB '*[^ -~]*' THEN trim(\"数量\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"数量\") END) AS c1, \"数量\" AS v1, (CASE WHEN \"交付天数\" GLOB '*[^ -~]*' THEN trim(\"交付天数\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"交付天数\") END) AS c2, \"交付天数\" AS v2, (CASE WHEN \"状态码\" GLOB '*[^ -~]*' THEN trim(\"状态码\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"状态码\") END) AS c3, \"状态码\" AS v3, (CASE WHEN \"下单日期\" GLOB '*[^ -~]*' THEN trim(\"下单日期\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"下单日期\") END) AS c4, \"下单日期\" AS v4 FROM \"ds_8\" ORDER BY rowid LIMIT -1 OFFSET 0)",
+    "rows_checked": 160,
+    "samples_json": "{\"rules\": [{\"check\": \"not_empty\", \"column\": \"金额\"}, {\"check\": \"gt\", \"column\": \"金额\", \"value\": 0}, {\"check\": \"between\", \"column\": \"数量\", \"high\": 50, \"low\": 1}, {\"check\": \"ge\", \"column\": \"交付天数\", \"value\": 0}, {\"check\": \"in_codes\", \"column\": \"状态码\"}, {\"check\": \"not_empty\", \"column\": \"下单日期\"}, {\"check\": \"le\", \"column\": \"交付天数\", \"value\": 60}], \"codes\": {\"状态码\": [\"0\", \"1\", \"2\"]}, \"broken\": [0, 3, 0, 0, 0, 0, 0]}",
+    "status": "failed",
+    "violations": 3
+   },
+   {
+    "check_type": "key_unique",
+    "checked_at": "<time>",
+    "dataset_id": 8,
+    "element_id": "key:订单(订单号)",
+    "id": 38,
+    "null_key_rows": 0,
+    "query": "SELECT \"订单号\", COUNT(*) AS n FROM \"ds_8\" WHERE (\"订单号\" IS NOT NULL AND \"订单号\" <> '') GROUP BY \"订单号\" HAVING COUNT(*) > 1 ORDER BY n DESC, \"订单号\"",
+    "rows_checked": 160,
+    "samples_json": "[]",
+    "status": "passed",
+    "violations": 0
+   },
+   {
+    "check_type": "value_rules",
+    "checked_at": "<time>",
+    "dataset_id": 8,
+    "element_id": "objtype:order",
+    "id": 39,
+    "null_key_rows": null,
+    "query": "SELECT COUNT(*), COALESCE(SUM(CASE WHEN (c0 IS NULL OR c0 = '') THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c0 IS NULL OR c0 = '') AND NOT COALESCE(CASE WHEN ((c0 GLOB '[0-9]*' OR c0 GLOB '-[0-9]*') AND substr(c0, 2) NOT GLOB '*[^0-9.]*' AND c0 NOT GLOB '*.*.*' AND c0 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c0 AS REAL) - ?) <= ? THEN value_rule_order(c0, ?) > 0 ELSE CAST(c0 AS REAL) > ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c1 IS NULL OR c1 = '') AND NOT COALESCE(CASE WHEN ((c1 GLOB '[0-9]*' OR c1 GLOB '-[0-9]*') AND substr(c1, 2) NOT GLOB '*[^0-9.]*' AND c1 NOT GLOB '*.*.*' AND c1 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c1 AS REAL) - ?) <= ? THEN value_rule_order(c1, ?) >= 0 ELSE CAST(c1 AS REAL) >= ? END) AND (CASE WHEN abs(CAST(c1 AS REAL) - ?) <= ? THEN value_rule_order(c1, ?) <= 0 ELSE CAST(c1 AS REAL) <= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c2 IS NULL OR c2 = '') AND NOT COALESCE(CASE WHEN ((c2 GLOB '[0-9]*' OR c2 GLOB '-[0-9]*') AND substr(c2, 2) NOT GLOB '*[^0-9.]*' AND c2 NOT GLOB '*.*.*' AND c2 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c2 AS REAL) - ?) <= ? THEN value_rule_order(c2, ?) >= 0 ELSE CAST(c2 AS REAL) >= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c3 IS NULL OR c3 = '') AND v3 NOT IN (?, ?, ?)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (c4 IS NULL OR c4 = '') THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c2 IS NULL OR c2 = '') AND NOT COALESCE(CASE WHEN ((c2 GLOB '[0-9]*' OR c2 GLOB '-[0-9]*') AND substr(c2, 2) NOT GLOB '*[^0-9.]*' AND c2 NOT GLOB '*.*.*' AND c2 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c2 AS REAL) - ?) <= ? THEN value_rule_order(c2, ?) <= 0 ELSE CAST(c2 AS REAL) <= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0) FROM (SELECT rowid AS r, \"订单号\" AS k0, (CASE WHEN \"金额\" GLOB '*[^ -~]*' THEN trim(\"金额\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"金额\") END) AS c0, \"金额\" AS v0, (CASE WHEN \"数量\" GLOB '*[^ -~]*' THEN trim(\"数量\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"数量\") END) AS c1, \"数量\" AS v1, (CASE WHEN \"交付天数\" GLOB '*[^ -~]*' THEN trim(\"交付天数\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"交付天数\") END) AS c2, \"交付天数\" AS v2, (CASE WHEN \"状态码\" GLOB '*[^ -~]*' THEN trim(\"状态码\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"状态码\") END) AS c3, \"状态码\" AS v3, (CASE WHEN \"下单日期\" GLOB '*[^ -~]*' THEN trim(\"下单日期\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"下单日期\") END) AS c4, \"下单日期\" AS v4 FROM \"ds_8\" ORDER BY rowid LIMIT -1 OFFSET 0)",
+    "rows_checked": 160,
+    "samples_json": "{\"rules\": [{\"check\": \"not_empty\", \"column\": \"金额\"}, {\"check\": \"gt\", \"column\": \"金额\", \"value\": 0}, {\"check\": \"between\", \"column\": \"数量\", \"high\": 50, \"low\": 1}, {\"check\": \"ge\", \"column\": \"交付天数\", \"value\": 0}, {\"check\": \"in_codes\", \"column\": \"状态码\"}, {\"check\": \"not_empty\", \"column\": \"下单日期\"}, {\"check\": \"le\", \"column\": \"交付天数\", \"value\": 60}], \"codes\": {\"状态码\": [\"0\", \"1\", \"2\"]}, \"broken\": [0, 3, 0, 0, 0, 0, 0]}",
+    "status": "failed",
+    "violations": 3
+   },
+   {
+    "check_type": "value_rules",
+    "checked_at": "<time>",
+    "dataset_id": 9,
+    "element_id": "objtype:order",
+    "id": 40,
+    "null_key_rows": null,
+    "query": "SELECT COUNT(*), COALESCE(SUM(CASE WHEN (c0 IS NULL OR c0 = '') THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c0 IS NULL OR c0 = '') AND NOT COALESCE(CASE WHEN ((c0 GLOB '[0-9]*' OR c0 GLOB '-[0-9]*') AND substr(c0, 2) NOT GLOB '*[^0-9.]*' AND c0 NOT GLOB '*.*.*' AND c0 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c0 AS REAL) - ?) <= ? THEN value_rule_order(c0, ?) > 0 ELSE CAST(c0 AS REAL) > ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c1 IS NULL OR c1 = '') AND NOT COALESCE(CASE WHEN ((c1 GLOB '[0-9]*' OR c1 GLOB '-[0-9]*') AND substr(c1, 2) NOT GLOB '*[^0-9.]*' AND c1 NOT GLOB '*.*.*' AND c1 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c1 AS REAL) - ?) <= ? THEN value_rule_order(c1, ?) >= 0 ELSE CAST(c1 AS REAL) >= ? END) AND (CASE WHEN abs(CAST(c1 AS REAL) - ?) <= ? THEN value_rule_order(c1, ?) <= 0 ELSE CAST(c1 AS REAL) <= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c2 IS NULL OR c2 = '') AND NOT COALESCE(CASE WHEN ((c2 GLOB '[0-9]*' OR c2 GLOB '-[0-9]*') AND substr(c2, 2) NOT GLOB '*[^0-9.]*' AND c2 NOT GLOB '*.*.*' AND c2 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c2 AS REAL) - ?) <= ? THEN value_rule_order(c2, ?) >= 0 ELSE CAST(c2 AS REAL) >= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c3 IS NULL OR c3 = '') AND v3 NOT IN (?, ?, ?)) THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (c4 IS NULL OR c4 = '') THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN (NOT (c2 IS NULL OR c2 = '') AND NOT COALESCE(CASE WHEN ((c2 GLOB '[0-9]*' OR c2 GLOB '-[0-9]*') AND substr(c2, 2) NOT GLOB '*[^0-9.]*' AND c2 NOT GLOB '*.*.*' AND c2 NOT GLOB '*.') THEN (CASE WHEN abs(CAST(c2 AS REAL) - ?) <= ? THEN value_rule_order(c2, ?) <= 0 ELSE CAST(c2 AS REAL) <= ? END) ELSE 0 END, 0)) THEN 1 ELSE 0 END), 0) FROM (SELECT rowid AS r, \"订单号\" AS k0, (CASE WHEN \"金额\" GLOB '*[^ -~]*' THEN trim(\"金额\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"金额\") END) AS c0, \"金额\" AS v0, (CASE WHEN \"数量\" GLOB '*[^ -~]*' THEN trim(\"数量\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"数量\") END) AS c1, \"数量\" AS v1, (CASE WHEN \"交付天数\" GLOB '*[^ -~]*' THEN trim(\"交付天数\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"交付天数\") END) AS c2, \"交付天数\" AS v2, (CASE WHEN \"状态码\" GLOB '*[^ -~]*' THEN trim(\"状态码\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"状态码\") END) AS c3, \"状态码\" AS v3, (CASE WHEN \"下单日期\" GLOB '*[^ -~]*' THEN trim(\"下单日期\", '\t\n\u000b\f\r\u001c\u001d\u001e\u001f                  　​‌‍⁠﻿') ELSE trim(\"下单日期\") END) AS c4, \"下单日期\" AS v4 FROM \"ds_9\" ORDER BY rowid LIMIT -1 OFFSET 0)",
+    "rows_checked": 160,
+    "samples_json": "{\"rules\": [{\"check\": \"not_empty\", \"column\": \"金额\"}, {\"check\": \"gt\", \"column\": \"金额\", \"value\": 0}, {\"check\": \"between\", \"column\": \"数量\", \"high\": 50, \"low\": 1}, {\"check\": \"ge\", \"column\": \"交付天数\", \"value\": 0}, {\"check\": \"in_codes\", \"column\": \"状态码\"}, {\"check\": \"not_empty\", \"column\": \"下单日期\"}, {\"check\": \"le\", \"column\": \"交付天数\", \"value\": 60}], \"codes\": {\"状态码\": [\"0\", \"1\", \"2\"]}, \"broken\": [0, 0, 0, 0, 0, 0, 0]}",
+    "status": "passed",
+    "violations": 0
+   }
+  ],
+  "confirmation": [
+   {
+    "confirmed_at": "<time>",
+    "confirmed_by": "Bob",
+    "confirmed_by_user_id": 3,
+    "content_json": "{\"builders_only\": false, \"chars\": 59, \"kind\": \"md\", \"name\": \"订单管理规定.md\", \"passages\": 3, \"sha256\": \"45f38497bc3ddffecff4d0fbde5515e035578c2d344c1dbf769275261941fab9\"}",
+    "dataset_versions_json": "{}",
+    "element_id": "document:34f0850fe8fd066a",
+    "evidence_ref": null,
+    "id": 1,
+    "proposed_by": "Ann",
+    "self_confirmed": 0,
+    "snapshot_json": null
+   },
+   {
+    "confirmed_at": "<time>",
+    "confirmed_by": "Bob",
+    "confirmed_by_user_id": 3,
+    "content_json": "{\"column\": \"状态码\", \"dataset\": \"订单\", \"type\": \"order\", \"values\": [{\"description\": \"\", \"label\": \"已交付\", \"value\": \"0\"}, {\"description\": \"\", \"label\": \"生产中\", \"value\": \"1\"}, {\"description\": \"\", \"label\": \"已取消\", \"value\": \"2\"}]}",
+    "dataset_versions_json": "{\"订单\": 1}",
+    "element_id": "enum:order:状态码",
+    "evidence_ref": "dataset:订单@v1",
+    "id": 2,
+    "proposed_by": "Ann",
+    "self_confirmed": 0,
+    "snapshot_json": null
+   },
+   {
+    "confirmed_at": "<time>",
+    "confirmed_by": "Bob",
+    "confirmed_by_user_id": 3,
+    "content_json": "{\"dataset\": \"订单\", \"description\": \"客户下的一张订单\", \"english_name\": \"order\", \"key\": [\"订单号\"], \"name\": \"订单\", \"properties\": [{\"column\": \"订单号\", \"enum\": false, \"name\": \"订单号\", \"type\": \"text\"}, {\"column\": \"金额\", \"enum\": false, \"name\": \"金额\", \"type\": \"integer\"}, {\"column\": \"状态码\", \"enum\": true, \"name\": \"状态码\", \"type\": \"integer\"}, {\"column\": \"数量\", \"enum\": false, \"name\": \"数量\", \"type\": \"integer\"}, {\"column\": \"交付天数\", \"enum\": false, \"name\": \"交付天数\", \"type\": \"integer\"}, {\"column\": \"下单日期\", \"enum\": false, \"name\": \"下单日期\", \"type\": \"date\"}], \"rules\": [{\"check\": \"not_empty\", \"column\": \"金额\"}, {\"check\": \"gt\", \"column\": \"金额\", \"value\": 0}, {\"check\": \"between\", \"column\": \"数量\", \"high\": 50, \"low\": 1}, {\"check\": \"ge\", \"column\": \"交付天数\", \"value\": 0}, {\"check\": \"in_codes\", \"column\": \"状态码\"}, {\"check\": \"not_empty\", \"column\": \"下单日期\"}]}",
+    "dataset_versions_json": "{\"订单\": 1}",
+    "element_id": "objtype:order",
+    "evidence_ref": "check_result:24,check_result:25,dataset:订单@v1",
+    "id": 3,
+    "proposed_by": "Ann",
+    "self_confirmed": 0,
+    "snapshot_json": null
+   },
+   {
+    "confirmed_at": "<time>",
+    "confirmed_by": "Bob",
+    "confirmed_by_user_id": 3,
+    "content_json": "{\"dataset\": \"订单\", \"description\": \"一张订单\", \"english_name\": \"order\", \"key\": [\"订单号\"], \"name\": \"订单\", \"properties\": [{\"column\": \"订单号\", \"enum\": false, \"name\": \"订单号\", \"type\": \"text\"}, {\"column\": \"金额\", \"enum\": false, \"name\": \"金额\", \"type\": \"integer\"}, {\"column\": \"状态码\", \"enum\": true, \"name\": \"状态码\", \"type\": \"integer\"}, {\"column\": \"数量\", \"enum\": false, \"name\": \"数量\", \"type\": \"integer\"}, {\"column\": \"交付天数\", \"enum\": false, \"name\": \"交付天数\", \"type\": \"integer\"}, {\"column\": \"下单日期\", \"enum\": false, \"name\": \"下单日期\", \"type\": \"date\"}], \"rules\": [{\"check\": \"not_empty\", \"column\": \"金额\"}, {\"check\": \"gt\", \"column\": \"金额\", \"value\": 0}, {\"check\": \"between\", \"column\": \"数量\", \"high\": 50, \"low\": 1}, {\"check\": \"ge\", \"column\": \"交付天数\", \"value\": 0}, {\"check\": \"in_codes\", \"column\": \"状态码\"}, {\"check\": \"not_empty\", \"column\": \"下单日期\"}, {\"check\": \"le\", \"column\": \"交付天数\", \"value\": 60}]}",
+    "dataset_versions_json": "{\"订单\": 1}",
+    "element_id": "objtype:order",
+    "evidence_ref": "check_result:32,check_result:33,dataset:订单@v1",
+    "id": 4,
+    "proposed_by": "Ann",
+    "self_confirmed": 0,
+    "snapshot_json": null
+   }
+  ],
+  "element_dep": [
+   {
+    "depends_on": "column:订单.状态码",
+    "element_id": "enum:order:状态码"
+   },
+   {
+    "depends_on": "dataset:订单",
+    "element_id": "objtype:order"
+   },
+   {
+    "depends_on": "enum:order:状态码",
+    "element_id": "objtype:order"
+   }
+  ],
+  "element_state": [
+   {
+    "anchors_json": null,
+    "cause": null,
+    "changed_json": "{\"by\": [], \"of\": \"87d98f52aaa825fd\"}",
+    "confirmed_at": "<time>",
+    "confirmed_by": "Bob",
+    "confirmed_by_user_id": 3,
+    "content_json": "{\"builders_only\": false, \"chars\": 59, \"kind\": \"md\", \"name\": \"订单管理规定.md\", \"passages\": 3, \"sha256\": \"45f38497bc3ddffecff4d0fbde5515e035578c2d344c1dbf769275261941fab9\"}",
+    "element_id": "document:34f0850fe8fd066a",
+    "evidence_ref": null,
+    "proposed_by": "Ann",
+    "proposed_by_user_id": 2,
+    "reason": null,
+    "state": "confirmed",
+    "version": 2,
+    "via": null
+   },
+   {
+    "anchors_json": null,
+    "cause": null,
+    "changed_json": "{\"by\": [2], \"of\": \"1f28d533c8ae5cd5\"}",
+    "confirmed_at": "<time>",
+    "confirmed_by": "Ann",
+    "confirmed_by_user_id": 2,
+    "content_json": "{\"builders_only\": true, \"chars\": 13, \"kind\": \"md\", \"name\": \"草稿.md\", \"passages\": 2, \"sha256\": \"15bebb16d4787ca257cb65df7c9d6ef4e2322284089690655e9dab9778a64576\"}",
+    "element_id": "document:bf866c025465c8ae",
+    "evidence_ref": null,
+    "proposed_by": "Ann",
+    "proposed_by_user_id": 2,
+    "reason": null,
+    "state": "checked",
+    "version": 1,
+    "via": null
+   },
+   {
+    "anchors_json": "{\"counts\": {\"0\": 96, \"1\": 48, \"2\": 16}, \"dataset\": \"订单\", \"version\": 1}",
+    "cause": null,
+    "changed_json": "{\"by\": [], \"of\": \"b33e3bb952223b25\"}",
+    "confirmed_at": "<time>",
+    "confirmed_by": "Bob",
+    "confirmed_by_user_id": 3,
+    "content_json": "{\"column\": \"状态码\", \"dataset\": \"订单\", \"type\": \"order\", \"values\": [{\"description\": \"\", \"label\": \"已交付\", \"value\": \"0\"}, {\"description\": \"\", \"label\": \"生产中\", \"value\": \"1\"}, {\"description\": \"\", \"label\": \"已取消\", \"value\": \"2\"}]}",
+    "element_id": "enum:order:状态码",
+    "evidence_ref": "dataset:订单@v1",
+    "proposed_by": "Ann",
+    "proposed_by_user_id": 2,
+    "reason": null,
+    "state": "confirmed",
+    "version": 2,
+    "via": null
+   },
+   {
+    "anchors_json": "{\"dataset\": \"订单\", \"version\": 1}",
+    "cause": "data",
+    "changed_json": "{\"by\": [], \"of\": \"8f723a0c84e63bd9\"}",
+    "confirmed_at": "<time>",
+    "confirmed_by": "Bob",
+    "confirmed_by_user_id": 3,
+    "content_json": "{\"dataset\": \"订单\", \"description\": \"一张订单\", \"english_name\": \"order\", \"key\": [\"订单号\"], \"name\": \"订单\", \"properties\": [{\"column\": \"订单号\", \"enum\": false, \"name\": \"订单号\", \"type\": \"text\"}, {\"column\": \"金额\", \"enum\": false, \"name\": \"金额\", \"type\": \"integer\"}, {\"column\": \"状态码\", \"enum\": true, \"name\": \"状态码\", \"type\": \"integer\"}, {\"column\": \"数量\", \"enum\": false, \"name\": \"数量\", \"type\": \"integer\"}, {\"column\": \"交付天数\", \"enum\": false, \"name\": \"交付天数\", \"type\": \"integer\"}, {\"column\": \"下单日期\", \"enum\": false, \"name\": \"下单日期\", \"type\": \"date\"}], \"rules\": [{\"check\": \"not_empty\", \"column\": \"金额\"}, {\"check\": \"gt\", \"column\": \"金额\", \"value\": 0}, {\"check\": \"between\", \"column\": \"数量\", \"high\": 50, \"low\": 1}, {\"check\": \"ge\", \"column\": \"交付天数\", \"value\": 0}, {\"check\": \"in_codes\", \"column\": \"状态码\"}, {\"check\": \"not_empty\", \"column\": \"下单日期\"}, {\"check\": \"le\", \"column\": \"交付天数\", \"value\": 60}]}",
+    "element_id": "objtype:order",
+    "evidence_ref": "check_result:32,check_result:33,dataset:订单@v1",
+    "proposed_by": "Ann",
+    "proposed_by_user_id": 2,
+    "reason": "值规则“金额”要大于 0：查了全部 160 行，有 3 行不满足，例如 DD20260001、DD20260002、DD20260003",
+    "state": "needs_look",
+    "version": 6,
+    "via": "self"
+   }
+  ],
+  "log": [
+   {
+    "after_json": "{\"username\": \"root\", \"role\": \"admin\"}",
+    "before_json": null,
+    "change": "user_created",
+    "element_id": "user:1",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "host"
+   },
+   {
+    "after_json": null,
+    "before_json": null,
+    "change": "login",
+    "element_id": "user:1",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "root"
+   },
+   {
+    "after_json": "{\"username\": \"ann\", \"role\": \"builder\"}",
+    "before_json": null,
+    "change": "user_created",
+    "element_id": "user:2",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "root"
+   },
+   {
+    "after_json": null,
+    "before_json": null,
+    "change": "login",
+    "element_id": "user:2",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "ann"
+   },
+   {
+    "after_json": null,
+    "before_json": null,
+    "change": "password_changed",
+    "element_id": "user:2",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "ann"
+   },
+   {
+    "after_json": "{\"username\": \"bob\", \"role\": \"builder\"}",
+    "before_json": null,
+    "change": "user_created",
+    "element_id": "user:3",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "root"
+   },
+   {
+    "after_json": null,
+    "before_json": null,
+    "change": "login",
+    "element_id": "user:3",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "bob"
+   },
+   {
+    "after_json": null,
+    "before_json": null,
+    "change": "password_changed",
+    "element_id": "user:3",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "bob"
+   },
+   {
+    "after_json": "{\"username\": \"vera\", \"role\": \"viewer\"}",
+    "before_json": null,
+    "change": "user_created",
+    "element_id": "user:4",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "root"
+   },
+   {
+    "after_json": null,
+    "before_json": null,
+    "change": "login",
+    "element_id": "user:4",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "vera"
+   },
+   {
+    "after_json": null,
+    "before_json": null,
+    "change": "password_changed",
+    "element_id": "user:4",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "vera"
+   },
+   {
+    "after_json": "{\"version\": 1, \"rows_in\": 12, \"rows_stored\": 12, \"dropped\": {}, \"file_sha256\": \"d14a03a10616f13f56a0974fc7f77f3cedb5bbb9ae00b94738c1fbf43839c3bc\"}",
+    "before_json": null,
+    "change": "import v1: 12 rows in the file, 12 stored, 0 dropped",
+    "element_id": "dataset:交付统计",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": "{\"version\": 1, \"rows_in\": 12, \"rows_stored\": 12, \"dropped\": {}, \"file_sha256\": \"46c0e62e6f3a77051fff8dcb471a00c98072d6116d133e765053b10fd764a4b8\"}",
+    "before_json": null,
+    "change": "import v1: 12 rows in the file, 12 stored, 0 dropped",
+    "element_id": "dataset:产品",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": "{\"version\": 1, \"rows_in\": 45, \"rows_stored\": 45, \"dropped\": {}, \"file_sha256\": \"a2c4918d7b4ed91a87a9fad99dc71b0e6f3b4b47c1e8d07e9bcc3e990423b5e1\"}",
+    "before_json": null,
+    "change": "import v1: 45 rows in the file, 45 stored, 0 dropped",
+    "element_id": "dataset:售后工单",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": "{\"version\": 1, \"rows_in\": 31, \"rows_stored\": 31, \"dropped\": {}, \"file_sha256\": \"489123c69b477cc6e891096b2e07f5b8b5ce67b05d30756056955188da9c58e2\"}",
+    "before_json": null,
+    "change": "import v1: 31 rows in the file, 31 stored, 0 dropped",
+    "element_id": "dataset:客户",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": "{\"version\": 1, \"rows_in\": 72, \"rows_stored\": 72, \"dropped\": {}, \"file_sha256\": \"a2a0437fa00a4dbb4a4d9ed3f2385575747746029cb46e7b53ac72a7bd8e8acf\"}",
+    "before_json": null,
+    "change": "import v1: 72 rows in the file, 72 stored, 0 dropped",
+    "element_id": "dataset:库存快照",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": "{\"version\": 1, \"rows_in\": 160, \"rows_stored\": 160, \"dropped\": {}, \"file_sha256\": \"baa10801dfeed98586e56a450981d7070b21043a583a8b2349e349f06466c4b6\"}",
+    "before_json": null,
+    "change": "import v1: 160 rows in the file, 160 stored, 0 dropped",
+    "element_id": "dataset:订单",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": "{\"version\": 1, \"rows_in\": 121, \"rows_stored\": 121, \"dropped\": {}, \"file_sha256\": \"b80e79d214944f950c6622aaf7979292304915445524a15b76878e394ac819a9\"}",
+    "before_json": null,
+    "change": "import v1: 121 rows in the file, 121 stored, 0 dropped",
+    "element_id": "dataset:订单承诺",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": "{\"state\": \"checked\", \"evidence_ref\": null, \"confirmed_by\": \"Ann\", \"confirmed_at\": \"<time>\", \"version\": 1, \"content_json\": \"{\\\"builders_only\\\": false, \\\"chars\\\": 59, \\\"kind\\\": \\\"md\\\", \\\"name\\\": \\\"订单管理规定.md\\\", \\\"passages\\\": 3, \\\"sha256\\\": \\\"45f38497bc3ddffecff4d0fbde5515e035578c2d344c1dbf769275261941fab9\\\"}\", \"anchors_json\": null}",
+    "before_json": null,
+    "change": "checked",
+    "element_id": "document:34f0850fe8fd066a",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": "{\"state\": \"confirmed\", \"evidence_ref\": null, \"confirmed_by\": \"Bob\", \"confirmed_at\": \"<time>\", \"version\": 2, \"content_json\": \"{\\\"builders_only\\\": false, \\\"chars\\\": 59, \\\"kind\\\": \\\"md\\\", \\\"name\\\": \\\"订单管理规定.md\\\", \\\"passages\\\": 3, \\\"sha256\\\": \\\"45f38497bc3ddffecff4d0fbde5515e035578c2d344c1dbf769275261941fab9\\\"}\", \"anchors_json\": null}",
+    "before_json": "{\"state\": \"checked\", \"evidence_ref\": null, \"confirmed_by\": \"Ann\", \"confirmed_at\": \"<time>\", \"version\": 1, \"content_json\": \"{\\\"builders_only\\\": false, \\\"chars\\\": 59, \\\"kind\\\": \\\"md\\\", \\\"name\\\": \\\"订单管理规定.md\\\", \\\"passages\\\": 3, \\\"sha256\\\": \\\"45f38497bc3ddffecff4d0fbde5515e035578c2d344c1dbf769275261941fab9\\\"}\", \"anchors_json\": null}",
+    "change": "confirmed",
+    "element_id": "document:34f0850fe8fd066a",
+    "time": "<time>",
+    "user_id": 3,
+    "via_token": null,
+    "who": "Bob"
+   },
+   {
+    "after_json": "{\"state\": \"checked\", \"evidence_ref\": null, \"confirmed_by\": \"Ann\", \"confirmed_at\": \"<time>\", \"version\": 1, \"content_json\": \"{\\\"builders_only\\\": true, \\\"chars\\\": 13, \\\"kind\\\": \\\"md\\\", \\\"name\\\": \\\"草稿.md\\\", \\\"passages\\\": 2, \\\"sha256\\\": \\\"15bebb16d4787ca257cb65df7c9d6ef4e2322284089690655e9dab9778a64576\\\"}\", \"anchors_json\": null}",
+    "before_json": null,
+    "change": "checked",
+    "element_id": "document:bf866c025465c8ae",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": "{\"state\": \"checked\", \"evidence_ref\": \"check_result:19,dataset:订单@v1\", \"confirmed_by\": \"Ann\", \"confirmed_at\": \"<time>\", \"version\": 1, \"content_json\": \"{\\\"dataset\\\": \\\"订单\\\", \\\"description\\\": \\\"客户下的一张订单\\\", \\\"english_name\\\": \\\"order\\\", \\\"key\\\": [\\\"订单号\\\"], \\\"name\\\": \\\"订单\\\", \\\"properties\\\": [{\\\"column\\\": \\\"订单号\\\", \\\"enum\\\": false, \\\"name\\\": \\\"订单号\\\", \\\"type\\\": \\\"text\\\"}, {\\\"column\\\": \\\"金额\\\", \\\"enum\\\": false, \\\"name\\\": \\\"金额\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"状态码\\\", \\\"enum\\\": true, \\\"name\\\": \\\"状态码\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"数量\\\", \\\"enum\\\": false, \\\"name\\\": \\\"数量\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"交付天数\\\", \\\"enum\\\": false, \\\"name\\\": \\\"交付天数\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"下单日期\\\", \\\"enum\\\": false, \\\"name\\\": \\\"下单日期\\\", \\\"type\\\": \\\"date\\\"}], \\\"rules\\\": [{\\\"check\\\": \\\"not_empty\\\", \\\"column\\\": \\\"金额\\\"}, {\\\"check\\\": \\\"gt\\\", \\\"column\\\": \\\"金额\\\", \\\"value\\\": 0}, {\\\"check\\\": \\\"between\\\", \\\"column\\\": \\\"数量\\\", \\\"high\\\": 50, \\\"low\\\": 1}, {\\\"check\\\": \\\"ge\\\", \\\"column\\\": \\\"交付天数\\\", \\\"value\\\": 0}, {\\\"check\\\": \\\"in_codes\\\", \\\"column\\\": \\\"状态码\\\"}, {\\\"check\\\": \\\"not_empty\\\", \\\"column\\\": \\\"下单日期\\\"}]}\", \"anchors_json\": \"48 bytes, sha256 dc2eed7becf8\"}",
+    "before_json": null,
+    "change": "checked",
+    "element_id": "objtype:order",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": "{\"state\": \"checked\", \"evidence_ref\": \"dataset:订单@v1\", \"confirmed_by\": \"Ann\", \"confirmed_at\": \"<time>\", \"version\": 1, \"content_json\": \"{\\\"column\\\": \\\"状态码\\\", \\\"dataset\\\": \\\"订单\\\", \\\"type\\\": \\\"order\\\", \\\"values\\\": [{\\\"description\\\": \\\"\\\", \\\"label\\\": \\\"已交付\\\", \\\"value\\\": \\\"0\\\"}, {\\\"description\\\": \\\"\\\", \\\"label\\\": \\\"生产中\\\", \\\"value\\\": \\\"1\\\"}, {\\\"description\\\": \\\"\\\", \\\"label\\\": \\\"已取消\\\", \\\"value\\\": \\\"2\\\"}]}\", \"anchors_json\": \"70 bytes, sha256 553b16a02822\"}",
+    "before_json": null,
+    "change": "checked",
+    "element_id": "enum:order:状态码",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": "{\"state\": \"confirmed\", \"evidence_ref\": \"dataset:订单@v1\", \"confirmed_by\": \"Bob\", \"confirmed_at\": \"<time>\", \"version\": 2, \"content_json\": \"{\\\"column\\\": \\\"状态码\\\", \\\"dataset\\\": \\\"订单\\\", \\\"type\\\": \\\"order\\\", \\\"values\\\": [{\\\"description\\\": \\\"\\\", \\\"label\\\": \\\"已交付\\\", \\\"value\\\": \\\"0\\\"}, {\\\"description\\\": \\\"\\\", \\\"label\\\": \\\"生产中\\\", \\\"value\\\": \\\"1\\\"}, {\\\"description\\\": \\\"\\\", \\\"label\\\": \\\"已取消\\\", \\\"value\\\": \\\"2\\\"}]}\", \"anchors_json\": \"70 bytes, sha256 553b16a02822\"}",
+    "before_json": "{\"state\": \"checked\", \"evidence_ref\": \"dataset:订单@v1\", \"confirmed_by\": \"Ann\", \"confirmed_at\": \"<time>\", \"version\": 1, \"content_json\": \"{\\\"column\\\": \\\"状态码\\\", \\\"dataset\\\": \\\"订单\\\", \\\"type\\\": \\\"order\\\", \\\"values\\\": [{\\\"description\\\": \\\"\\\", \\\"label\\\": \\\"已交付\\\", \\\"value\\\": \\\"0\\\"}, {\\\"description\\\": \\\"\\\", \\\"label\\\": \\\"生产中\\\", \\\"value\\\": \\\"1\\\"}, {\\\"description\\\": \\\"\\\", \\\"label\\\": \\\"已取消\\\", \\\"value\\\": \\\"2\\\"}]}\", \"anchors_json\": \"70 bytes, sha256 553b16a02822\"}",
+    "change": "confirmed",
+    "element_id": "enum:order:状态码",
+    "time": "<time>",
+    "user_id": 3,
+    "via_token": null,
+    "who": "Bob"
+   },
+   {
+    "after_json": "{\"state\": \"confirmed\", \"evidence_ref\": \"check_result:24,check_result:25,dataset:订单@v1\", \"confirmed_by\": \"Bob\", \"confirmed_at\": \"<time>\", \"version\": 2, \"content_json\": \"{\\\"dataset\\\": \\\"订单\\\", \\\"description\\\": \\\"客户下的一张订单\\\", \\\"english_name\\\": \\\"order\\\", \\\"key\\\": [\\\"订单号\\\"], \\\"name\\\": \\\"订单\\\", \\\"properties\\\": [{\\\"column\\\": \\\"订单号\\\", \\\"enum\\\": false, \\\"name\\\": \\\"订单号\\\", \\\"type\\\": \\\"text\\\"}, {\\\"column\\\": \\\"金额\\\", \\\"enum\\\": false, \\\"name\\\": \\\"金额\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"状态码\\\", \\\"enum\\\": true, \\\"name\\\": \\\"状态码\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"数量\\\", \\\"enum\\\": false, \\\"name\\\": \\\"数量\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"交付天数\\\", \\\"enum\\\": false, \\\"name\\\": \\\"交付天数\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"下单日期\\\", \\\"enum\\\": false, \\\"name\\\": \\\"下单日期\\\", \\\"type\\\": \\\"date\\\"}], \\\"rules\\\": [{\\\"check\\\": \\\"not_empty\\\", \\\"column\\\": \\\"金额\\\"}, {\\\"check\\\": \\\"gt\\\", \\\"column\\\": \\\"金额\\\", \\\"value\\\": 0}, {\\\"check\\\": \\\"between\\\", \\\"column\\\": \\\"数量\\\", \\\"high\\\": 50, \\\"low\\\": 1}, {\\\"check\\\": \\\"ge\\\", \\\"column\\\": \\\"交付天数\\\", \\\"value\\\": 0}, {\\\"check\\\": \\\"in_codes\\\", \\\"column\\\": \\\"状态码\\\"}, {\\\"check\\\": \\\"not_empty\\\", \\\"column\\\": \\\"下单日期\\\"}]}\", \"anchors_json\": \"31 bytes, sha256 481abea085d4\"}",
+    "before_json": "{\"state\": \"checked\", \"evidence_ref\": \"check_result:19,dataset:订单@v1\", \"confirmed_by\": \"Ann\", \"confirmed_at\": \"<time>\", \"version\": 1, \"content_json\": \"{\\\"dataset\\\": \\\"订单\\\", \\\"description\\\": \\\"客户下的一张订单\\\", \\\"english_name\\\": \\\"order\\\", \\\"key\\\": [\\\"订单号\\\"], \\\"name\\\": \\\"订单\\\", \\\"properties\\\": [{\\\"column\\\": \\\"订单号\\\", \\\"enum\\\": false, \\\"name\\\": \\\"订单号\\\", \\\"type\\\": \\\"text\\\"}, {\\\"column\\\": \\\"金额\\\", \\\"enum\\\": false, \\\"name\\\": \\\"金额\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"状态码\\\", \\\"enum\\\": true, \\\"name\\\": \\\"状态码\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"数量\\\", \\\"enum\\\": false, \\\"name\\\": \\\"数量\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"交付天数\\\", \\\"enum\\\": false, \\\"name\\\": \\\"交付天数\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"下单日期\\\", \\\"enum\\\": false, \\\"name\\\": \\\"下单日期\\\", \\\"type\\\": \\\"date\\\"}], \\\"rules\\\": [{\\\"check\\\": \\\"not_empty\\\", \\\"column\\\": \\\"金额\\\"}, {\\\"check\\\": \\\"gt\\\", \\\"column\\\": \\\"金额\\\", \\\"value\\\": 0}, {\\\"check\\\": \\\"between\\\", \\\"column\\\": \\\"数量\\\", \\\"high\\\": 50, \\\"low\\\": 1}, {\\\"check\\\": \\\"ge\\\", \\\"column\\\": \\\"交付天数\\\", \\\"value\\\": 0}, {\\\"check\\\": \\\"in_codes\\\", \\\"column\\\": \\\"状态码\\\"}, {\\\"check\\\": \\\"not_empty\\\", \\\"column\\\": \\\"下单日期\\\"}]}\", \"anchors_json\": \"48 bytes, sha256 dc2eed7becf8\"}",
+    "change": "confirmed",
+    "element_id": "objtype:order",
+    "time": "<time>",
+    "user_id": 3,
+    "via_token": null,
+    "who": "Bob"
+   },
+   {
+    "after_json": "{\"state\": \"checked\", \"evidence_ref\": \"check_result:26,dataset:订单@v1\", \"confirmed_by\": \"Ann\", \"confirmed_at\": \"<time>\", \"version\": 3, \"content_json\": \"{\\\"dataset\\\": \\\"订单\\\", \\\"description\\\": \\\"一张订单\\\", \\\"english_name\\\": \\\"order\\\", \\\"key\\\": [\\\"订单号\\\"], \\\"name\\\": \\\"订单\\\", \\\"properties\\\": [{\\\"column\\\": \\\"订单号\\\", \\\"enum\\\": false, \\\"name\\\": \\\"订单号\\\", \\\"type\\\": \\\"text\\\"}, {\\\"column\\\": \\\"金额\\\", \\\"enum\\\": false, \\\"name\\\": \\\"金额\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"状态码\\\", \\\"enum\\\": true, \\\"name\\\": \\\"状态码\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"数量\\\", \\\"enum\\\": false, \\\"name\\\": \\\"数量\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"交付天数\\\", \\\"enum\\\": false, \\\"name\\\": \\\"交付天数\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"下单日期\\\", \\\"enum\\\": false, \\\"name\\\": \\\"下单日期\\\", \\\"type\\\": \\\"date\\\"}], \\\"rules\\\": [{\\\"check\\\": \\\"not_empty\\\", \\\"column\\\": \\\"金额\\\"}, {\\\"check\\\": \\\"gt\\\", \\\"column\\\": \\\"金额\\\", \\\"value\\\": 0}, {\\\"check\\\": \\\"between\\\", \\\"column\\\": \\\"数量\\\", \\\"high\\\": 50, \\\"low\\\": 1}, {\\\"check\\\": \\\"ge\\\", \\\"column\\\": \\\"交付天数\\\", \\\"value\\\": 0}, {\\\"check\\\": \\\"in_codes\\\", \\\"column\\\": \\\"状态码\\\"}, {\\\"check\\\": \\\"not_empty\\\", \\\"column\\\": \\\"下单日期\\\"}]}\", \"anchors_json\": \"48 bytes, sha256 dc2eed7becf8\"}",
+    "before_json": "{\"state\": \"confirmed\", \"evidence_ref\": \"check_result:24,check_result:25,dataset:订单@v1\", \"confirmed_by\": \"Bob\", \"confirmed_at\": \"<time>\", \"version\": 2, \"content_json\": \"{\\\"dataset\\\": \\\"订单\\\", \\\"description\\\": \\\"客户下的一张订单\\\", \\\"english_name\\\": \\\"order\\\", \\\"key\\\": [\\\"订单号\\\"], \\\"name\\\": \\\"订单\\\", \\\"properties\\\": [{\\\"column\\\": \\\"订单号\\\", \\\"enum\\\": false, \\\"name\\\": \\\"订单号\\\", \\\"type\\\": \\\"text\\\"}, {\\\"column\\\": \\\"金额\\\", \\\"enum\\\": false, \\\"name\\\": \\\"金额\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"状态码\\\", \\\"enum\\\": true, \\\"name\\\": \\\"状态码\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"数量\\\", \\\"enum\\\": false, \\\"name\\\": \\\"数量\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"交付天数\\\", \\\"enum\\\": false, \\\"name\\\": \\\"交付天数\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"下单日期\\\", \\\"enum\\\": false, \\\"name\\\": \\\"下单日期\\\", \\\"type\\\": \\\"date\\\"}], \\\"rules\\\": [{\\\"check\\\": \\\"not_empty\\\", \\\"column\\\": \\\"金额\\\"}, {\\\"check\\\": \\\"gt\\\", \\\"column\\\": \\\"金额\\\", \\\"value\\\": 0}, {\\\"check\\\": \\\"between\\\", \\\"column\\\": \\\"数量\\\", \\\"high\\\": 50, \\\"low\\\": 1}, {\\\"check\\\": \\\"ge\\\", \\\"column\\\": \\\"交付天数\\\", \\\"value\\\": 0}, {\\\"check\\\": \\\"in_codes\\\", \\\"column\\\": \\\"状态码\\\"}, {\\\"check\\\": \\\"not_empty\\\", \\\"column\\\": \\\"下单日期\\\"}]}\", \"anchors_json\": \"31 bytes, sha256 481abea085d4\"}",
+    "change": "checked",
+    "element_id": "objtype:order",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": "{\"state\": \"checked\", \"evidence_ref\": \"check_result:29,dataset:订单@v1\", \"confirmed_by\": \"Ann\", \"confirmed_at\": \"<time>\", \"version\": 4, \"content_json\": \"{\\\"dataset\\\": \\\"订单\\\", \\\"description\\\": \\\"一张订单\\\", \\\"english_name\\\": \\\"order\\\", \\\"key\\\": [\\\"订单号\\\"], \\\"name\\\": \\\"订单\\\", \\\"properties\\\": [{\\\"column\\\": \\\"订单号\\\", \\\"enum\\\": false, \\\"name\\\": \\\"订单号\\\", \\\"type\\\": \\\"text\\\"}, {\\\"column\\\": \\\"金额\\\", \\\"enum\\\": false, \\\"name\\\": \\\"金额\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"状态码\\\", \\\"enum\\\": true, \\\"name\\\": \\\"状态码\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"数量\\\", \\\"enum\\\": false, \\\"name\\\": \\\"数量\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"交付天数\\\", \\\"enum\\\": false, \\\"name\\\": \\\"交付天数\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"下单日期\\\", \\\"enum\\\": false, \\\"name\\\": \\\"下单日期\\\", \\\"type\\\": \\\"date\\\"}], \\\"rules\\\": [{\\\"check\\\": \\\"not_empty\\\", \\\"column\\\": \\\"金额\\\"}, {\\\"check\\\": \\\"gt\\\", \\\"column\\\": \\\"金额\\\", \\\"value\\\": 0}, {\\\"check\\\": \\\"between\\\", \\\"column\\\": \\\"数量\\\", \\\"high\\\": 50, \\\"low\\\": 1}, {\\\"check\\\": \\\"ge\\\", \\\"column\\\": \\\"交付天数\\\", \\\"value\\\": 0}, {\\\"check\\\": \\\"in_codes\\\", \\\"column\\\": \\\"状态码\\\"}, {\\\"check\\\": \\\"not_empty\\\", \\\"column\\\": \\\"下单日期\\\"}, {\\\"check\\\": \\\"le\\\", \\\"column\\\": \\\"交付天数\\\", \\\"value\\\": 60}]}\", \"anchors_json\": \"48 bytes, sha256 dc2eed7becf8\"}",
+    "before_json": "{\"state\": \"checked\", \"evidence_ref\": \"check_result:26,dataset:订单@v1\", \"confirmed_by\": \"Ann\", \"confirmed_at\": \"<time>\", \"version\": 3, \"content_json\": \"{\\\"dataset\\\": \\\"订单\\\", \\\"description\\\": \\\"一张订单\\\", \\\"english_name\\\": \\\"order\\\", \\\"key\\\": [\\\"订单号\\\"], \\\"name\\\": \\\"订单\\\", \\\"properties\\\": [{\\\"column\\\": \\\"订单号\\\", \\\"enum\\\": false, \\\"name\\\": \\\"订单号\\\", \\\"type\\\": \\\"text\\\"}, {\\\"column\\\": \\\"金额\\\", \\\"enum\\\": false, \\\"name\\\": \\\"金额\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"状态码\\\", \\\"enum\\\": true, \\\"name\\\": \\\"状态码\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"数量\\\", \\\"enum\\\": false, \\\"name\\\": \\\"数量\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"交付天数\\\", \\\"enum\\\": false, \\\"name\\\": \\\"交付天数\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"下单日期\\\", \\\"enum\\\": false, \\\"name\\\": \\\"下单日期\\\", \\\"type\\\": \\\"date\\\"}], \\\"rules\\\": [{\\\"check\\\": \\\"not_empty\\\", \\\"column\\\": \\\"金额\\\"}, {\\\"check\\\": \\\"gt\\\", \\\"column\\\": \\\"金额\\\", \\\"value\\\": 0}, {\\\"check\\\": \\\"between\\\", \\\"column\\\": \\\"数量\\\", \\\"high\\\": 50, \\\"low\\\": 1}, {\\\"check\\\": \\\"ge\\\", \\\"column\\\": \\\"交付天数\\\", \\\"value\\\": 0}, {\\\"check\\\": \\\"in_codes\\\", \\\"column\\\": \\\"状态码\\\"}, {\\\"check\\\": \\\"not_empty\\\", \\\"column\\\": \\\"下单日期\\\"}]}\", \"anchors_json\": \"48 bytes, sha256 dc2eed7becf8\"}",
+    "change": "checked",
+    "element_id": "objtype:order",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": "{\"state\": \"confirmed\", \"evidence_ref\": \"check_result:32,check_result:33,dataset:订单@v1\", \"confirmed_by\": \"Bob\", \"confirmed_at\": \"<time>\", \"version\": 5, \"content_json\": \"{\\\"dataset\\\": \\\"订单\\\", \\\"description\\\": \\\"一张订单\\\", \\\"english_name\\\": \\\"order\\\", \\\"key\\\": [\\\"订单号\\\"], \\\"name\\\": \\\"订单\\\", \\\"properties\\\": [{\\\"column\\\": \\\"订单号\\\", \\\"enum\\\": false, \\\"name\\\": \\\"订单号\\\", \\\"type\\\": \\\"text\\\"}, {\\\"column\\\": \\\"金额\\\", \\\"enum\\\": false, \\\"name\\\": \\\"金额\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"状态码\\\", \\\"enum\\\": true, \\\"name\\\": \\\"状态码\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"数量\\\", \\\"enum\\\": false, \\\"name\\\": \\\"数量\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"交付天数\\\", \\\"enum\\\": false, \\\"name\\\": \\\"交付天数\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"下单日期\\\", \\\"enum\\\": false, \\\"name\\\": \\\"下单日期\\\", \\\"type\\\": \\\"date\\\"}], \\\"rules\\\": [{\\\"check\\\": \\\"not_empty\\\", \\\"column\\\": \\\"金额\\\"}, {\\\"check\\\": \\\"gt\\\", \\\"column\\\": \\\"金额\\\", \\\"value\\\": 0}, {\\\"check\\\": \\\"between\\\", \\\"column\\\": \\\"数量\\\", \\\"high\\\": 50, \\\"low\\\": 1}, {\\\"check\\\": \\\"ge\\\", \\\"column\\\": \\\"交付天数\\\", \\\"value\\\": 0}, {\\\"check\\\": \\\"in_codes\\\", \\\"column\\\": \\\"状态码\\\"}, {\\\"check\\\": \\\"not_empty\\\", \\\"column\\\": \\\"下单日期\\\"}, {\\\"check\\\": \\\"le\\\", \\\"column\\\": \\\"交付天数\\\", \\\"value\\\": 60}]}\", \"anchors_json\": \"31 bytes, sha256 481abea085d4\"}",
+    "before_json": "{\"state\": \"checked\", \"evidence_ref\": \"check_result:29,dataset:订单@v1\", \"confirmed_by\": \"Ann\", \"confirmed_at\": \"<time>\", \"version\": 4, \"content_json\": \"{\\\"dataset\\\": \\\"订单\\\", \\\"description\\\": \\\"一张订单\\\", \\\"english_name\\\": \\\"order\\\", \\\"key\\\": [\\\"订单号\\\"], \\\"name\\\": \\\"订单\\\", \\\"properties\\\": [{\\\"column\\\": \\\"订单号\\\", \\\"enum\\\": false, \\\"name\\\": \\\"订单号\\\", \\\"type\\\": \\\"text\\\"}, {\\\"column\\\": \\\"金额\\\", \\\"enum\\\": false, \\\"name\\\": \\\"金额\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"状态码\\\", \\\"enum\\\": true, \\\"name\\\": \\\"状态码\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"数量\\\", \\\"enum\\\": false, \\\"name\\\": \\\"数量\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"交付天数\\\", \\\"enum\\\": false, \\\"name\\\": \\\"交付天数\\\", \\\"type\\\": \\\"integer\\\"}, {\\\"column\\\": \\\"下单日期\\\", \\\"enum\\\": false, \\\"name\\\": \\\"下单日期\\\", \\\"type\\\": \\\"date\\\"}], \\\"rules\\\": [{\\\"check\\\": \\\"not_empty\\\", \\\"column\\\": \\\"金额\\\"}, {\\\"check\\\": \\\"gt\\\", \\\"column\\\": \\\"金额\\\", \\\"value\\\": 0}, {\\\"check\\\": \\\"between\\\", \\\"column\\\": \\\"数量\\\", \\\"high\\\": 50, \\\"low\\\": 1}, {\\\"check\\\": \\\"ge\\\", \\\"column\\\": \\\"交付天数\\\", \\\"value\\\": 0}, {\\\"check\\\": \\\"in_codes\\\", \\\"column\\\": \\\"状态码\\\"}, {\\\"check\\\": \\\"not_empty\\\", \\\"column\\\": \\\"下单日期\\\"}, {\\\"check\\\": \\\"le\\\", \\\"column\\\": \\\"交付天数\\\", \\\"value\\\": 60}]}\", \"anchors_json\": \"48 bytes, sha256 dc2eed7becf8\"}",
+    "change": "confirmed",
+    "element_id": "objtype:order",
+    "time": "<time>",
+    "user_id": 3,
+    "via_token": null,
+    "who": "Bob"
+   },
+   {
+    "after_json": "{\"version\": 2, \"rows_in\": 160, \"rows_stored\": 160, \"dropped\": {}, \"file_sha256\": \"13513f48c374bafd481ae3ffb8a715ad79568a2938ca055a0bc7ce93d0483346\"}",
+    "before_json": null,
+    "change": "import v2: 160 rows in the file, 160 stored, 0 dropped",
+    "element_id": "dataset:订单",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   },
+   {
+    "after_json": "{\"state\": \"needs_look\", \"reason\": \"值规则“金额”要大于 0：查了全部 160 行，有 3 行不满足，例如 DD20260001、DD20260002、DD20260003\", \"caused_by\": \"Ann\", \"cause\": \"data\", \"via\": \"self\"}",
+    "before_json": "{\"state\": \"confirmed\", \"confirmed_by\": \"Bob\", \"confirmed_at\": \"<time>\"}",
+    "change": "needs_look",
+    "element_id": "objtype:order",
+    "time": "<time>",
+    "user_id": null,
+    "via_token": null,
+    "who": "system"
+   },
+   {
+    "after_json": "{\"version\": 3, \"rows_in\": 160, \"rows_stored\": 160, \"dropped\": {}, \"file_sha256\": \"baa10801dfeed98586e56a450981d7070b21043a583a8b2349e349f06466c4b6\"}",
+    "before_json": null,
+    "change": "import v3: 160 rows in the file, 160 stored, 0 dropped",
+    "element_id": "dataset:订单",
+    "time": "<time>",
+    "user_id": 2,
+    "via_token": null,
+    "who": "Ann"
+   }
+  ],
+  "notice": [
+   {
+    "action_name": "objtype:order",
+    "at": "<time>",
+    "id": 1,
+    "read_at": null,
+    "record_id": null,
+    "text": "“订单”类型退回到“需要再看”（数据变了）：值规则“金额”要大于 0：查了全部 160 行，有 3 行不满足，例如 DD20260001、DD20260002、DD20260003。\u001fThe type \"订单\" went back to needs another look (Data changed): 值规则“金额”要大于 0：查了全部 160 行，有 3 行不满足，例如 DD20260001、DD20260002、DD20260003.",
+    "user_id": 1
+   },
+   {
+    "action_name": "objtype:order",
+    "at": "<time>",
+    "id": 2,
+    "read_at": null,
+    "record_id": null,
+    "text": "“订单”类型退回到“需要再看”（数据变了）：值规则“金额”要大于 0：查了全部 160 行，有 3 行不满足，例如 DD20260001、DD20260002、DD20260003。\u001fThe type \"订单\" went back to needs another look (Data changed): 值规则“金额”要大于 0：查了全部 160 行，有 3 行不满足，例如 DD20260001、DD20260002、DD20260003.",
+    "user_id": 3
+   }
+  ]
+ },
+ "unconfirmed_ann": [
+  200,
+  {
+   "note": "这些定义现在不是“已确认”：不要拿它们回答问题，也不要把里面的数字或含义当成已经说定的。",
+   "unconfirmed": [
+    {
+     "cause_word": "数据变了",
+     "id": "objtype:order",
+     "kind": "type",
+     "name": "订单",
+     "proposed_by": "Ann",
+     "reason": "值规则“金额”要大于 0：查了全部 160 行，有 3 行不满足，例如 DD20260001、DD20260002、DD20260003",
+     "reason_hidden": null,
+     "stale_word": "数据变了",
+     "state": "needs_look",
+     "who_can_confirm": [
+      "Bob",
+      "管理员"
+     ]
+    }
+   ]
+  }
+ ],
+ "upload": 200
+}
