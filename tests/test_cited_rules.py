@@ -551,6 +551,39 @@ class RoundFiveTests(CitedCase):
         self.assertIn('report only', self.page(headers=EN)['rules_note'])
 
 
+class RoundSixTests(CitedCase):
+    """The Leader's notes on 17031748: a stored reason read by agents names no value of a column whose values are not sent; a citation refusal in its own words."""
+
+    def test_a_stored_reason_names_no_value_of_a_column_whose_values_are_not_sent(self):
+        self.start()
+        self.assertEqual(self.ann.post('/api/workspace/datasets/upload', {'files': [cases_upload(HELD, overwrite=True)]})[0], 200)
+        self.assertEqual(self.ann.post('/api/workspace/types', case_type([when('1')]))[0], 200)
+        self.assertEqual(self.ann.post('/api/workspace/types/privacy', {'id': 'door_event', 'column': 'fault', 'hide_values': True})[0], 200)
+        status, body = self.confirm_type()
+        self.assertEqual(status, 200, body)
+        self.assertEqual(self.ann.post('/api/workspace/datasets/upload', {'files': [cases_upload(overwrite=True)]})[0], 200)   # breaks the rule
+        state, reason = self.state()
+        self.assertEqual(state, 'needs_look')
+        self.assertIn('当“fault”是某个固定的值时，“门锁状态”要是 1', reason)
+        self.assertNotIn('power_loss', reason)
+        for path in ('/api/workspace/agent/unconfirmed', '/api/workspace/agent/standing'):
+            for headers in ({}, EN):
+                self.assertNotIn('power_loss', json.dumps(self.ann.get(path, headers=headers)[1], ensure_ascii=False), path)
+        self.assertIn('当“fault”是 power_loss 时', json.dumps(self.page()['rules'], ensure_ascii=False))   # the page, for people, keeps the rule in full
+
+    def test_a_citation_that_no_longer_stands_is_refused_in_its_own_words(self):
+        self.start()
+        self.assertEqual(self.ann.post('/api/workspace/types', case_type([when('1', cite=self.cite('1'), report_only=True)]))[0], 200)
+        self.assertEqual(self.confirm_type()[0], 200)
+        newer = self.put_doc(SPEC.replace('DS-3', 'DS-4'), confirm=False)
+        self.assertEqual(self.bob.post('/api/workspace/documents/confirm', {'id': newer['id'], 'version': newer['version']})[0], 200)
+        page = self.page()
+        status, body = self.bob.post('/api/workspace/types/confirm', {'id': 'door_event', 'version': page['version'], 'seen': page['seen']})
+        self.assertEqual(status, 409, body)
+        self.assertTrue(body['error'].startswith('引用不成立，不能确认：值规则当“fault”是 power_loss 时，“门锁状态”要是 1（只报告）：引用的《door-spec.md》不成立了'), body['error'])
+        self.assertNotIn('数据', body['error'].split('：')[0])
+
+
 class RoundThreeTests(CitedCase):
     """The doc-answers quote rules shared by citations (one function), the citation's whole sentence with the quote marked, the agent's readout of rules that
     only report, and a type whose rules all only report read as confirmed before its rules are counted."""

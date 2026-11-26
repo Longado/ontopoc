@@ -438,7 +438,7 @@ export default {
   "rules.pickPassage": "Pick a passage",
   "rules.citeHint": "Only a confirmed document can be cited. Code checks that the quote is word for word in the passage (at least 4 letters or digits); its whole sentence is shown with the quote marked. One citation per rule; one sentence may justify several rules.",
   "conflicts.title": "Rules that disagree",
-  "conflicts.hint": "Two conditional rules on the same property whose conditions can hold on one row and whose required values differ. This does not stop confirming; it stays listed until a rule changes or a second person confirms a “known” note.",
+  "conflicts.hint": "Two conditional rules on the same property whose conditions can hold on one row and whose required lists share no value, so no value meets both. This does not stop confirming; it stays listed until a rule changes or a second person confirms a “known” note.",
   "conflicts.line_one": "{says}: {count} row meets both conditions now",
   "conflicts.line_other": "{says}: {count} rows meet both conditions now",
   "conflicts.noteLine": "Known: asked {asked} (noted by {who}, waiting for a second person to confirm)",

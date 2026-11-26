@@ -647,7 +647,7 @@ def _type_problems(conn, content: dict, record: bool = True, ahead: dict | None 
         if saved is None:   # not counted on this version: a type whose rules only report waits for nothing
             return [*problems, *([unchecked_rules_text(dataset)] if any(map(must_hold, content['rules'])) else [])], key_check['id'], None
         names = {p['column']: p['name'] for p in content['properties']}
-        return [*problems, *(broken_text(rule_says(rule, names), n, saved['rows_checked'], []) for rule, n in zip(content['rules'], saved['broken']) if n and must_hold(rule))], key_check['id'], None
+        return [*problems, *(broken_text(rule_says(rule, names, _unsent(conn, content)), n, saved['rows_checked'], []) for rule, n in zip(content['rules'], saved['broken']) if n and must_hold(rule))], key_check['id'], None
     codes = _rule_codes(conn, content, content['rules'])
     ahead = ahead if ahead is not None else (_COUNTED.get() or {}).get(type_id(content['english_name']))
     same = ahead is not None and (ahead['dataset_id'], ahead['rules'], ahead['codes']) == (dataset['id'], content['rules'], codes)
@@ -658,9 +658,17 @@ def _type_problems(conn, content: dict, record: bool = True, ahead: dict | None 
     if found is None:   # the count failed: the rules are not known to hold (rules that only report hold nothing back)
         return [*problems, *([uncheckable_text(conn, type_id(content['english_name']))] if any(map(must_hold, content['rules'])) else [])], key_check['id'], None
     names = {p['column']: p['name'] for p in content['properties']}
-    problems += [broken_text(rule_says(rule, names), result['broken'], found['rows_checked'], result['examples']) for rule, result in zip(content['rules'], found['rules'])
+    problems += [broken_text(rule_says(rule, names, _unsent(conn, content)), result['broken'], found['rows_checked'], result['examples']) for rule, result in zip(content['rules'], found['rules'])
                  if result['broken'] and must_hold(rule)]   # a rule that only reports lists its rows on the page; it is never a reason
     return problems, key_check['id'], _record_rules(conn, content, dataset, found) if record else None
+
+
+def _unsent(conn, content: dict) -> frozenset:
+    """The columns whose values are not sent to the model, when the type has a conditional rule (whose sentence would write their values): a reason is stored once
+    and read by agents too (agent/unconfirmed, standing, MCP), so it names no such value. Empty otherwise: the older kinds' sentences hold no cell value."""
+    if not any(r['check'] == 'when' for r in content.get('rules') or []):
+        return frozenset()
+    return frozenset(hidden_values(conn, type_id(content['english_name'])))
 
 
 def _rule_codes(conn, content: dict, rules: list[dict]) -> dict[str, list[str]]:
@@ -780,7 +788,7 @@ def rules_untrusted(conn, element_id: str, latest: dict | None = None) -> dict |
     if dataset is None or kept is None or kept[0] != dataset['id'] or kept[2].get('rules') != content['rules'] or kept[2].get('codes') != _rule_codes(conn, content, content['rules']):
         return {'counted': False}
     names = {p['column']: p['name'] for p in content['properties']}
-    problems = [broken_text(rule_says(rule, names), n, kept[1], []) for rule, n in zip(content['rules'], kept[2].get('broken') or []) if n and must_hold(rule)]
+    problems = [broken_text(rule_says(rule, names, _unsent(conn, content)), n, kept[1], []) for rule, n in zip(content['rules'], kept[2].get('broken') or []) if n and must_hold(rule)]
     return {'counted': True, 'problems': problems} if problems else None
 
 
@@ -1214,7 +1222,10 @@ def confirm_element(conn, payload: dict, who: str | None, user: dict | None = No
     if is_type:
         refuse_ai_columns(conn, content['dataset'], content['key'], tr('主键', 'a key'))
         problems, check_id, rules_check = _type_problems(conn, content)
-        problems += _citation_problems(conn, content)   # a cited document that does not stand now: the rule's citation is not what was written
+        cited = _citation_problems(conn, content)   # a cited document that does not stand now: the rule's citation is not what was written
+        if cited and not problems:   # not a check on the data: its own words
+            raise TypeRefused(tr(f'引用不成立，不能确认：{tr("；", "; ").join(cited)}', f'A citation no longer stands, so it cannot be confirmed: {"; ".join(cited)}'), 409)
+        problems += cited
         waiting = _unconfirmed_meanings(conn, element_id)
         if waiting:
             raise TypeRefused(tr(f'它的{tr("、", ", ").join(f"“{c}”" for c in waiting)}的含义还没有确认，要先确认含义', f'The meanings of {", ".join(waiting)} are not confirmed yet. Confirm the meanings first'), 409)

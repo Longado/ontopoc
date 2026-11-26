@@ -11,8 +11,8 @@ back, removed or replaced by a new version, a confirmed type that cites it goes 
 Who sees what: a person who may not read the cited document (document_answers.may_read) sees the rule and its broken rows without any citation: no name, no
 hint that a citation exists; the same in conflict findings, and the type's log gives them no reason for a move a citation caused.
 
-A conflict: two conditional rules on the same type and the same column whose conditions can hold together and whose required values differ
-(value_rules.conflicts). It is a finding, never a block: it is listed on the type's page and in the review queue, with both rules, both quotes and how many rows
+A conflict: two conditional rules on the same type and the same column whose conditions can hold together and whose required values share none, so no value
+meets both (value_rules.conflicts). It is a finding, never a block: it is listed on the type's page and in the review queue, with both rules, both quotes and how many rows
 meet both conditions now, until one of the rules changes (the pair is identified by both rules as written, citations included) or a note "known: asked <who>"
 written by one person is confirmed by another (always a second person, whether or not two-person confirmation is on). The notes are kept in a table of their
 own, made when the first one is written, so a workspace without notes is stored as it was."""
@@ -146,7 +146,7 @@ def problems(conn, content: dict) -> list[str]:
             row, _, why = _standing(conn, r['cite'])
             if why:
                 name = _content(row)['name'] if row else (_removed_name(conn, r['cite']['document']) or r['cite']['document'])
-                out.append(tr(f'值规则{rule_says(r, names)}引用的《{name}》不成立了：{why}', f'The value rule {rule_says(r, names)} cites "{name}", which no longer stands: {why}'))
+                out.append(tr(f'值规则{rule_says(r, names)}：引用的《{name}》不成立了：{why}', f'The value rule {rule_says(r, names)} cites "{name}", which no longer stands: {why}'))
     return out
 
 
