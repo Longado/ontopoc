@@ -1,0 +1,1966 @@
+{
+ "calls": [
+  {
+   "digest": "89391fd627832a43606af070c3b864d2bf362f12822f86d09dce1151f5b91dec",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "客户合计 create"
+  },
+  {
+   "digest": "07ebe79e764ef25c57101da4ad5ec5d20bc81e862eff1fe1d8ef82b5a145ac3e",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "客户合计 detail"
+  },
+  {
+   "digest": "82d7c675d42170c8009a4e06ba4e392a9dc0ecec03d901c902b227f609ae66e3",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "客户合计 summary zh"
+  },
+  {
+   "digest": "82d7c675d42170c8009a4e06ba4e392a9dc0ecec03d901c902b227f609ae66e3",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "客户合计 draft summary zh"
+  },
+  {
+   "digest": "f3c5dd512b4ae1df2bf817fcae38875cb7a3cb5b3985732a12acb27129de0475",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "客户合计 preview {'node': 'o'} zh"
+  },
+  {
+   "digest": "aa25253d973805587a0b4c7db86c445d14d022a7e4d663854a3ab4b6e4b27b1f",
+   "error": null,
+   "rows": 45,
+   "status": 200,
+   "what": "客户合计 preview {'node': 't'} zh"
+  },
+  {
+   "digest": "a1b0a97837fb05f1e5efd056553ddfd8ba126106ef8a7aaabcc2e6113985dd9b",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "客户合计 preview {'node': 'j'} zh"
+  },
+  {
+   "digest": "6359dab2251ed02f30adcf5394dc47b8275acbcfbdf6661f3bb1557bc59d2bb5",
+   "error": null,
+   "rows": 31,
+   "status": 200,
+   "what": "客户合计 preview {'node': 'g'} zh"
+  },
+  {
+   "digest": "6359dab2251ed02f30adcf5394dc47b8275acbcfbdf6661f3bb1557bc59d2bb5",
+   "error": null,
+   "rows": 31,
+   "status": 200,
+   "what": "客户合计 preview {'node': 'g', 'operator': 0} zh"
+  },
+  {
+   "digest": "625dbaacfbbbaeb3829ef233dddbbb8c9556aab9c53e1b50ab826e407eda3ead",
+   "error": null,
+   "rows": 31,
+   "status": 200,
+   "what": "客户合计 preview {'node': 'out'} zh"
+  },
+  {
+   "digest": "aab8f2cc7dc1bd40fd73a649baf8183a49b612ead2006ad157a3a6cd3612f658",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "客户合计 review zh"
+  },
+  {
+   "digest": "0c4a80334e5d2e8277314325409239ac089cfb0ab3ed80ff9ce66f90810c2e86",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "客户合计 summary en"
+  },
+  {
+   "digest": "0c4a80334e5d2e8277314325409239ac089cfb0ab3ed80ff9ce66f90810c2e86",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "客户合计 draft summary en"
+  },
+  {
+   "digest": "a76577dc8d9161f5c4c9ae28c31ae5019ed69214820b9862edcc816610d53e5f",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "客户合计 preview {'node': 'o'} en"
+  },
+  {
+   "digest": "c1d9b9511cc14ecb40b616518c3ab45867aa1a40d915fbf7720b7948bf2cb09f",
+   "error": null,
+   "rows": 45,
+   "status": 200,
+   "what": "客户合计 preview {'node': 't'} en"
+  },
+  {
+   "digest": "a1b0a97837fb05f1e5efd056553ddfd8ba126106ef8a7aaabcc2e6113985dd9b",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "客户合计 preview {'node': 'j'} en"
+  },
+  {
+   "digest": "f83cb94683fd52d4ab3fbf605282ca665cc8a3410c9e9c049540998160d2f605",
+   "error": null,
+   "rows": 31,
+   "status": 200,
+   "what": "客户合计 preview {'node': 'g'} en"
+  },
+  {
+   "digest": "f83cb94683fd52d4ab3fbf605282ca665cc8a3410c9e9c049540998160d2f605",
+   "error": null,
+   "rows": 31,
+   "status": 200,
+   "what": "客户合计 preview {'node': 'g', 'operator': 0} en"
+  },
+  {
+   "digest": "01b0e68663fc3cb7d6646c0b797641f6396008c907cc998963756cd62117a94d",
+   "error": null,
+   "rows": 31,
+   "status": 200,
+   "what": "客户合计 preview {'node': 'out'} en"
+  },
+  {
+   "digest": "aab8f2cc7dc1bd40fd73a649baf8183a49b612ead2006ad157a3a6cd3612f658",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "客户合计 review en"
+  },
+  {
+   "digest": "00f2e82a77839a81fe08d087cbb4cd8a2cdd72c4fe8382a9e85615ffe95f4612",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "客户合计 run"
+  },
+  {
+   "digest": "00f2e82a77839a81fe08d087cbb4cd8a2cdd72c4fe8382a9e85615ffe95f4612",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "客户合计 run record"
+  },
+  {
+   "digest": "00f2e82a77839a81fe08d087cbb4cd8a2cdd72c4fe8382a9e85615ffe95f4612",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "客户合计 run record en"
+  },
+  {
+   "digest": "9345abfa413b6fb125ffe18ee34c33bbc60dfe1c8d194237ffbbbfb8666f90ae",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "客户合计 runs"
+  },
+  {
+   "digest": "02e77e47a74421c3b822018829be82b01a9632f59c84fa3671b485e667d8e32d",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "客户合计 versions"
+  },
+  {
+   "digest": "35066217e75b8aa1515cce597c746e9ab4741cffb651e9effeb8bd6a581580da",
+   "error": null,
+   "rows": 31,
+   "status": 200,
+   "what": "客户合计 dataset"
+  },
+  {
+   "digest": "7aaf7390b170b5647d4e5421a30285ea2b619ecf99e0ece1eecd58f50e03858b",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "客户合计 confirm"
+  },
+  {
+   "digest": "9acce6d5470d632d697941a5be92ff03b5cdb52514b20888d0ab4a3a2b17c9ca",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "客户合计 detail after"
+  },
+  {
+   "digest": "c1feaf19f857ab8b5de81c731c5c3515110ee3d77ef04da9688fb29a1594efe8",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "订单清洗 create"
+  },
+  {
+   "digest": "19f04a3ae071be80cd2bc65424c16982e9047012d01a2fd61063048e240821cd",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "订单清洗 detail"
+  },
+  {
+   "digest": "ea09e4fa1bb571cea825021428961a9c0b91a77e178018e3b8c90ca2b0d5a44a",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "订单清洗 summary zh"
+  },
+  {
+   "digest": "ea09e4fa1bb571cea825021428961a9c0b91a77e178018e3b8c90ca2b0d5a44a",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "订单清洗 draft summary zh"
+  },
+  {
+   "digest": "f3c5dd512b4ae1df2bf817fcae38875cb7a3cb5b3985732a12acb27129de0475",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 'o'} zh"
+  },
+  {
+   "digest": "bd9913c822c0c3c11152ebdac89a8e9a29e561c60220cb64c8cfc3d2e4408231",
+   "error": null,
+   "rows": 31,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't'} zh"
+  },
+  {
+   "digest": "0349efbf1cb7cf7e657c2e79ea6110d640570465a38e0f4aea866ac37fdfa3a6",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't', 'operator': 0} zh"
+  },
+  {
+   "digest": "ded430dfb3c73d9b69489da24f0e7b6a55520569ba7af00e01ed4df1bd31f905",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't', 'operator': 1} zh"
+  },
+  {
+   "digest": "c29e417a034aff03d1eb21984d4ff0ab8f1516ec2a36aa7e186fe73fc2f4c11d",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't', 'operator': 2} zh"
+  },
+  {
+   "digest": "62852fb5276fdafcf2184d0ddeac9863455ea58fdd643fac3cedf618a523b4bb",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't', 'operator': 3} zh"
+  },
+  {
+   "digest": "3c8beace28ff29fb12e1da435c7e96cd8be2d45dc61c916504c3944d615e70cc",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't', 'operator': 4} zh"
+  },
+  {
+   "digest": "0f930a4b4e503740d24f0a3ee64f173e9abb7a36e955094425ad86a036937d57",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't', 'operator': 5} zh"
+  },
+  {
+   "digest": "f4674794cc2bb98fa4050e40f5f42036e469c82a52e4a9ab7fdbad75f0a42fbf",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't', 'operator': 6} zh"
+  },
+  {
+   "digest": "9014b38bc7bd06696aed33a8fc68572f2115750d38f669c6bf997729d495777c",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't', 'operator': 7} zh"
+  },
+  {
+   "digest": "40a528954077d0c9790483f5565509410531991b04487a8269d2f153003059d0",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't', 'operator': 8} zh"
+  },
+  {
+   "digest": "f4771a569d266637904433bb902fb71efdda60903c9af83d9b5b4e6b6d9b450d",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't', 'operator': 9} zh"
+  },
+  {
+   "digest": "68b2ee6f169092bf2971ac14e98663a8f84b61ee61c1a4ddc5a1aac8e24c689a",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't', 'operator': 10} zh"
+  },
+  {
+   "digest": "f6f1fea0b31c276c9c0e0648a06c4acec96a42d131ba8ad521e7ef66151b2e7b",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't', 'operator': 11} zh"
+  },
+  {
+   "digest": "3ee17389476f8d13f94d539606662a19ad8414966616127950a464bf4c8fac9a",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't', 'operator': 12} zh"
+  },
+  {
+   "digest": "8c69897c4e50e9101651ce44496877bd99a35b6ea7f94275d0409eec18148207",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't', 'operator': 13} zh"
+  },
+  {
+   "digest": "69079a290711de3b506d2ee797df6c53fcc42290f10fc4f915640be0894b99c3",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't', 'operator': 14} zh"
+  },
+  {
+   "digest": "bd9913c822c0c3c11152ebdac89a8e9a29e561c60220cb64c8cfc3d2e4408231",
+   "error": null,
+   "rows": 31,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't', 'operator': 15} zh"
+  },
+  {
+   "digest": "0eef8982ace39d67b7f607c794ae55ab3da39eabe09b415727e8ebbea163a199",
+   "error": null,
+   "rows": 31,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 'out'} zh"
+  },
+  {
+   "digest": "474322253e91fc4c11ef38cc93048fda3faa7f8ce5fde5df9b9052cb165b92fc",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "订单清洗 review zh"
+  },
+  {
+   "digest": "b3b48e31cfb0dd506a62d94de9ae8c4270b73ae261e7419c75e64345cd746417",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "订单清洗 summary en"
+  },
+  {
+   "digest": "b3b48e31cfb0dd506a62d94de9ae8c4270b73ae261e7419c75e64345cd746417",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "订单清洗 draft summary en"
+  },
+  {
+   "digest": "a76577dc8d9161f5c4c9ae28c31ae5019ed69214820b9862edcc816610d53e5f",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 'o'} en"
+  },
+  {
+   "digest": "26dd07f04800e7659ecb65a19738b1f328a56db98c4c5b2c0664b9bfedcc4424",
+   "error": null,
+   "rows": 31,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't'} en"
+  },
+  {
+   "digest": "40f80ac9ac05f2684b0d5b96320d070ec35f0ae6ef02129113745324fa295eb2",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't', 'operator': 0} en"
+  },
+  {
+   "digest": "c87fbe96c03d229d6d0326a0ccb1480d8e9e588dc75924a4c2a5d7d976d550c6",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't', 'operator': 1} en"
+  },
+  {
+   "digest": "c1275ff6dd0de6cc6ae69cee42af735928f805052c5bbe42ae1826acf6cf6b3d",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't', 'operator': 2} en"
+  },
+  {
+   "digest": "8726a0cca014ed0e9b6582298d52a27e7b3815193f9b38ead973fdc4a36664ba",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't', 'operator': 3} en"
+  },
+  {
+   "digest": "06e382e40960a678d91f8a2df55b070c865978a580204588475a336d52aa9ba4",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't', 'operator': 4} en"
+  },
+  {
+   "digest": "9207c75f3a6dba34a38aeba2320ec01f9e74cbf84dffdc77d4805113eae3863f",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't', 'operator': 5} en"
+  },
+  {
+   "digest": "0549f1ad3463d324de6efc98874bcea28639bc791ba5011dceedb0b81b93a6bc",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't', 'operator': 6} en"
+  },
+  {
+   "digest": "0246b88d5357f0b3dd547cd720b93e0c4cb63d4f6e2930467f125fe02b1e3903",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't', 'operator': 7} en"
+  },
+  {
+   "digest": "691ebee286dfc39ae60c12e4ca9f08663f10e217ccae149458aedf4e2e87e5ce",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't', 'operator': 8} en"
+  },
+  {
+   "digest": "97f6140a5c7bb64264b2cb40fc0a14b7d391e8224fb48c518690ddab2e9e99fd",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't', 'operator': 9} en"
+  },
+  {
+   "digest": "1c7ae1dc57ab21dadcd3548f52767db1dcfbfeb56fc5c35825492c26cbc1ec1f",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't', 'operator': 10} en"
+  },
+  {
+   "digest": "5f02352779e455a331378f16f91c4a01cdc02044e12b93284200aa780ee1bc8b",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't', 'operator': 11} en"
+  },
+  {
+   "digest": "04f87c8d1125e535d2a4f1620c11a382168a4ca0fd7761c1d7a279ce4d09c8a7",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't', 'operator': 12} en"
+  },
+  {
+   "digest": "847ac7e26032274285e20e4a04f84712f7dd932b534836cc62e77b9b57efaece",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't', 'operator': 13} en"
+  },
+  {
+   "digest": "010a70c21a13486430e190419810b99cdb6717fa2ff5e800dd2b45bb570a0111",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't', 'operator': 14} en"
+  },
+  {
+   "digest": "26dd07f04800e7659ecb65a19738b1f328a56db98c4c5b2c0664b9bfedcc4424",
+   "error": null,
+   "rows": 31,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 't', 'operator': 15} en"
+  },
+  {
+   "digest": "f7a2ef11465f78919bed2a6e9f750da267f8728c8de6348da7aa66c1886b5dbc",
+   "error": null,
+   "rows": 31,
+   "status": 200,
+   "what": "订单清洗 preview {'node': 'out'} en"
+  },
+  {
+   "digest": "474322253e91fc4c11ef38cc93048fda3faa7f8ce5fde5df9b9052cb165b92fc",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "订单清洗 review en"
+  },
+  {
+   "digest": "2de3536ea0f71543a98f34bfc89047a133c56fa0a804a6d8299051c752740307",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "订单清洗 run"
+  },
+  {
+   "digest": "2de3536ea0f71543a98f34bfc89047a133c56fa0a804a6d8299051c752740307",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "订单清洗 run record"
+  },
+  {
+   "digest": "2de3536ea0f71543a98f34bfc89047a133c56fa0a804a6d8299051c752740307",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "订单清洗 run record en"
+  },
+  {
+   "digest": "7c72dae837c693a3fa8c93a9520bc5c99cee24ec7694fcec9a563fb7dc7a62c0",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "订单清洗 runs"
+  },
+  {
+   "digest": "e244e4e3211474675cca1c3125172356f559dd6fa912d0d033f7edcf5ebab363",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "订单清洗 versions"
+  },
+  {
+   "digest": "08c3faa539206fc084d81cd7ec09e127e7ddb76480b2b9e1a13ad499fc07b53b",
+   "error": null,
+   "rows": 31,
+   "status": 200,
+   "what": "订单清洗 dataset"
+  },
+  {
+   "digest": "7aaf7390b170b5647d4e5421a30285ea2b619ecf99e0ece1eecd58f50e03858b",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "订单清洗 confirm"
+  },
+  {
+   "digest": "c06020a8df780bc29ba05f48e306a9c5d7b812309b15802275498417a44899d7",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "订单清洗 detail after"
+  },
+  {
+   "digest": "f4b69f3a9e040e3badc99f317b9b8a207d0508b3e1a93c5b5c70b7f3c707ed45",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "产品统计 create"
+  },
+  {
+   "digest": "4e90e6201821510c34bb97c14172c4270345d253b24ec30f9f8abe08b30fa6cf",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "产品统计 detail"
+  },
+  {
+   "digest": "06c8ba8ec94dc104d11fa18fb9e20b3b3c8304dfc694220009e42d0cebef831c",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "产品统计 summary zh"
+  },
+  {
+   "digest": "06c8ba8ec94dc104d11fa18fb9e20b3b3c8304dfc694220009e42d0cebef831c",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "产品统计 draft summary zh"
+  },
+  {
+   "digest": "f3c5dd512b4ae1df2bf817fcae38875cb7a3cb5b3985732a12acb27129de0475",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "产品统计 preview {'node': 'o'} zh"
+  },
+  {
+   "digest": "cd799dda0f9d12d22ef15428afb2c90c68aec2be42f3fb0c085717346b72294f",
+   "error": null,
+   "rows": 12,
+   "status": 200,
+   "what": "产品统计 preview {'node': 'g'} zh"
+  },
+  {
+   "digest": "e98fa7d3fdfcaae5854e3cc29a0ae3a1026c07e4ad850dc3735599174e6e0695",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "产品统计 preview {'node': 'g', 'operator': 0} zh"
+  },
+  {
+   "digest": "cd799dda0f9d12d22ef15428afb2c90c68aec2be42f3fb0c085717346b72294f",
+   "error": null,
+   "rows": 12,
+   "status": 200,
+   "what": "产品统计 preview {'node': 'g', 'operator': 1} zh"
+  },
+  {
+   "digest": "462162c09d527e890799b41aa047134ea8d6b74b27a3739a58a20d74f4817965",
+   "error": null,
+   "rows": 12,
+   "status": 200,
+   "what": "产品统计 preview {'node': 'out'} zh"
+  },
+  {
+   "digest": "8ae2bfaf385e349a243a9e40a68af180a77cb4e56df9e279e51ca7d6e1a8d14a",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "产品统计 review zh"
+  },
+  {
+   "digest": "ef22934f10ebfd1073c145825a1e18f074b5276b7fe24c02d8d408c113ce200b",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "产品统计 summary en"
+  },
+  {
+   "digest": "ef22934f10ebfd1073c145825a1e18f074b5276b7fe24c02d8d408c113ce200b",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "产品统计 draft summary en"
+  },
+  {
+   "digest": "a76577dc8d9161f5c4c9ae28c31ae5019ed69214820b9862edcc816610d53e5f",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "产品统计 preview {'node': 'o'} en"
+  },
+  {
+   "digest": "9dfd44e20d7057feac9a9520c081d63b7b0e7f748bb99ffe02a6c5f4091bc9ff",
+   "error": null,
+   "rows": 12,
+   "status": 200,
+   "what": "产品统计 preview {'node': 'g'} en"
+  },
+  {
+   "digest": "6b4284bfb3833c04ca1bfeeb14bcaac2750006c40fe3057f08df856bc9ff1688",
+   "error": null,
+   "rows": 100,
+   "status": 200,
+   "what": "产品统计 preview {'node': 'g', 'operator': 0} en"
+  },
+  {
+   "digest": "9dfd44e20d7057feac9a9520c081d63b7b0e7f748bb99ffe02a6c5f4091bc9ff",
+   "error": null,
+   "rows": 12,
+   "status": 200,
+   "what": "产品统计 preview {'node': 'g', 'operator': 1} en"
+  },
+  {
+   "digest": "3d99f9f1f81b398e4012a32afcb25642a30ffcf51c90084f293a40b8da3deeb6",
+   "error": null,
+   "rows": 12,
+   "status": 200,
+   "what": "产品统计 preview {'node': 'out'} en"
+  },
+  {
+   "digest": "05ffad9c8cacaab2d1b83c5da83235639075ed9673c4b454f2e895546833e61f",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "产品统计 review en"
+  },
+  {
+   "digest": "7e7db8c01f6b662b75884d6f451b2d2e89db16bcd3124b42d9c38bd6af1b1fb9",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "产品统计 run"
+  },
+  {
+   "digest": "7e7db8c01f6b662b75884d6f451b2d2e89db16bcd3124b42d9c38bd6af1b1fb9",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "产品统计 run record"
+  },
+  {
+   "digest": "7e7db8c01f6b662b75884d6f451b2d2e89db16bcd3124b42d9c38bd6af1b1fb9",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "产品统计 run record en"
+  },
+  {
+   "digest": "39fb8a0b26173092f27c45d56bd15c3f715c97192c5c2a39af31a724226280f2",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "产品统计 runs"
+  },
+  {
+   "digest": "e244e4e3211474675cca1c3125172356f559dd6fa912d0d033f7edcf5ebab363",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "产品统计 versions"
+  },
+  {
+   "digest": "9090cddaeadaf3073f3ae5b4880267bcde132e1c7cd1ebc57e28cbb25b95a49a",
+   "error": null,
+   "rows": 12,
+   "status": 200,
+   "what": "产品统计 dataset"
+  },
+  {
+   "digest": "7aaf7390b170b5647d4e5421a30285ea2b619ecf99e0ece1eecd58f50e03858b",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "产品统计 confirm"
+  },
+  {
+   "digest": "f4070b6fdadaf3f0b676a7e284551001dee8b90bef23c3c968242a60bce0686f",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "产品统计 detail after"
+  },
+  {
+   "digest": "4318cd4fdd0aed08db659637f1c0a8a9778d85c6c91b19aa052c5b68ec57223f",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "工单拆合 create"
+  },
+  {
+   "digest": "90b688649262b9db5ea2a7a1492f3a766d11b04ad3010af02e0e0fe1a02fc32e",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "工单拆合 detail"
+  },
+  {
+   "digest": "a553ac192adf6fad1554e1af15af1ed1536d869bf39cfb957b89c281e4b6184d",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "工单拆合 summary zh"
+  },
+  {
+   "digest": "a553ac192adf6fad1554e1af15af1ed1536d869bf39cfb957b89c281e4b6184d",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "工单拆合 draft summary zh"
+  },
+  {
+   "digest": "aa25253d973805587a0b4c7db86c445d14d022a7e4d663854a3ab4b6e4b27b1f",
+   "error": null,
+   "rows": 45,
+   "status": 200,
+   "what": "工单拆合 preview {'node': 't'} zh"
+  },
+  {
+   "digest": "e7f9c158609411fb0b543fadd79fc4f2a06486729fd9f4cd95e26c2acdc01276",
+   "error": null,
+   "rows": 45,
+   "status": 200,
+   "what": "工单拆合 preview {'node': 'c'} zh"
+  },
+  {
+   "digest": "43476200130f008433c926f85d80d6a9ea6be3ca92de3a4de3044145b4d2773e",
+   "error": null,
+   "rows": 45,
+   "status": 200,
+   "what": "工单拆合 preview {'node': 'c', 'operator': 0} zh"
+  },
+  {
+   "digest": "0abc238919df12adb040a3cfe57dfe69202811e1e069e8441a27a5b6e07c8012",
+   "error": null,
+   "rows": 45,
+   "status": 200,
+   "what": "工单拆合 preview {'node': 'c', 'operator': 1} zh"
+  },
+  {
+   "digest": "0ddb3f02146339524e9ca0ee3332d4a4f2a973029997e8fbcdd565c9d8d18799",
+   "error": null,
+   "rows": 45,
+   "status": 200,
+   "what": "工单拆合 preview {'node': 'c', 'operator': 2} zh"
+  },
+  {
+   "digest": "e7f9c158609411fb0b543fadd79fc4f2a06486729fd9f4cd95e26c2acdc01276",
+   "error": null,
+   "rows": 45,
+   "status": 200,
+   "what": "工单拆合 preview {'node': 'c', 'operator': 3} zh"
+  },
+  {
+   "digest": "834da4afbd90ed077f2ae97dad60f3def5d1f4038d048e951da383331b9649c1",
+   "error": null,
+   "rows": 45,
+   "status": 200,
+   "what": "工单拆合 preview {'node': 's'} zh"
+  },
+  {
+   "digest": "aebca5f1b2d8b9e4dbd6c64adfa0927ee37747caacc40580f49628701208defd",
+   "error": null,
+   "rows": 45,
+   "status": 200,
+   "what": "工单拆合 preview {'node': 'u'} zh"
+  },
+  {
+   "digest": "5104f03cd90cf436550b4ae0451e1b10654be29e59a5e3d566cec7cc6cc19dc2",
+   "error": null,
+   "rows": 45,
+   "status": 200,
+   "what": "工单拆合 preview {'node': 'd'} zh"
+  },
+  {
+   "digest": "5104f03cd90cf436550b4ae0451e1b10654be29e59a5e3d566cec7cc6cc19dc2",
+   "error": null,
+   "rows": 45,
+   "status": 200,
+   "what": "工单拆合 preview {'node': 'd', 'operator': 0} zh"
+  },
+  {
+   "digest": "3f5bdb724a04968895e851d692390b62ec530a6c25b74d1771d6da27e4aa9e70",
+   "error": null,
+   "rows": 45,
+   "status": 200,
+   "what": "工单拆合 preview {'node': 'out'} zh"
+  },
+  {
+   "digest": "8d241d0a25f7d8d9843c818aa7ee189e42d1b6a51af6c6e71c9bd0b7ab5bf7bf",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "工单拆合 review zh"
+  },
+  {
+   "digest": "354337fafa68f2975fea74760acf527c3f465484950872a5c505aee07dc0a404",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "工单拆合 summary en"
+  },
+  {
+   "digest": "354337fafa68f2975fea74760acf527c3f465484950872a5c505aee07dc0a404",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "工单拆合 draft summary en"
+  },
+  {
+   "digest": "c1d9b9511cc14ecb40b616518c3ab45867aa1a40d915fbf7720b7948bf2cb09f",
+   "error": null,
+   "rows": 45,
+   "status": 200,
+   "what": "工单拆合 preview {'node': 't'} en"
+  },
+  {
+   "digest": "75e9a5f5b40e4b4e783dfa0edd1fdcda2173355d4b3dc915f2340facd952e723",
+   "error": null,
+   "rows": 45,
+   "status": 200,
+   "what": "工单拆合 preview {'node': 'c'} en"
+  },
+  {
+   "digest": "f5a3dac20a580cc7a7e0f0966fb691e9ca73c011e2252df1a73d7c6d197320b9",
+   "error": null,
+   "rows": 45,
+   "status": 200,
+   "what": "工单拆合 preview {'node': 'c', 'operator': 0} en"
+  },
+  {
+   "digest": "86522a7c4532d76c31b2c7c5e1de9cca2d7fe52a16c9ee47dacf54276cfa6d86",
+   "error": null,
+   "rows": 45,
+   "status": 200,
+   "what": "工单拆合 preview {'node': 'c', 'operator': 1} en"
+  },
+  {
+   "digest": "424c5d4e13d63112e4ed45b9621428ce3ceb33377f17ad6fbba5b5b20aa5e9a7",
+   "error": null,
+   "rows": 45,
+   "status": 200,
+   "what": "工单拆合 preview {'node': 'c', 'operator': 2} en"
+  },
+  {
+   "digest": "75e9a5f5b40e4b4e783dfa0edd1fdcda2173355d4b3dc915f2340facd952e723",
+   "error": null,
+   "rows": 45,
+   "status": 200,
+   "what": "工单拆合 preview {'node': 'c', 'operator': 3} en"
+  },
+  {
+   "digest": "834da4afbd90ed077f2ae97dad60f3def5d1f4038d048e951da383331b9649c1",
+   "error": null,
+   "rows": 45,
+   "status": 200,
+   "what": "工单拆合 preview {'node': 's'} en"
+  },
+  {
+   "digest": "aebca5f1b2d8b9e4dbd6c64adfa0927ee37747caacc40580f49628701208defd",
+   "error": null,
+   "rows": 45,
+   "status": 200,
+   "what": "工单拆合 preview {'node': 'u'} en"
+  },
+  {
+   "digest": "49527d9de9820672d81ba6e9cb5e9a1fb95fc5253c96481488cb4f0aec35e101",
+   "error": null,
+   "rows": 45,
+   "status": 200,
+   "what": "工单拆合 preview {'node': 'd'} en"
+  },
+  {
+   "digest": "49527d9de9820672d81ba6e9cb5e9a1fb95fc5253c96481488cb4f0aec35e101",
+   "error": null,
+   "rows": 45,
+   "status": 200,
+   "what": "工单拆合 preview {'node': 'd', 'operator': 0} en"
+  },
+  {
+   "digest": "e9bb25d81da1b7d4909436891b33ef9111cbd9bbfd8797b7a727c36f4b14eab8",
+   "error": null,
+   "rows": 45,
+   "status": 200,
+   "what": "工单拆合 preview {'node': 'out'} en"
+  },
+  {
+   "digest": "8d241d0a25f7d8d9843c818aa7ee189e42d1b6a51af6c6e71c9bd0b7ab5bf7bf",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "工单拆合 review en"
+  },
+  {
+   "digest": "cbfc7aa74c0f184ad88178f9b2a9f8ff12882858b3e0cf390a4a04605f61c236",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "工单拆合 run"
+  },
+  {
+   "digest": "cbfc7aa74c0f184ad88178f9b2a9f8ff12882858b3e0cf390a4a04605f61c236",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "工单拆合 run record"
+  },
+  {
+   "digest": "cbfc7aa74c0f184ad88178f9b2a9f8ff12882858b3e0cf390a4a04605f61c236",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "工单拆合 run record en"
+  },
+  {
+   "digest": "197ddc2e2dc12642b493b168ce5d2d9073e0c274a962d47fed894f12d1280b73",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "工单拆合 runs"
+  },
+  {
+   "digest": "ad276133fe4d39d84569269d6cf559b0d9ad1398ef6a92174c949cf8b573eccd",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "工单拆合 versions"
+  },
+  {
+   "digest": "086983924827494aceff2d3b36e5d9a96c0e14f4a1adc4f292bc3b8071bca523",
+   "error": null,
+   "rows": 45,
+   "status": 200,
+   "what": "工单拆合 dataset"
+  },
+  {
+   "digest": "7aaf7390b170b5647d4e5421a30285ea2b619ecf99e0ece1eecd58f50e03858b",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "工单拆合 confirm"
+  },
+  {
+   "digest": "3ec827a023dce5ddc34e222585665333a05a51752fa21434bd83f94f116b2c07",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "工单拆合 detail after"
+  },
+  {
+   "digest": "6df54a1d3a5a7e8ddbbb0d3341f0c006a8ab8a02fc792810ba11ee33f3a67dd6",
+   "error": null,
+   "rows": null,
+   "status": 200,
+   "what": "list"
+  }
+ ],
+ "options_en": [
+  200,
+  {
+   "aggregations": [
+    {
+     "fn": "sum",
+     "name": "Sum"
+    },
+    {
+     "fn": "count",
+     "name": "Count"
+    },
+    {
+     "fn": "count_distinct",
+     "name": "Count distinct"
+    },
+    {
+     "fn": "avg",
+     "name": "Average"
+    },
+    {
+     "fn": "min",
+     "name": "Min"
+    },
+    {
+     "fn": "max",
+     "name": "Max"
+    },
+    {
+     "fn": "median",
+     "name": "Median"
+    },
+    {
+     "fn": "p25",
+     "name": "P25"
+    },
+    {
+     "fn": "p75",
+     "name": "P75"
+    }
+   ],
+   "cast_types": [
+    {
+     "name": "Date",
+     "to": "date"
+    },
+    {
+     "name": "Date and time",
+     "to": "datetime"
+    },
+    {
+     "name": "Decimal",
+     "to": "decimal"
+    },
+    {
+     "name": "Whole number",
+     "to": "integer"
+    },
+    {
+     "name": "Yes/no",
+     "to": "boolean"
+    }
+   ],
+   "functions": [
+    {
+     "functions": [
+      {
+       "name": "round",
+       "template": "round(number, 2)",
+       "text": "Round to a number of decimal places"
+      },
+      {
+       "name": "abs",
+       "template": "abs(number)",
+       "text": "Absolute value"
+      }
+     ],
+     "group": "Math"
+    },
+    {
+     "functions": [
+      {
+       "name": "if",
+       "template": "if(condition, value1, value2)",
+       "text": "Value1 if the condition holds, otherwise value2 (an empty condition counts as false)"
+      },
+      {
+       "name": "case",
+       "template": "case(condition1, value1, condition2, value2, else_value)",
+       "text": "The value of the first condition that holds, in order"
+      },
+      {
+       "name": "coalesce",
+       "template": "coalesce(column, default)",
+       "text": "The first value that is not empty"
+      }
+     ],
+     "group": "Logic"
+    },
+    {
+     "functions": [
+      {
+       "name": "concat",
+       "template": "concat(column1, '-', column2)",
+       "text": "Join text; if any part is empty, the result is empty"
+      },
+      {
+       "name": "substring",
+       "template": "substring(text, start, length)",
+       "text": "Take part of a text; positions count from 1"
+      }
+     ],
+     "group": "Text"
+    },
+    {
+     "functions": [
+      {
+       "name": "date_trunc",
+       "template": "date_trunc('week', date)",
+       "text": "The first day of the week (Monday) or month"
+      },
+      {
+       "name": "date_diff",
+       "template": "date_diff('day', dateA, dateB)",
+       "text": "dateB minus dateA: day, week, month, year"
+      },
+      {
+       "name": "date_add",
+       "template": "date_add(date, 7, 'day')",
+       "text": "Add days, weeks, months or years"
+      },
+      {
+       "name": "year",
+       "template": "year(date)",
+       "text": "The year"
+      },
+      {
+       "name": "month",
+       "template": "month(date)",
+       "text": "The month"
+      }
+     ],
+     "group": "Date"
+    }
+   ],
+   "joins": [
+    "inner",
+    "left",
+    "anti",
+    "semi"
+   ],
+   "model": null,
+   "model_ready": false,
+   "operators": [
+    {
+     "category": "Common",
+     "name": "Filter",
+     "op": "filter",
+     "text": "Keep the rows that meet a condition; rows dropped because the condition was false and because it was empty are counted apart"
+    },
+    {
+     "category": "Clean",
+     "name": "Fill empty values",
+     "op": "fill_null",
+     "text": "Replace empty values with a constant, another column or the result of an expression"
+    },
+    {
+     "category": "Text",
+     "name": "Clean text",
+     "op": "text_clean",
+     "text": "Trim spaces, merge whitespace, replace text, unify case"
+    },
+    {
+     "category": "Type",
+     "name": "Convert type",
+     "op": "cast",
+     "text": "Convert to date, date and time, decimal, whole number or yes/no; the count and list of rows that cannot be converted are given"
+    },
+    {
+     "category": "Numbers",
+     "name": "Calculated column",
+     "op": "calc",
+     "text": "Add a column with an expression, or replace one; you can try it first"
+    },
+    {
+     "category": "Summarize",
+     "name": "Group and calculate",
+     "op": "aggregate",
+     "text": "Group by some columns and take sums, counts, averages, medians and so on; empty values are not counted"
+    },
+    {
+     "category": "Clean",
+     "name": "Remove duplicates",
+     "op": "dedupe",
+     "text": "Remove duplicates by key, keeping the first or last row (name the column to order by)"
+    },
+    {
+     "category": "Common",
+     "name": "Add labels",
+     "op": "label",
+     "text": "Replace codes with meanings (read the confirmed meanings, or write your own mapping)"
+    }
+   ]
+  }
+ ],
+ "options_zh": [
+  200,
+  {
+   "aggregations": [
+    {
+     "fn": "sum",
+     "name": "求和"
+    },
+    {
+     "fn": "count",
+     "name": "计数"
+    },
+    {
+     "fn": "count_distinct",
+     "name": "去重计数"
+    },
+    {
+     "fn": "avg",
+     "name": "平均"
+    },
+    {
+     "fn": "min",
+     "name": "最小"
+    },
+    {
+     "fn": "max",
+     "name": "最大"
+    },
+    {
+     "fn": "median",
+     "name": "中位数"
+    },
+    {
+     "fn": "p25",
+     "name": "P25"
+    },
+    {
+     "fn": "p75",
+     "name": "P75"
+    }
+   ],
+   "cast_types": [
+    {
+     "name": "日期",
+     "to": "date"
+    },
+    {
+     "name": "日期时间",
+     "to": "datetime"
+    },
+    {
+     "name": "小数",
+     "to": "decimal"
+    },
+    {
+     "name": "整数",
+     "to": "integer"
+    },
+    {
+     "name": "是否",
+     "to": "boolean"
+    }
+   ],
+   "functions": [
+    {
+     "functions": [
+      {
+       "name": "round",
+       "template": "round(数值, 2)",
+       "text": "四舍五入到几位小数"
+      },
+      {
+       "name": "abs",
+       "template": "abs(数值)",
+       "text": "绝对值"
+      }
+     ],
+     "group": "数学"
+    },
+    {
+     "functions": [
+      {
+       "name": "if",
+       "template": "if(条件, 值1, 值2)",
+       "text": "条件成立取值1，否则取值2（条件为空按否）"
+      },
+      {
+       "name": "case",
+       "template": "case(条件1, 值1, 条件2, 值2, 其余的值)",
+       "text": "按顺序找第一个成立的条件"
+      },
+      {
+       "name": "coalesce",
+       "template": "coalesce(字段, 默认值)",
+       "text": "第一个不为空的值"
+      }
+     ],
+     "group": "判断"
+    },
+    {
+     "functions": [
+      {
+       "name": "concat",
+       "template": "concat(字段1, '-', 字段2)",
+       "text": "拼接文本；有一段为空，结果就为空"
+      },
+      {
+       "name": "substring",
+       "template": "substring(文本, 开始位置, 长度)",
+       "text": "取一段文字，位置从 1 数起"
+      }
+     ],
+     "group": "文本"
+    },
+    {
+     "functions": [
+      {
+       "name": "date_trunc",
+       "template": "date_trunc('week', 日期)",
+       "text": "取所在周（周一）或所在月的第一天"
+      },
+      {
+       "name": "date_diff",
+       "template": "date_diff('day', 日期A, 日期B)",
+       "text": "日期B 减 日期A：day、week、month、year"
+      },
+      {
+       "name": "date_add",
+       "template": "date_add(日期, 7, 'day')",
+       "text": "加上几天、几周、几月、几年"
+      },
+      {
+       "name": "year",
+       "template": "year(日期)",
+       "text": "年份"
+      },
+      {
+       "name": "month",
+       "template": "month(日期)",
+       "text": "月份"
+      }
+     ],
+     "group": "日期"
+    }
+   ],
+   "joins": [
+    "inner",
+    "left",
+    "anti",
+    "semi"
+   ],
+   "model": null,
+   "model_ready": false,
+   "operators": [
+    {
+     "category": "常用",
+     "name": "数据过滤",
+     "op": "filter",
+     "text": "按条件留下行；条件为假和条件为空删掉的行分开数"
+    },
+    {
+     "category": "清洗",
+     "name": "空值替换",
+     "op": "fill_null",
+     "text": "把空值换成常量、另一列或表达式算出的值"
+    },
+    {
+     "category": "文本",
+     "name": "文本清理",
+     "op": "text_clean",
+     "text": "去空格、合并空白、替换文字、统一大小写"
+    },
+    {
+     "category": "类型",
+     "name": "字段转换",
+     "op": "cast",
+     "text": "转成日期、时间、小数、整数、是否；转不了的行数和清单都给出"
+    },
+    {
+     "category": "数值",
+     "name": "计算列",
+     "op": "calc",
+     "text": "用表达式加一列，或替换一列；可以先试算"
+    },
+    {
+     "category": "汇总",
+     "name": "分组统计",
+     "op": "aggregate",
+     "text": "按几列分组，求和、计数、平均、中位数等，空值不计入"
+    },
+    {
+     "category": "清洗",
+     "name": "排重",
+     "op": "dedupe",
+     "text": "按主键去重，保留第一条或最后一条（要指定排序的列）"
+    },
+    {
+     "category": "常用",
+     "name": "打标签",
+     "op": "label",
+     "text": "把代码换成含义（读已确认的含义，或自己写对照表）"
+    }
+   ]
+  }
+ ],
+ "stored": {
+  "action_notify": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "action_record": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "assistant_turn": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "check_result": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "checked_number": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "column": "46b8d2dd36445247220d412dd751f07e172e19b984d028321bfbdbff30f8f9d0",
+  "column_access": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "column_fan": "c7479432683c36f86532302d85cea3d24fd8cce24dc37533e2d65a41bab9569e",
+  "column_fan_measured": "f6123e7d525b50407b1b064f3ec601b62f56264ddb271c5ddf49181b47b1de42",
+  "column_mark": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "confirmation": "a8520731d10c56953433c9a1cb631a7698ec4f7e75b19b7318f26d8478687f16",
+  "current_dataset": "3f10c5dde2c0a0f333519559d07b0ffffed12bfe25a432b2a8efc4af942756eb",
+  "data_source": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "dataset": "38283d302d77d8736f31f72029bdb9b993121f74176dfa76215bd671f1936b4d",
+  "ds_1": "d14a03a10616f13f56a0974fc7f77f3cedb5bbb9ae00b94738c1fbf43839c3bc",
+  "ds_10": "9353f1bb6840d55158fa978c1aec8527ebb67e58f81089b2a2a2d02900d327e6",
+  "ds_11": "f7c2e3e9dc248cc214612868085ad7a94fe9b57f5657553e58d8dd897e7f82b4",
+  "ds_2": "46c0e62e6f3a77051fff8dcb471a00c98072d6116d133e765053b10fd764a4b8",
+  "ds_3": "a2c4918d7b4ed91a87a9fad99dc71b0e6f3b4b47c1e8d07e9bcc3e990423b5e1",
+  "ds_4": "489123c69b477cc6e891096b2e07f5b8b5ce67b05d30756056955188da9c58e2",
+  "ds_5": "a2a0437fa00a4dbb4a4d9ed3f2385575747746029cb46e7b53ac72a7bd8e8acf",
+  "ds_6": "baa10801dfeed98586e56a450981d7070b21043a583a8b2349e349f06466c4b6",
+  "ds_7": "b80e79d214944f950c6622aaf7979292304915445524a15b76878e394ac819a9",
+  "ds_8": "80986ea4edb327ac9e3e6b3ac7b5cbfb1ade402b6adf2dc24712e49cbcdcaa2e",
+  "ds_9": "0b73845c0d4f8a211b6e1fece1bc6beebbc82d93e47a7d33bb06db7893f6ffbf",
+  "element_dep": "1939cc0c171b138281de8d4ae47fadd7dfc541efad120079495a54d7273a5cc7",
+  "element_state": "fa08d8da306596dfa6363b3891fbb88e6ba4793656829a523d8b554e501a0fa2",
+  "llm_label": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "llm_review": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "log": "1b174b4844f4b91f1069bce7f9d1c09650a12f89493fd5fa2a30002b40880739",
+  "needed_question": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "needed_result": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "needed_run": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "notice": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "pipeline_run": "2d467238dffb81999c7cdecd4a33ec9ed4dfd0e635cbc151a40893f656b9fb9d",
+  "pipeline_version": "fac4056721c7e1d8a5e5f9ab67e5a9264ca0e6d7da050724b83f9e81c3848802",
+  "qa_question": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "refresh_run": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "row_rule": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "schedule": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "source_table": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "type_access": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "value_privacy": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+ },
+ "stored_specs": [
+  {
+   "description": "客户合计的说明",
+   "spec": {
+    "steps": [
+     {
+      "dataset": "订单",
+      "id": "o",
+      "type": "input"
+     },
+     {
+      "dataset": "售后工单",
+      "id": "t",
+      "type": "input"
+     },
+     {
+      "how": "left",
+      "id": "j",
+      "left": "o",
+      "on": [
+       {
+        "left": "订单号",
+        "right": "订单号"
+       }
+      ],
+      "right": "t",
+      "type": "join"
+     },
+     {
+      "from": "j",
+      "id": "g",
+      "operators": [
+       {
+        "aggregations": [
+         {
+          "as": "合计",
+          "column": "金额",
+          "fn": "sum"
+         },
+         {
+          "as": "行数",
+          "column": "订单号",
+          "fn": "count"
+         }
+        ],
+        "group_by": [
+         "客户编号"
+        ],
+        "op": "aggregate"
+       }
+      ],
+      "type": "transform"
+     },
+     {
+      "from": "g",
+      "id": "out",
+      "key": {
+       "columns": [
+        "客户编号"
+       ]
+      },
+      "name": "客户合计",
+      "type": "output"
+     }
+    ]
+   }
+  },
+  {
+   "description": "订单清洗的说明",
+   "spec": {
+    "steps": [
+     {
+      "dataset": "订单",
+      "id": "o",
+      "type": "input"
+     },
+     {
+      "from": "o",
+      "id": "t",
+      "operators": [
+       {
+        "op": "filter",
+        "where": {
+         "all": [
+          {
+           "cmp": "gt",
+           "column": "金额",
+           "value": 0
+          },
+          {
+           "any": [
+            {
+             "cmp": "in",
+             "column": "状态码",
+             "values": [
+              0,
+              1,
+              2,
+              3
+             ]
+            },
+            {
+             "cmp": "is_null",
+             "column": "交付天数"
+            }
+           ]
+          },
+          {
+           "cmp": "between",
+           "column": "数量",
+           "high": 1000,
+           "low": 1
+          }
+         ]
+        }
+       },
+       {
+        "columns": [
+         "交付天数"
+        ],
+        "op": "fill_null",
+        "with": {
+         "constant": 0
+        }
+       },
+       {
+        "columns": [
+         "产品编号"
+        ],
+        "empty_as_null": true,
+        "op": "fill_null",
+        "with": {
+         "column": "客户编号"
+        }
+       },
+       {
+        "columns": [
+         "数量"
+        ],
+        "op": "fill_null",
+        "with": {
+         "expression": "金额 / 100"
+        }
+       },
+       {
+        "columns": [
+         "订单号"
+        ],
+        "op": "text_clean",
+        "steps": [
+         {
+          "do": "trim"
+         },
+         {
+          "do": "whitespace"
+         },
+         {
+          "do": "lower"
+         },
+         {
+          "do": "replace",
+          "find": "dd",
+          "with": "D-"
+         },
+         {
+          "do": "upper"
+         }
+        ]
+       },
+       {
+        "columns": [
+         "客户编号"
+        ],
+        "op": "text_clean",
+        "steps": [
+         {
+          "do": "replace",
+          "find": "K.",
+          "with": "?"
+         }
+        ]
+       },
+       {
+        "as": "日期",
+        "column": "下单日期",
+        "format": "YYYY-MM-DD",
+        "op": "cast",
+        "to": "date"
+       },
+       {
+        "as": "时间",
+        "column": "下单日期",
+        "op": "cast",
+        "to": "datetime"
+       },
+       {
+        "as": "数量小数",
+        "column": "数量",
+        "op": "cast",
+        "thousands": true,
+        "to": "decimal"
+       },
+       {
+        "as": "订单数字",
+        "column": "订单号",
+        "op": "cast",
+        "to": "integer"
+       },
+       {
+        "as": "是否",
+        "column": "状态码",
+        "op": "cast",
+        "to": "boolean"
+       },
+       {
+        "expression": "round(金额 / 数量, 2)",
+        "name": "单价",
+        "op": "calc"
+       },
+       {
+        "expression": "date_trunc('week', 日期)",
+        "name": "周",
+        "op": "calc"
+       },
+       {
+        "as": "状态",
+        "column": "状态码",
+        "mapping": [
+         {
+          "label": "新",
+          "value": "0"
+         },
+         {
+          "label": "已付",
+          "value": "1"
+         }
+        ],
+        "op": "label",
+        "other": "其他",
+        "unmapped": "other"
+       },
+       {
+        "as": "状态2",
+        "column": "状态码",
+        "mapping": [
+         {
+          "label": "取消",
+          "value": "2"
+         }
+        ],
+        "op": "label",
+        "unmapped": "keep"
+       },
+       {
+        "keep": "last",
+        "keys": [
+         "客户编号"
+        ],
+        "op": "dedupe",
+        "order_by": "日期"
+       }
+      ],
+      "type": "transform"
+     },
+     {
+      "from": "t",
+      "id": "out",
+      "key": {
+       "columns": [
+        "客户编号"
+       ]
+      },
+      "name": "订单清洗",
+      "type": "output"
+     }
+    ]
+   }
+  },
+  {
+   "description": "产品统计的说明",
+   "spec": {
+    "steps": [
+     {
+      "dataset": "订单",
+      "id": "o",
+      "type": "input"
+     },
+     {
+      "from": "o",
+      "id": "g",
+      "operators": [
+       {
+        "as": "状态",
+        "column": "状态码",
+        "mapping": [
+         {
+          "label": "新",
+          "value": "0"
+         }
+        ],
+        "op": "label"
+       },
+       {
+        "aggregations": [
+         {
+          "column": "金额",
+          "fn": "sum"
+         },
+         {
+          "column": "金额",
+          "fn": "count"
+         },
+         {
+          "column": "金额",
+          "fn": "count_distinct"
+         },
+         {
+          "column": "金额",
+          "fn": "avg"
+         },
+         {
+          "column": "金额",
+          "fn": "min"
+         },
+         {
+          "column": "金额",
+          "fn": "max"
+         },
+         {
+          "column": "金额",
+          "fn": "median"
+         },
+         {
+          "column": "金额",
+          "fn": "p25"
+         },
+         {
+          "column": "金额",
+          "fn": "p75"
+         },
+         {
+          "fn": "count"
+         },
+         {
+          "as": "状态数",
+          "column": "状态",
+          "fn": "count_distinct"
+         }
+        ],
+        "group_by": [
+         "产品编号"
+        ],
+        "op": "aggregate"
+       }
+      ],
+      "type": "transform"
+     },
+     {
+      "from": "g",
+      "id": "out",
+      "key": {
+       "columns": [
+        "产品编号"
+       ]
+      },
+      "name": "产品统计",
+      "type": "output"
+     }
+    ]
+   }
+  },
+  {
+   "description": "工单拆合的说明",
+   "spec": {
+    "steps": [
+     {
+      "dataset": "售后工单",
+      "id": "t",
+      "type": "input"
+     },
+     {
+      "from": "t",
+      "id": "c",
+      "operators": [
+       {
+        "columns": [
+         "问题描述",
+         "负责工程师"
+        ],
+        "op": "text_clean",
+        "steps": [
+         {
+          "do": "whitespace"
+         },
+         {
+          "do": "upper"
+         }
+        ]
+       },
+       {
+        "columns": [
+         "负责工程师"
+        ],
+        "op": "fill_null",
+        "with": {
+         "column": "处理状态"
+        }
+       },
+       {
+        "column": "创建日期",
+        "op": "cast",
+        "to": "date"
+       },
+       {
+        "as": "工单数字",
+        "column": "工单号",
+        "op": "cast",
+        "to": "integer"
+       }
+      ],
+      "type": "transform"
+     },
+     {
+      "branches": [
+       {
+        "id": "doing",
+        "where": {
+         "cmp": "eq",
+         "column": "处理状态",
+         "value": "处理中"
+        }
+       },
+       {
+        "id": "rest",
+        "rest": true
+       }
+      ],
+      "from": "c",
+      "id": "s",
+      "type": "split"
+     },
+     {
+      "id": "u",
+      "inputs": [
+       "doing",
+       "rest"
+      ],
+      "source_column": "来源",
+      "type": "union"
+     },
+     {
+      "from": "u",
+      "id": "d",
+      "operators": [
+       {
+        "op": "dedupe"
+       }
+      ],
+      "type": "transform"
+     },
+     {
+      "from": "d",
+      "id": "out",
+      "key": {
+       "as": "键",
+       "columns": [
+        "工单号",
+        "来源"
+       ],
+       "separator": "|"
+      },
+      "name": "工单拆合",
+      "type": "output"
+     }
+    ]
+   }
+  }
+ ]
+}

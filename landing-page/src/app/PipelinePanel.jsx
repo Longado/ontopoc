@@ -2,7 +2,7 @@ import React from "react";
 import { getPipelineLog } from "./api.js";
 import { formatDateTime, t } from "./i18n/index.js";
 import { KindChip, PIcon, TypeMark } from "./PipelineIcons.jsx";
-import { doubledGroupLines, failureLines, friendlyError, joinVerdictLines, kindLine, numberText, operatorTitle, splitLines, stepTitle, unionLines } from "./pipelineModel.js";
+import { columnFrom, doubledGroupLines, failureLines, friendlyError, joinVerdictLines, kindLine, numberText, operatorTitle, splitLines, stepTitle, unionLines } from "./pipelineModel.js";
 import { logText } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
 
@@ -52,7 +52,7 @@ function Columns({ data }) {
               <td><span className="col-name"><TypeMark type={c.type} /><span className="col-text">{c.name}</span></span></td>
               <td>{typeWord(c.type)}</td>
               <td>{c.badge ? <span className={`pl-badge ${c.badge === "new" ? "info" : "neutral"}`}>{t(`pipeline.panel.badge.${BADGE[c.badge] ?? "new"}`)}</span> : ""}</td>
-              <td className="muted">{c.origin ?? (c.aggregation ? `${c.aggregation.fn} (${c.aggregation.column ?? t("pipeline.panel.wholeRow")})` : "")}{c.code && <span> {t("pipeline.panel.codeColumn")}</span>}</td>
+              <td className="muted">{columnFrom(c)}{c.code && <span> {t("pipeline.panel.codeColumn")}</span>}</td>
               <td className="muted">{c.aggregations.length ? c.aggregations.join(", ") : ""}</td>
             </tr>
           ))}
@@ -91,7 +91,8 @@ function Log({ name, step, steps, node }) {
     ...(node?.join ? joinVerdictLines(node.join) : []),
     ...unionLines(node?.union),
     ...splitLines(node?.split),
-    ...(node?.operators ?? []).flatMap((op, i) => [`${i + 1}. ${op.text ?? ""}`, ...(op.failed ?? []).slice(0, 5).map((f) => `   ${t("pipeline.panel.log.failedRow", { row: f.row, value: f.value })}`), ...doubledGroupLines(op)]),
+    ...(node?.operators ?? []).flatMap((op, i) => [`${i + 1}. ${op.text ?? ""}`, ...(op.failed ?? []).slice(0, 5).map((f) => `   ${t("pipeline.panel.log.failedRow", { row: f.row, value: f.value })}`),
+      ...(op.without_examples ?? []).slice(0, 5).map((f) => `   ${t("pipeline.panel.log.withoutRow", { row: f.row, value: f.value ?? "" })}`), ...doubledGroupLines(op)]),
     ...failureLines(node),
   ].filter(Boolean);
   return (

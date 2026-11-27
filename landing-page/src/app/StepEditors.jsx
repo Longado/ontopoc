@@ -172,6 +172,7 @@ function OperatorReport({ report }) {
     <div className="op-report">
       {report.text && <p className="muted small">{report.text}</p>}
       {failed.length > 0 && <ul className="plain-list small warn">{failed.slice(0, 10).map((f) => <li key={f.row}>{t("steps.edit.report.row", { row: f.row, value: f.value })}</li>)}{failed.length > 10 && <li>{t("steps.edit.report.more", { count: failed.length - 10 })}</li>}</ul>}
+      {report.without_examples?.length > 0 && <ul className="plain-list small warn">{report.without_examples.slice(0, 10).map((f) => <li key={f.row}>{t("steps.edit.report.withoutRow", { row: f.row, value: f.value ?? "" })}</li>)}{report.without_separator > 10 && <li>{t("steps.edit.report.more", { count: report.without_separator - 10 })}</li>}</ul>}
       {report.error_rows?.length > 0 && <p className="warn small">{t("steps.edit.report.errorRows", { rows: report.error_rows.slice(0, 10).join(", "), more: report.error_rows.length > 10 ? t("steps.edit.report.etc") : "" })}</p>}
       {(report.notices ?? []).map((n, i) => <p key={i} className="warn small">{n.text}</p>)}
       {doubledGroupLines(report).map((l, i) => <p key={i} className="warn small">{l}</p>)}

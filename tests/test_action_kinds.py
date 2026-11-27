@@ -1,6 +1,6 @@
 """R12a: an action can create an object or delete one, not only edit it, and its submit conditions can be several, each with an operator.
 
-DIP showed what to avoid (walk of 2026-11-16): its create stored a bad value as null and said 处理成功, and a key that already existed overwrote that row while the
+Another platform showed what to avoid (walk of 2026-11-16): its create stored a bad value as null and said 处理成功, and a key that already existed overwrote that row while the
 page said 更新出错; its delete took no reason, was not logged, and could not be undone. Here:
 - create: a value that does not fit is refused and says which property; a key that exists is refused and nothing is written; a key taken between the submit and the
   approval sends the request to needs_look, and the row that is there is left alone. Undoing an approved create is a request to delete that object.
