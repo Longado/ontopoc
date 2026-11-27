@@ -374,10 +374,10 @@ export function TypeActions({ type, mayBuild, onCount }) {
 }
 
 /** The form for running one action: a value for each property it writes (a create's key first), a reason (a delete must give one). It makes a record that waits
- * for another builder. A create has no object yet: `objectKey` is null and the key comes from the form. */
-export function RunAction({ action, objectKey, objectText, onDone, onCancel }) {
-  const [values, setValues] = useState(() => Object.fromEntries(action.parameters.map((p) => [p.column, ""])));
-  const [reason, setReason] = useState("");
+ * for another builder. A create has no object yet: `objectKey` is null and the key comes from the form. `prefill` {values, reason}: what a draft filled in. */
+export function RunAction({ action, objectKey, objectText, onDone, onCancel, prefill }) {
+  const [values, setValues] = useState(() => Object.fromEntries(action.parameters.map((p) => [p.column, prefill?.values?.[p.column] ?? ""])));   // `prefill`: a draft the assistant wrote (Q&A)
+  const [reason, setReason] = useState(prefill?.reason ?? "");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);

@@ -154,7 +154,7 @@ class ServiceTests(QueryCase):
             big = self.query(ann, 'SELECT count(o) FROM (o:订单) WHERE o.金额 > 20000')[1]['answer']['total']
             self.assertEqual(big, sum(int(r['金额']) > 20000 for r in ORDERS))
             self.assertEqual(big, db.execute('SELECT count(*) FROM 订单 WHERE CAST(金额 AS INTEGER) > 20000').fetchone()[0])
-            careless = db.execute('SELECT count(*) FROM 订单 WHERE 金额 > 20000').fetchone()[0]   # the columns are text, as DIP keeps them: text sorts above any number
+            careless = db.execute('SELECT count(*) FROM 订单 WHERE 金额 > 20000').fetchone()[0]   # the columns are text, as some platforms keep them: text sorts above any number
             self.assertNotEqual(careless, big)
             self.assertEqual(careless, len(ORDERS))
             # a bound that is no number or date is the writer's mistake: a 400 with the reason, not a refusal about what is in scope

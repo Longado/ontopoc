@@ -151,7 +151,7 @@ def main(argv=None) -> int:
 
 
         text = 'SELECT count(o) FROM (o:订单) WHERE o.金额 > 20000'
-        report['traps'].append({'case': '文字列当数字比：数据集的列存成文字（DIP 除主键外都是 text）', 'question': '金额超过 20000 的订单有多少？',
+        report['traps'].append({'case': '文字列当数字比：数据集的列存成文字（有的平台除主键外都存成 text）', 'question': '金额超过 20000 的订单有多少？',
                                 'sql': 'SELECT count(*) FROM 订单 WHERE 金额 > 20000', 'sql_gives': db.execute('SELECT count(*) FROM 订单 WHERE 金额 > 20000').fetchone()[0],
                                 'query': text, 'query_gives': said(query(ann, text)),
                                 'truth': f'{sum(int(r["金额"]) > 20000 for r in tables["订单"])} 张（SQL 写成 CAST(金额 AS INTEGER) > 20000 也能得到；不写就是每一行都“大于”）'})

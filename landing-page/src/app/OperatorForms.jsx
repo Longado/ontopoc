@@ -3,7 +3,7 @@ import { guessDateFormat, previewNode } from "./api.js";
 import { AiBox } from "./AiBox.jsx";
 import { ExpressionEditor } from "./ExpressionEditor.jsx";
 import { typeLabel } from "./format.js";
-import { AGG_LABEL, CAST_LABEL, CLEAN_LABEL, CMP_LABEL, UNMAPPED_LABEL, aggAutoName, retargetAgg } from "./pipelineModel.js";
+import { AGG_LABEL, CAST_LABEL, CLEAN_LABEL, CMP_LABEL, UNMAPPED_LABEL, aggAutoName, extractProblems, retargetAgg } from "./pipelineModel.js";
 import { t } from "./i18n/index.js";
 import { Select } from "./Select.jsx";
 
@@ -291,7 +291,34 @@ function LabelForm({ op, cols, onChange }) {
   );
 }
 
-const FORMS = { filter: FilterForm, fill_null: FillNullForm, text_clean: TextCleanForm, cast: CastForm, calc: CalcForm, aggregate: AggregateForm, dedupe: DedupeForm, label: LabelForm };
+/** Split a text column on a separator taken as written and put one part into a new column. The rows it would give are in the preview below the form, as for the other
+ * operators; the rows without the separator are counted there and in the run. */
+function ExtractForm({ op, cols, onChange }) {
+  const problems = extractProblems(op);
+  const last = op.part === "last";
+  return (
+    <div className="op-form">
+      <Row>
+        <ColSelect cols={cols} only={(c) => c.type === "text"} value={op.column} label={t("steps.ops.x.col")} onChange={(column) => onChange({ ...op, column })} />
+        <label className="field"><span className="caption">{t("steps.ops.x.separator")}</span>
+          <input type="text" maxLength={10} value={op.separator ?? ""} placeholder={t("steps.ops.x.separatorPh")} onChange={(e) => onChange({ ...op, separator: e.target.value })} /></label>
+      </Row>
+      <Row>
+        <Select label={t("steps.ops.x.part")} value={last ? "last" : "n"} onChange={(v) => onChange({ ...op, part: v === "last" ? "last" : 1 })}>
+          <option value="n">{t("steps.ops.x.nth")}</option>
+          <option value="last">{t("steps.ops.x.last")}</option>
+        </Select>
+        {!last && <input type="number" min={1} max={100} step={1} aria-label={t("steps.ops.x.partN")} value={op.part ?? ""} onChange={(e) => onChange({ ...op, part: e.target.value === "" ? "" : Number(e.target.value) })} />}
+        <label className="field"><span className="caption">{t("steps.ops.x.as")}</span>
+          <input type="text" value={op.as ?? ""} onChange={(e) => onChange({ ...op, as: e.target.value })} /></label>
+      </Row>
+      {problems.map((p) => <p key={p} className="error">{p}</p>)}
+      <p className="hint">{t("steps.ops.x.hint")}</p>
+    </div>
+  );
+}
+
+const FORMS = { filter: FilterForm, fill_null: FillNullForm, text_clean: TextCleanForm, cast: CastForm, calc: CalcForm, aggregate: AggregateForm, dedupe: DedupeForm, label: LabelForm, extract: ExtractForm };
 
 /** The form of one operator, over the columns it reads. `where` = {name, spec (the whole draft), stepId, index (of this operator), from (the step the transform reads)}. */
 export function OperatorForm({ op, cols, onChange, where }) {

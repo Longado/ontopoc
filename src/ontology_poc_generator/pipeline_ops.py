@@ -41,7 +41,8 @@ _CATALOG = [   # what the operator picker lists: id, name, category, what it doe
     ('calc', ('计算列', 'Calculated column'), ('数值', 'Numbers'), ('用表达式加一列，或替换一列；可以先试算', 'Add a column with an expression, or replace one; you can try it first')),
     ('aggregate', ('分组统计', 'Group and calculate'), ('汇总', 'Summarize'), ('按几列分组，求和、计数、平均、中位数等，空值不计入', 'Group by some columns and take sums, counts, averages, medians and so on; empty values are not counted')),
     ('dedupe', ('排重', 'Remove duplicates'), ('清洗', 'Clean'), ('按主键去重，保留第一条或最后一条（要指定排序的列）', 'Remove duplicates by key, keeping the first or last row (name the column to order by)')),
-    ('label', ('打标签', 'Add labels'), ('常用', 'Common'), ('把代码换成含义（读已确认的含义，或自己写对照表）', 'Replace codes with meanings (read the confirmed meanings, or write your own mapping)'))]
+    ('label', ('打标签', 'Add labels'), ('常用', 'Common'), ('把代码换成含义（读已确认的含义，或自己写对照表）', 'Replace codes with meanings (read the confirmed meanings, or write your own mapping)')),
+    ('extract', ('拆分取段', 'Extract part'), ('文本', 'Text'), ('按原样的分隔符把文本拆开，取其中一段放进新列；没有分隔符的行留空，并数出来', 'Split text on a separator taken literally and put one part into a new column; rows without the separator are left empty and counted'))]
 
 
 class _Catalog:
@@ -684,7 +685,55 @@ def _label(op, src, columns, ctx, label):
     return {'columns': out_columns, 'select': f'SELECT {", ".join(selects)} FROM {src}', 'params': select_params, 'measure': measure}
 
 
-OPERATORS = {'filter': _filter, 'fill_null': _fill_null, 'text_clean': _text_clean, 'cast': _cast, 'calc': _calc, 'aggregate': _aggregate, 'dedupe': _dedupe, 'label': _label}
+# --- extract ------------------------------------------------------------------------------------------------------------------------------------------
+
+MAX_SEPARATOR, MAX_PART = 10, 100
+
+
+def _extract(op, src, columns, ctx, label):
+    """{column, separator, part, as}: split a text column on the separator, taken exactly as written (never a pattern, for the reason replace takes literal text:
+    a person's pattern never runs), and put part `part` (1, 2, ... or "last") into the new text column `as`. A row whose value is empty or holds no separator, and
+    a row with fewer parts than asked, gets an empty value, and the report counts each kind; nothing is guessed. The new column carries the marks of its source
+    (carry: not to be sent to the model, written by the model, copied by a join) and says where it came from (`extracted`); it has no `origin`, so the source's
+    confirmed meanings and code list do not pass to a part of it."""
+    col = _col(columns, op.get('column'), label)
+    if col['type'] != 'text':
+        raise OpError(tr(f'{label}：「{col["name"]}」是{TYPE_WORD[EXPR_TYPE[col["type"]]]}列，拆分取段只用在文本列上', f'{label}: "{col["name"]}" is a {TYPE_WORD[EXPR_TYPE[col["type"]]]} column, and extracting a part only works on text columns'))
+    if op.get('regex'):
+        raise OpError(tr(f'{label}：分隔符只按原样的文字找，不支持正则', f'{label}: the separator is found exactly as written and regular expressions are not supported'))
+    separator = op.get('separator')
+    if not isinstance(separator, str) or not 1 <= len(separator) <= MAX_SEPARATOR:
+        raise OpError(tr(f'{label}：分隔符要写 1 到 {MAX_SEPARATOR} 个字，按原样的文字拆', f'{label}: the separator must be 1 to {MAX_SEPARATOR} characters, taken exactly as written'))
+    part = op.get('part')
+    if not (part == 'last' or (isinstance(part, int) and not isinstance(part, bool) and 1 <= part <= MAX_PART)):
+        raise OpError(tr(f'{label}：取第几段要写 1 到 {MAX_PART} 的整数，或 "last"（最后一段）', f'{label}: the part to take must be a whole number from 1 to {MAX_PART}, or "last"'))
+    target = _new_name(columns, op.get('as'), label)
+    at = -1 if part == 'last' else part
+    ref = _q(col['name'])
+    new = {'name': target, 'type': 'text', 'badge': 'new', **carry(col), 'extracted': {'column': col['name'], 'origin': col.get('origin'), 'separator': separator, 'part': part}}
+    selects = [_q(c['name']) for c in columns] + [f'pl_part({ref}, ?, ?) AS {_q(target)}']
+
+    def measure(conn, src, out):
+        total, without, blank, short, empty, filled = conn.execute(
+            f"SELECT COUNT(*), COALESCE(SUM(pl_part({ref}, ?, 1) IS NULL), 0), COALESCE(SUM({ref} IS NULL OR CAST({ref} AS TEXT) = ''), 0), "
+            f'COALESCE(SUM(pl_part({ref}, ?, 1) IS NOT NULL AND pl_part({ref}, ?, ?) IS NULL), 0), COALESCE(SUM(pl_part({ref}, ?, ?) = \'\'), 0), '
+            f'COALESCE(SUM(pl_part({ref}, ?, ?) IS NOT NULL), 0) FROM {src}', [separator, separator, separator, at, separator, at, separator, at]).fetchone()
+        examples = [{'row': r, 'value': v} for r, v in conn.execute(f'SELECT rowid, {ref} FROM {src} WHERE pl_part({ref}, ?, 1) IS NULL ORDER BY rowid LIMIT {EXAMPLES}', [separator])]
+        which = tr('最后一段', 'the last part') if part == 'last' else tr(f'第 {part} 段', f'part {part}')
+        if without:
+            text = tr(f'{total} 行里有 {without} 行没有“{separator}”，这些行的「{target}」是空的', f'{without} of {total} rows had no "{separator}", so "{target}" is empty in them') + \
+                (tr(f'（其中 {blank} 行原来就是空的）', f' ({blank} of them were empty already)') if blank else '')
+        else:
+            text = tr(f'{total} 行都有“{separator}”', f'All {total} rows have "{separator}"')
+        if short:
+            text += tr(f'；{short} 行拆出来不到 {part} 段，「{target}」也是空的', f'; {short} rows have fewer than {part} parts, so "{target}" is empty in them too')
+        if empty:
+            text += tr(f'；{empty} 行取到的{which}是空文字', f'; in {empty} rows {which} is empty text')
+        return {'without_separator': without, 'empty_source': blank, 'short': short, 'empty_part': empty, 'without_examples': examples, 'affected': filled, 'text': text}
+    return {'columns': [*columns, new], 'select': f'SELECT {", ".join(selects)} FROM {src}', 'params': [separator, at], 'measure': measure}
+
+
+OPERATORS = {'filter': _filter, 'fill_null': _fill_null, 'text_clean': _text_clean, 'cast': _cast, 'calc': _calc, 'aggregate': _aggregate, 'dedupe': _dedupe, 'label': _label, 'extract': _extract}
 
 
 def compile_op(op, src: str, columns: list[dict], ctx: dict, label: str) -> dict:

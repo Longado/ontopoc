@@ -2287,7 +2287,7 @@ td .check, .table-wrap label.check { white-space: nowrap; }
 .graph-pane.pannable.panning { cursor: grabbing; user-select: none; }
 .graph-pane.pannable .pl-node { cursor: pointer; }
 
-/* R16 pipeline toolbar like DIP: add data, quick step kinds, delete, auto layout, search */
+/* R16 pipeline toolbar: add data, quick step kinds, delete, auto layout, search */
 .pl-tool-sep { width: 1px; height: 20px; background: var(--pl-border, #dfe3e8); margin: 0 4px; }
 .pl-quick { display: inline-flex; gap: 2px; }
 .pl-tool.icon { padding: 0 6px; min-width: 30px; justify-content: center; }
