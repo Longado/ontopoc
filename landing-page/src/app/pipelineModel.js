@@ -715,7 +715,7 @@ export function insertField(text, start, end, name) {
   return { text: text.slice(0, from) + insert + text.slice(to), caret: from + insert.length };
 }
 
-/** "Add data": a new input step that already reads `dataset` (the toolbar's dataset menu, as DIP's 添加数据). */
+/** "Add data": a new input step that already reads `dataset` (the toolbar's dataset menu). */
 export function dataInput(steps, dataset) {
   return { ...newStep(steps, "input", null), dataset };
 }

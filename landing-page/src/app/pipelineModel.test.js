@@ -319,7 +319,7 @@ test("a card dragged on the pipeline graph keeps its new place; the others keep 
   assert.equal(up.height, base.nodes.b.y + 80 + 64);
 });
 
-test("Add data puts a dataset on the canvas as a new input step, already pointing at it (like DIP's 添加数据)", async () => {
+test("Add data puts a dataset on the canvas as a new input step, already pointing at it", async () => {
   const { dataInput } = await import("./pipelineModel.js");
   const steps = [{ id: "input", type: "input", dataset: "Orders" }];
   const made = dataInput(steps, "Customers");
@@ -337,7 +337,7 @@ test("the canvas search finds steps by their title or kind, case-insensitively",
   assert.deepEqual(findSteps(steps, "  "), []);
 });
 
-test("dragging from one card's out-port to another's in-port links them (like DIP): a join fills the side it was dropped on, a union adds an input, others read the new step", async () => {
+test("dragging from one card's out-port to another's in-port links them: a join fills the side it was dropped on, a union adds an input, others read the new step", async () => {
   const { linkSteps } = await import("./pipelineModel.js");
   const steps = [
     { id: "a", type: "input", dataset: "Orders" },
