@@ -45,7 +45,7 @@ export function answerFromDocuments(record) {
 
 /** [before, the quoted part, after] of the sentence that holds a quote, as the service sends them (three strings: no offsets to count); the quote alone when no
  * sentence came with it (a kept answer from before). */
-function sentenceParts(q) {
+export function sentenceParts(q) {
   const s = q.sentence;
   if (!s || typeof s !== "object" || typeof s.quote !== "string") return ["", q.quote, ""];
   return [String(s.before ?? ""), s.quote, String(s.after ?? "")];

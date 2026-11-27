@@ -25,7 +25,7 @@ export function stateLine(item, noun) {
   const confirmed = item.confirmed_by ? t("types.line.confirmed", { who: item.confirmed_by, time: timeText(item.confirmed_at), versions: versionsText(item.confirmed_on) }) : "";
   if (item.state === "confirmed") return confirmed;
   if (item.state === "rejected") return item.proposed_by ? t("types.line.rejectedBy", { who: item.proposed_by }) : t("types.line.rejected");
-  if (item.state === "needs_look") return confirmed ? t("types.line.needsLookWas", { confirmed }) : t("types.line.needsLook", { noun });
+  if (item.state === "needs_look") return confirmed ? t(item.cause === "definition" ? "types.line.needsLookWasDefinition" : "types.line.needsLookWas", { confirmed }) : t("types.line.needsLook", { noun });
   if (item.model_draft) return t("types.line.modelDraft");
   if (item.state === "proposed" || item.state === "checked") {
     const by = item.proposed_by ? t("types.line.proposedBy", { who: item.proposed_by }) : "";
@@ -124,7 +124,9 @@ export const alsoCalled = (names) => (names?.length ? t("types.alsoCalled", { na
 const named = (text) => (text === undefined ? {} : { other_names: otherNamesFrom(text) });   // a form that has no box for them says nothing: the service keeps the ones on file
 
 /** The kinds of value rule, in the order the form offers them. */
-export const RULE_CHECKS = ["not_empty", "gt", "ge", "lt", "le", "between", "in_codes", "not_before"];
+export const RULE_CHECKS = ["not_empty", "gt", "ge", "lt", "le", "between", "in_codes", "not_before", "when"];
+/** Conditions of one conditional rule ("when A is a, … then X must be v"): equalities only. */
+export const MAX_CONDITIONS = 3;
 const NUMBER_TYPES = ["integer", "decimal"];
 const BOUNDED = ["gt", "ge", "lt", "le"];
 const dayKind = (declared) => (declared === "month" ? "month" : ["date", "datetime"].includes(declared) ? "day" : null);
@@ -134,8 +136,14 @@ const dayKind = (declared) => (declared === "month" ? "month" : ["date", "dateti
 export function ruleChecks(column, columns = []) {
   const mates = dateMates(columns, column);
   return RULE_CHECKS.filter((c) => c === "not_empty" || ([...BOUNDED, "between"].includes(c) && NUMBER_TYPES.includes(column?.declared))
-    || (c === "in_codes" && column?.enum) || (c === "not_before" && mates.length > 0));
+    || (c === "in_codes" && column?.enum) || (c === "not_before" && mates.length > 0) || (c === "when" && columns.some((o) => o.name !== column?.name)));
 }
+
+const trimmed = (v) => String(v ?? "").trim();
+const listOf = (text) => String(text ?? "").split(/[,\uff0c\u3001]/).map((v) => v.trim()).filter(Boolean);
+/** A form rule's citation as the service takes it, or null when none is written: the document and its passage, and the quote when one is typed (a stale citation
+ * sent without its quote is kept as it is on file). */
+const citeOf = (cite) => (cite?.document ? { document: cite.document, passage: cite.passage, ...(trimmed(cite.quote) ? { quote: cite.quote } : {}) } : null);
 
 /** The other properties a date rule on `column` can compare with: dates and date-times with each other, months with months. */
 export const dateMates = (columns, column) => (dayKind(column?.declared) ? columns.filter((c) => c.name !== column.name && dayKind(c.declared) === dayKind(column.declared)) : []);
@@ -146,20 +154,61 @@ export function rulePayload(rule) {
   if (BOUNDED.includes(rule.check)) kept.value = String(rule.value ?? "").trim();
   if (rule.check === "between") Object.assign(kept, { low: String(rule.low ?? "").trim(), high: String(rule.high ?? "").trim() });
   if (rule.check === "not_before") kept.other = rule.other;
+  if (rule.check === "when") {
+    kept.when = (rule.conditions ?? []).map((c) => ({ column: c.column, equals: trimmed(c.value) }));
+    if (rule.list) kept.one_of = listOf(rule.values);
+    else kept.equals = trimmed(rule.value);
+  }
+  const cite = citeOf(rule.cite);
+  if (cite) kept.cite = cite;
+  if (rule.reportOnly) kept.report_only = true;   // sent only when marked: a rule without it must hold, as every rule did before
   return kept;
 }
 
 /** The rules of a saved type as form rows. */
-export const rulesOfType = (type) => (type?.rules ?? []).map((r) => ({ column: r.column, check: r.check, value: r.value ?? "", low: r.low ?? "", high: r.high ?? "", other: r.other ?? "" }));
+export const rulesOfType = (type) => (type?.rules ?? []).map((r) => ({
+  column: r.column, check: r.check, value: (r.check === "when" ? r.equals : r.value) ?? "", low: r.low ?? "", high: r.high ?? "", other: r.other ?? "",
+  ...(r.check === "when" ? { conditions: (r.when ?? []).map((c) => ({ column: c.column, value: c.equals })), list: Array.isArray(r.one_of), values: (r.one_of ?? []).join(", ") } : {}),
+  ...(r.cite ? { cite: { document: r.cite.document, passage: r.cite.passage, quote: r.cite.quote ?? "" } } : {}),
+  ...(r.report_only ? { reportOnly: true } : {}),
+}));
+
+/** The line under a rule that only reports: its broken rows are listed and do not stop confirming. "" for a rule that must hold. */
+export const reportOnlyTag = (rule) => (rule?.report_only ? t("types.rules.reportOnlyTag") : "");
 
 /** Whether a form rule has what its kind needs before it is sent. */
 export function ruleReady(rule) {
   if (!rule.column || !RULE_CHECKS.includes(rule.check)) return false;
+  if (rule.cite?.document && !rule.cite.passage) return false;   // a citation is whole or absent, on every kind of rule
   if (BOUNDED.includes(rule.check)) return String(rule.value ?? "").trim() !== "";
   if (rule.check === "between") return String(rule.low ?? "").trim() !== "" && String(rule.high ?? "").trim() !== "";
   if (rule.check === "not_before") return Boolean(rule.other);
+  if (rule.check === "when") {
+    const conditions = rule.conditions ?? [];
+    if (!conditions.length || conditions.length > MAX_CONDITIONS || conditions.some((c) => !c.column || !trimmed(c.value))) return false;
+    return rule.list ? listOf(rule.values).length > 0 : trimmed(rule.value) !== "";
+  }
   return true;
 }
+
+/** [before, the quoted part, after] of the sentence a citation's quote sits in: the same function an answer from documents uses. */
+export { sentenceParts as citeParts } from "./documentModel.js";
+
+/** What a citation that stands is from, before its sentence: the document and where in it. */
+export const citeSource = (cite) => t("types.rules.citeSource", { name: cite.name, where: cite.where });
+
+/** The line under a rule that cites its requirement: the document, where in it, and the quote; while it does not stand, why (no quote). "" with no citation. */
+export function citeLine(cite) {
+  if (!cite) return "";
+  if (cite.stale) return t("types.rules.citeStale", { name: cite.name ?? "", why: cite.stale });
+  return t("types.rules.cite", { name: cite.name, where: cite.where, quote: cite.quote });
+}
+
+/** Two rules that disagree, in one line, with how many rows meet both conditions now (when counted). */
+export const conflictLine = (c) => (c.rows == null ? c.says : t("types.conflicts.line", { says: c.says, count: c.rows }));
+
+/** The "known: asked <who>" note on a conflict, waiting for a second person. */
+export const conflictNoteLine = (note) => t("types.conflicts.noteLine", { asked: note.asked, who: note.proposed_by ?? "" });
 
 /** How a rule stands on the rows now, in one line: how many rows break it (of the rows the reader may see, when a row rule limits them). */
 export function ruleStanding(rule, ownRows) {

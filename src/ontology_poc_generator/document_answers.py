@@ -23,7 +23,7 @@ import unicodedata
 
 from ontology_poc_generator.company_documents import DocumentFileError, load_document_file
 from ontology_poc_generator.lang import tr
-from ontology_poc_generator.object_types import TypeRefused, _content, element_row, held_note, write_confirmation
+from ontology_poc_generator.object_types import TypeRefused, _content, element_row, held_note, one_telling, write_confirmation
 from ontology_poc_generator.workspace_store import SelfConfirmation, drop_was, element_state_writes, log_line, may_confirm, now_text
 
 DOCUMENT_PREFIX = 'document:'
@@ -248,7 +248,9 @@ def upload(conn, user: dict | None, payload: dict, who: str | None) -> dict:
         return _shown(conn, user, row)
     if row is None and len(_rows(conn)) >= MAX_DOCUMENTS:
         raise DocumentRefused(tr(f'一个工作区最多 {MAX_DOCUMENTS} 份文档', f'A workspace holds at most {MAX_DOCUMENTS} documents'))
-    with element_state_writes(conn, [(element_id, 'checked', None, who, content, None, who)]):
+    with one_telling(conn), element_state_writes(conn, [(element_id, 'checked', None, who, content, None, who)]):
+        if row is not None:   # a new version: a type whose rules cite this document needs another look (cited_rules)
+            _moved(conn, element_id, ('有了新版本', 'has a new version'), name)
         _unindex(conn, element_id)
         conn.execute('DELETE FROM doc_passage WHERE element_id = ?', (element_id,))
         for position, (paragraph, part, text) in enumerate(pieces, start=1):
@@ -379,11 +381,22 @@ def sentence_parts(text: str, at: int, end: int) -> dict:
     return {'before': text[start:at].lstrip(), 'quote': text[at:end], 'after': text[end:stop].rstrip()}
 
 
+def check_quote(quote: str, text: str) -> tuple[str | None, dict | None]:
+    """The one quote check, for an answer from documents and for a rule's citation (cited_rules): ('short', None) for fewer than MIN_QUOTE letters or digits,
+    ('missing', None) when it is not word for word in `text`, otherwise (None, {'sentence'}): the whole sentence that holds it as three strings (sentence_parts)."""
+    if _real(quote) < MIN_QUOTE:
+        return 'short', None
+    if quote not in text:
+        return 'missing', None
+    at = text.index(quote)
+    return None, {'sentence': sentence_parts(text, at, at + len(quote))}
+
+
 def _checked(answer, given: dict) -> tuple[list[dict], list[str]]:
     """(the quotes with where each comes from, the problems): an answer is quotes only, each exactly in the passage it names, which is one the model was given,
     and each with at least MIN_QUOTE letters or digits; the same quote twice is refused. Any problem refuses the whole answer. A problem never repeats what was
-    quoted (a refusal is kept). Each kept quote comes with the whole sentence that holds it and where the quote is in it, so a fragment cannot drop a negation
-    or an exception out of sight."""
+    quoted (a refusal is kept). Each kept quote comes with the whole sentence that holds it as three strings (check_quote, sentence_parts), so a fragment cannot
+    drop a negation or an exception out of sight; quotes that repeat or overlap one already quoted are refused."""
     quotes = answer.get('quotes') if isinstance(answer, dict) else None
     if not isinstance(quotes, list) or not quotes or len(quotes) > MAX_QUOTES \
             or not all(isinstance(q, dict) and isinstance(q.get('passage'), str) and isinstance(q.get('quote'), str) for q in quotes):
@@ -399,12 +412,14 @@ def _checked(answer, given: dict) -> tuple[list[dict], list[str]]:
             spans.setdefault(q['passage'], []).append((at, at + len(q['quote'])))
         if passage is None:
             problems.append(tr(f'第 {n} 句引用的段落不是给模型的段落', f'Quote {n} names a passage the model was not given'))
-        elif _real(q['quote']) < MIN_QUOTE:
+            continue
+        problem, found = check_quote(q['quote'], passage['text'])
+        if problem == 'short':
             problems.append(tr(f'第 {n} 句引用太短：至少要有 {MIN_QUOTE} 个字母、汉字或数字', f'Quote {n} is too short: it needs at least {MIN_QUOTE} letters or digits'))
-        elif q['quote'] not in passage['text']:
+        elif problem == 'missing':
             problems.append(tr(f'第 {n} 句引用在它的段落原文里找不到', f'Quote {n} is not in the text of its passage'))
         else:
-            kept.append({'passage': q['passage'], 'quote': q['quote'], 'sentence': sentence_parts(passage['text'], at, at + len(q['quote'])), 'document': passage['document'], 'document_id': passage['element_id'],
+            kept.append({'passage': q['passage'], 'quote': q['quote'], 'sentence': found['sentence'], 'document': passage['document'], 'document_id': passage['element_id'],
                          'version': passage['version'], 'where': passage['where']})
     return kept, problems
 
@@ -618,6 +633,12 @@ def send_back(conn, user: dict | None, payload: dict, who: str | None) -> dict:
     row, reason = _act(conn, user, payload, ('退回', 'Sending back'))
     if row['state'] != 'confirmed':
         raise DocumentRefused(tr('只有已确认的文档才能退回', 'Only a confirmed document can be sent back'), 409)
+    with one_telling(conn):
+        _send_back(conn, row, reason, who)
+    return _shown(conn, user, element_row(conn, row['element_id']))
+
+
+def _send_back(conn, row: dict, reason: str, who: str | None) -> None:
     conn.execute('BEGIN IMMEDIATE')
     try:
         if conn.execute("UPDATE element_state SET state = 'needs_look', reason = ?, cause = NULL, via = NULL, version = version + 1 WHERE element_id = ? AND version = ?",
@@ -626,11 +647,11 @@ def send_back(conn, user: dict | None, payload: dict, who: str | None) -> dict:
         log_line(conn, who or tr('未署名', 'unsigned'), row['element_id'], 'sent_back', before={'state': 'confirmed', 'version': row['version']}, after={'state': 'needs_look', 'reason': reason})
         drop_was(conn, row['element_id'])
         _index(conn, row['element_id'])   # out of what is searched, into what waits
+        _moved(conn, row['element_id'], ('被退回了', 'was sent back'), _content(row)['name'])
         conn.execute('COMMIT')
     except BaseException:
         conn.execute('ROLLBACK')
         raise
-    return _shown(conn, user, element_row(conn, row['element_id']))
 
 
 def remove(conn, user: dict | None, payload: dict, who: str | None) -> dict:
@@ -641,8 +662,20 @@ def remove(conn, user: dict | None, payload: dict, who: str | None) -> dict:
     row, reason = _act(conn, user, payload, ('移除', 'Removing'))
     name = _content(row)['name']
     conn.executescript(_SCHEMA)
+    with one_telling(conn):
+        _remove(conn, row, reason, name, who)
+    return {'id': row['element_id'], 'name': name, 'removed': True, 'reason': reason}
+
+
+def _moved(conn, element_id: str, how: tuple[str, str], name: str) -> None:
+    from ontology_poc_generator.cited_rules import document_moved   # cited_rules reads this module
+    document_moved(conn, element_id, how, name)
+
+
+def _remove(conn, row: dict, reason: str, name: str, who: str | None) -> None:
     conn.execute('BEGIN IMMEDIATE')
     try:
+        _moved(conn, row['element_id'], ('已移除', 'was removed'), name)
         _unindex(conn, row['element_id'])
         conn.execute('DELETE FROM doc_passage WHERE element_id = ?', (row['element_id'],))
         if conn.execute('DELETE FROM element_state WHERE element_id = ? AND version = ?', (row['element_id'], row['version'])).rowcount != 1:
@@ -653,7 +686,6 @@ def remove(conn, user: dict | None, payload: dict, who: str | None) -> dict:
     except BaseException:
         conn.execute('ROLLBACK')
         raise
-    return {'id': row['element_id'], 'name': name, 'removed': True, 'reason': reason}
 
 
 def reopened_removed(conn, user: dict | None, named: list[str]) -> dict | None:

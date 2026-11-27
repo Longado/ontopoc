@@ -102,7 +102,7 @@ def grey_reasons(lines: list[dict]) -> list[str]:
 def _roots(conn, element_id: str, seen: frozenset = frozenset()) -> list[str]:
     """The definitions at the bottom of the chain behind one that is not confirmed: what it reads that is not confirmed either, down to the ones that read nothing
     unconfirmed (the code meaning whose values moved, the type whose data changed). The definition itself when nothing under it is the cause."""
-    under = [d for (d,) in conn.execute("SELECT d.depends_on FROM element_dep d JOIN element_state s ON s.element_id = d.depends_on WHERE d.element_id = ? AND s.state != 'confirmed' ORDER BY d.depends_on",
+    under = [d for (d,) in conn.execute("SELECT d.depends_on FROM element_dep d JOIN element_state s ON s.element_id = d.depends_on WHERE d.element_id = ? AND s.state != 'confirmed' AND d.depends_on NOT LIKE 'document:%' ORDER BY d.depends_on",
                                        (element_id,)) if d not in seen]
     return [r for d in under for r in _roots(conn, d, seen | {element_id})] or [element_id]
 

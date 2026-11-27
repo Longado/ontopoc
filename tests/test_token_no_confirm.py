@@ -23,7 +23,7 @@ except ImportError:   # before 3.11
 COVERED = ('/api/workspace/types/confirm', '/api/workspace/types/views/confirm', '/api/workspace/types/derived/confirm', '/api/workspace/relations/confirm',
            '/api/workspace/pipelines/confirm', '/api/workspace/actions/confirm', '/api/workspace/actions/decide', '/api/workspace/queue/confirm',
            '/api/workspace/queue/confirm-group', '/api/workspace/checked', '/api/workspace/needed/confirm', '/api/workspace/documents/confirm',
-           '/api/workspace/documents/remove')
+           '/api/workspace/documents/remove', '/api/workspace/types/conflict-note/confirm')
 # A person-only act that vouches for nothing: removing a document deletes passages that cannot come back (the Leader's ruling, 2026-11-26, doc-answers round 2;
 # sending a document back takes trust away and stays open to a token, as other send-backs). It reaches no confirmation writer, so the test that ties the list to
 # the writers leaves it out.
@@ -220,8 +220,10 @@ class PersonOnlyListTests(unittest.TestCase):
 
 
 PACKAGE = Path(access.__file__).parent
-# where a person's name is written as the one who vouches: a confirmation of any definition, an approved change, a checked number, an expected answer confirmed
-SINKS = {('object_types', 'write_confirmation'), ('object_actions', 'decide'), ('checked_numbers', 'record'), ('needed_questions', 'confirm')}
+# where a person's name is written as the one who vouches: a confirmation of any definition, an approved change, a checked number, an expected answer confirmed,
+# a conflict note confirmed
+SINKS = {('object_types', 'write_confirmation'), ('object_actions', 'decide'), ('checked_numbers', 'record'), ('needed_questions', 'confirm'),
+         ('cited_rules', 'confirm_note')}   # a "known: asked <who>" note on two rules that disagree, confirmed by a second person (cited_rules)
 ROUTERS = {('ontology_server', 'make_server'), ('ontology_server', 'main'), ('demo', 'seed'), ('demo', 'main'), ('use_layer', 'post')}   # they reach everything: the server, the demo seed, the use layer's dispatch
 ON_A_COPY = {'/api/workspace/impact': 'what confirming would do to the boards, worked out on a copy of the workspace that is thrown away (change_preview.impact)'}
 
