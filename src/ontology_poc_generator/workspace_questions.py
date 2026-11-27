@@ -1092,8 +1092,8 @@ def _answered(conn, gateway, user: dict | None, question: str, sc: dict, actions
     if asked['error'] or not asked['items']:   # it replied, but with no query for this question: kept as unanswered, said in the reader's words
         item = {'question': question, 'reasoning': '', 'query': None, 'status': 'no_query', 'reason': _no_query_reason(sc)}
         return document_answers.settled(conn, user, docs, item, {**_finish(conn, user, sc, parts, item, []), 'model': asked['model']})
-    if asked['items'][0].get(action_drafts.MARK):   # a draft of an action, or why there is none
-        return {**action_drafts.finish(asked['items'][0]), 'model': asked['model']}
+    if asked['items'][0].get(action_drafts.MARK):   # a draft of an action, or why there is none: before a data query and a document answer (a quote beside it is ignored)
+        return {**document_answers.beside_a_draft(docs, action_drafts.finish(asked['items'][0])), 'model': asked['model']}
     return document_answers.settled(conn, user, docs, asked['items'][0], {**_finish(conn, user, sc, parts, asked['items'][0], answer.applied, spoken.get('spec'), beside=(answer, question)), 'model': asked['model'],
                                                                           **({'ran': answer.ran()} if ROW_ANSWERS else {})})
 

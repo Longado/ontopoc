@@ -156,6 +156,15 @@ def kept(result: dict) -> dict:
     return result
 
 
+def unworded(result: dict) -> dict:
+    """A refusal of a draft without what the model wrote in its query: the action's name, key, values and type stay (reopening checks them again), its reason
+    goes; a reply that was not one draft keeps no query at all (its refusal quotes nothing of the object, so there is nothing to check again)."""
+    asked = result.get('query').get('action') if isinstance(result.get('query'), dict) else None
+    if not isinstance(asked, dict) or (result.get('refusal') or {}).get('check') in ('one_draft', 'not_a_draft'):
+        return {**result, 'query': None}
+    return {**result, 'query': {'action': {k: asked[k] for k in ('name', 'key', 'values', 'type') if k in asked}}}
+
+
 def again(conn, user: dict | None, record: dict, question: str) -> dict:
     """A kept draft read again for the person reopening it: the same draft checked now, with the object's values as they are now (or the refusal now)."""
     if not DRAFTS or not drafted(record):
