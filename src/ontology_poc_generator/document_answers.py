@@ -489,16 +489,16 @@ def settled(conn, user: dict | None, docs: dict | None, item: dict, result: dict
     return {**result, 'reason': _nothing() + ('\n' + said if said else ''), 'documents': {'found': False, 'line': _nothing()}}
 
 
-def beside_a_draft(docs: dict | None, result: dict) -> dict:
-    """A draft of an action, or its refusal (action_drafts), for a question that was sent with passages. A draft is shown as it is: code checked its action and
-    values, and no quote goes with it. A refusal of one keeps nothing the model wrote, as every refusal does once passages were sent: no reasoning, no reason of
-    the model's in the query it keeps for reopening, and the service's sentence after its own. With no passage sent, `result` as it is."""
-    if docs is None or not docs['passages'] or result.get('status') == 'draft':
-        return result
-    from ontology_poc_generator.action_drafts import unworded
+def sent(docs: dict | None) -> bool:
+    """Whether passages went to the model with this question."""
+    return docs is not None and bool(docs['passages'])
+
+
+def beside_a_draft(result: dict) -> dict:
+    """A draft's refusal (already without anything the model wrote: action_drafts.sealed) for a question that was sent with passages: the service's sentence
+    after its own reason, as every refusal says once passages were sent. A draft itself is shown as it is, with no quote."""
     said = _unused()
-    return {**unworded(result), **({'reasoning': ''} if 'reasoning' in result else {}), 'reason': (result.get('reason') or '') + '\n' + said,
-            'documents': {'found': True, 'line': said}}
+    return {**result, 'reason': (result.get('reason') or '') + '\n' + said, 'documents': {'found': True, 'line': said}}
 
 
 def _query_not_run(result: dict) -> dict:
