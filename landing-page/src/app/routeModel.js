@@ -35,6 +35,7 @@ export function parseRoute(hash) {
   }
   if (parts[0] === "qa" && parts.length === 2 && /^[1-9]\d*$/.test(parts[1])) return { page: "qa", id: Number(parts[1]) };   // a saved answer
   if (parts[0] === "datasets" && parts.length === 1) return { page: "datasets" };
+  if (parts[0] === "documents" && parts.length <= 2) return parts.length === 1 ? { page: "documents" } : { page: "document", id: parts[1] };   // the documents that answer questions, and one of them
   if (parts[0] === "tasks" && parts.length === 1) return { page: "tasks" };
   if (parts[0] === "notices" && parts.length === 1) return { page: "notices" };
   if (parts[0] === "needed" && parts.length === 1) return { page: "needed" };   // the team's questions we need
@@ -104,6 +105,8 @@ export function hrefFor(route) {
   if (route.page === "qa") return route.id ? `#/qa/${route.id}` : route.ask ? `#/qa?ask=${encodeURIComponent(route.ask)}` : "#/qa";
   if (route.page === "tasks" || route.page === "notices" || route.page === "needed" || route.page === "account" || route.page === "users" || route.page === "settings" || route.page === "sources" || route.page === "schedules") return `#/${route.page}`;
   if (route.page === "source") return `#/sources/${encodeURIComponent(route.name)}`;
+  if (route.page === "documents") return "#/documents";
+  if (route.page === "document") return `#/documents/${encodeURIComponent(route.id)}`;
   if (route.page === "planned") return `#/${route.key}`;
   if (route.page === "types") return "#/types";
   if (route.page === "confirm" || route.page === "permissions" || route.page === "lineage") return `#/${route.page}`;
@@ -141,7 +144,7 @@ export function hrefFor(route) {
 export const PLANNED = {
 };
 
-const BUILT = { home: "#/home", qa: "#/qa", tasks: "#/tasks", notices: "#/notices", datasets: "#/datasets", types: "#/types", relations: "#/relations", lineage: "#/lineage", agents: "#/agents", boards: "#/boards", confirm: "#/confirm", needed: "#/needed", users: "#/users", settings: "#/settings", permissions: "#/permissions", pipelines: "#/pipelines", sources: "#/sources", schedules: "#/schedules" };
+const BUILT = { home: "#/home", qa: "#/qa", tasks: "#/tasks", notices: "#/notices", datasets: "#/datasets", documents: "#/documents", types: "#/types", relations: "#/relations", lineage: "#/lineage", agents: "#/agents", boards: "#/boards", confirm: "#/confirm", needed: "#/needed", users: "#/users", settings: "#/settings", permissions: "#/permissions", pipelines: "#/pipelines", sources: "#/sources", schedules: "#/schedules" };
 const BUILDERS = ["confirm", "needed", "pipelines", "sources", "schedules", "agents"];   // in the sidebar of builders and admins only: a viewer has nothing to confirm, and a pipeline's steps and previews quote rows (the service refuses them to a viewer)
 const ONLY_WITH = { notices: "notices" };
 const UNLIMITED = ["needed"];   // worked out over every row and every type: not offered to a builder a type list, column rule or row rule limits (the service refuses them and says why)   // shown only when the person has one: 消息 once a notice has arrived (the top bar's bell and the address always reach it)
@@ -156,7 +159,7 @@ const group = (key, icon, rest) => ({ key, get label() { return t(`nav.group.${k
 export const NAV = [
   { key: "main", items: [item("home", "home"), item("qa", "chat"), item("boards", "board"), item("notices", "bell")] },
   group("objects", "cube", { items: [item("confirm", "check"), item("needed", "check-circle"), item("types", "cube"), item("relations", "link"), item("lineage", "lineage")] }),
-  group("data", "database", { items: [item("datasets", "table"), item("sources", "plug"), item("pipelines", "pipeline"), item("schedules", "clock")] }),
+  group("data", "database", { items: [item("datasets", "table"), item("documents", "tasks"), item("sources", "plug"), item("pipelines", "pipeline"), item("schedules", "clock")] }),
   group("apps", "apps", { items: [item("agents", "bot")] }),
 ];
 
@@ -182,6 +185,7 @@ export const PAGES = {
   tasks: { nav: null, role: "builder" },   // the task list quotes keys and values: the service gives it to builders only. Not in the sidebar; its address stays
   notices: { nav: "notices" },
   datasets: { nav: "datasets" }, dataset: { nav: "datasets" },
+  documents: { nav: "documents" }, document: { nav: "documents" },   // a viewer reads the confirmed ones not kept for builders; uploading and confirming are a builder's (the service decides)
   pipelines: { nav: "pipelines", role: "builder" }, pipelinenew: { nav: "pipelines", role: "builder" }, pipeline: { nav: "pipelines", role: "builder" },
   sources: { nav: "sources", role: "builder" }, source: { nav: "sources", role: "builder" },
   schedules: { nav: "schedules", role: "builder" },

@@ -22,7 +22,15 @@ except ImportError:   # before 3.11
 
 COVERED = ('/api/workspace/types/confirm', '/api/workspace/types/views/confirm', '/api/workspace/types/derived/confirm', '/api/workspace/relations/confirm',
            '/api/workspace/pipelines/confirm', '/api/workspace/actions/confirm', '/api/workspace/actions/decide', '/api/workspace/queue/confirm',
-           '/api/workspace/queue/confirm-group', '/api/workspace/checked', '/api/workspace/needed/confirm')
+           '/api/workspace/queue/confirm-group', '/api/workspace/checked', '/api/workspace/needed/confirm', '/api/workspace/documents/confirm',
+           '/api/workspace/documents/remove')
+# A person-only act that vouches for nothing: removing a document deletes passages that cannot come back (the Leader's ruling, 2026-11-26, doc-answers round 2;
+# sending a document back takes trust away and stays open to a token, as other send-backs). It reaches no confirmation writer, so the test that ties the list to
+# the writers leaves it out.
+TAKES_TRUST_AWAY = ('/api/workspace/documents/remove',)
+REMOVE = '/api/workspace/documents/remove'
+REMOVE_ZH = '移除文档要由本人登录页面来做'
+REMOVE_EN = 'Removing a document is done by a person signed in to the page'
 REFUSED_ZH = '确认和批准要由本人登录页面来做'
 REFUSED_EN = 'Confirming and approving are done by a person signed in to the page'
 CHECKED = '/api/workspace/checked'   # a checked number is recorded on a board card or a saved answer, not in the review queue: its own sentence
@@ -39,6 +47,8 @@ def refusal(path, english=False):
         return CHECKED_EN if english else CHECKED_ZH
     if path == NEEDED:
         return NEEDED_EN if english else NEEDED_ZH
+    if path == REMOVE:
+        return REMOVE_EN if english else REMOVE_ZH
     return REFUSED_EN if english else REFUSED_ZH
 
 
@@ -161,7 +171,7 @@ class TokenMayNotConfirmTests(GateTestCase):
             agent = Client(base)
             for path in ('/api/workspace/types', '/api/workspace/types/update', '/api/workspace/types/meanings', '/api/workspace/types/views', '/api/workspace/relations',
                          '/api/workspace/relations/update', '/api/workspace/queue/send-back', '/api/workspace/pipelines', '/api/workspace/actions', '/api/workspace/actions/submit',
-                         '/api/workspace/actions/withdraw', '/api/workspace/actions/undo'):
+                         '/api/workspace/actions/withdraw', '/api/workspace/actions/undo', '/api/workspace/documents/send-back'):
                 status, body = agent.post(path, {}, **bearer(full))
                 self.assertFalse(body.get('needs_person'), path)
                 self.assertNotIn(REFUSED_ZH, body.get('error', ''), path)
@@ -307,7 +317,7 @@ class EveryVouchingWriteIsPersonOnlyTests(GateTestCase):
                     admin.post(path, {})
                 except OSError:   # a route that does not answer a ValueError as a 400 dropped the connection; what it reached is noted all the same
                     pass
-        self.assertEqual(hit - set(ON_A_COPY), set(access.PERSON_ONLY_POSTS))
+        self.assertEqual(hit - set(ON_A_COPY), set(access.PERSON_ONLY_POSTS) - set(TAKES_TRUST_AWAY))
         self.assertEqual(hit & set(ON_A_COPY), set(ON_A_COPY))   # still on a copy: if impact stops reaching a writer, this line goes
 
 

@@ -1,0 +1,5597 @@
+[
+ {
+  "ask": "销售额是多少？",
+  "beside": [
+   "Order"
+  ],
+  "digest": "df438d8b0e9a2a289fa1b1013644e0459bad1584fa3c3253592ee9827f58095b",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "销售额",
+     "direction": "include",
+     "id": "Valid orders"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "6da8ef2aff854ef9da71590d648bebf0655845be42e3e9fe1bdbb773e97da606"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "guest"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "94e5ca211a4e548467d82fc7c179d213d7412d3e11d36f3584071770f7199642",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "6da8ef2aff854ef9da71590d648bebf0655845be42e3e9fe1bdbb773e97da606"
+  ],
+  "total": 150,
+  "value": 162960,
+  "who": "guest"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [],
+  "digest": "bc27020198d44b5f111b831a4306f747b55715bce9b358a4b4a86393b86b9fa9",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)\nWHERE o.status_code NOT IN ('New', 'Cancelled', 'Refunded')",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "销售额",
+     "direction": "exclude",
+     "id": "orders.status_code=New"
+    },
+    {
+     "basis": "销售额",
+     "direction": "exclude",
+     "id": "orders.status_code=Cancelled"
+    },
+    {
+     "basis": "销售额",
+     "direction": "exclude",
+     "id": "orders.status_code=Refunded"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "field": "status_code",
+      "not_equals": [
+       "New",
+       "Cancelled",
+       "Refunded"
+      ]
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "6da8ef2aff854ef9da71590d648bebf0655845be42e3e9fe1bdbb773e97da606"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "guest"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [],
+  "digest": "5642fb1b0cc1da78a9eed01e5267d566ec5f8af064e952e1c9d07087271f1e61",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "field": "status_code",
+      "not_equals": [
+       "New",
+       "Cancelled",
+       "Refunded"
+      ]
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "6da8ef2aff854ef9da71590d648bebf0655845be42e3e9fe1bdbb773e97da606"
+  ],
+  "total": null,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [],
+  "digest": "0a27b3d5f96b9a270fe33b2ac359dfb758ee780cba861964ca27d306fdb1e061",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": "销售额要按哪个口径？",
+  "status": "no_query",
+  "today": false,
+  "told": [
+   "6da8ef2aff854ef9da71590d648bebf0655845be42e3e9fe1bdbb773e97da606"
+  ],
+  "total": null,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [],
+  "digest": "0a27b3d5f96b9a270fe33b2ac359dfb758ee780cba861964ca27d306fdb1e061",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": "{\"clarify\": [\"全部订单\", \"有效订单\"]}",
+  "status": "no_query",
+  "today": false,
+  "told": [
+   "6da8ef2aff854ef9da71590d648bebf0655845be42e3e9fe1bdbb773e97da606"
+  ],
+  "total": null,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [],
+  "digest": "2652c856f925921a66ad5550c564479b63878063cb3d474ad56b12dc305e46e9",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "销售额",
+     "direction": "exclude",
+     "id": "orders.status_code=Cancelled"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "field": "status_code",
+      "not_equals": [
+       "Cancelled"
+      ]
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "6da8ef2aff854ef9da71590d648bebf0655845be42e3e9fe1bdbb773e97da606"
+  ],
+  "total": 131,
+  "value": 141855,
+  "who": "guest"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [],
+  "digest": "ee889e6e37e5262ba37f8ff04e948fae7afc2ee5c903baecc565c489761e0764",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "field": "status_code",
+      "not_equals": [
+       "Cancelled",
+       "Refunded"
+      ]
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "6da8ef2aff854ef9da71590d648bebf0655845be42e3e9fe1bdbb773e97da606"
+  ],
+  "total": null,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [],
+  "digest": "a82b69c608a5e0df0f53e4cbfb173c8936b5f17efcc9a25dc60960c25d0d6720",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "at_least": 1000,
+      "field": "amount"
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "6da8ef2aff854ef9da71590d648bebf0655845be42e3e9fe1bdbb773e97da606"
+  ],
+  "total": 84,
+  "value": 127375,
+  "who": "guest"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [],
+  "digest": "56c5a56b8a3b0f0b9a9f63f7e2db083b846e1733ee4a2e557bf8e20f141a64d1",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)\nWHERE o.order_date BETWEEN '2026-06-01' AND '2026-06-30'",
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "at_least": "2026-06-01",
+      "at_most": "2026-06-30",
+      "field": "order_date"
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "6da8ef2aff854ef9da71590d648bebf0655845be42e3e9fe1bdbb773e97da606"
+  ],
+  "total": 70,
+  "value": 80600,
+  "who": "guest"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [],
+  "digest": "c5d0ab1245cc93dabad1a9a331c3e7cbcbcd61b25e063ef357135f6b47bfe11e",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "at_least": 4,
+      "at_most": 4,
+      "field": "status_code"
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "6da8ef2aff854ef9da71590d648bebf0655845be42e3e9fe1bdbb773e97da606"
+  ],
+  "total": 19,
+  "value": 21105,
+  "who": "guest"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "89f084098eabbd07c30fcbcf90da1a4975cd99013f673accdaf11408bc26a6d1",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT avg(o.amount) AS 平均\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "average"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "6da8ef2aff854ef9da71590d648bebf0655845be42e3e9fe1bdbb773e97da606"
+  ],
+  "total": 150,
+  "value": 1086.4,
+  "who": "guest"
+ },
+ {
+  "ask": "Valid orders 的总金额是多少？",
+  "beside": [
+   "Order"
+  ],
+  "digest": "7d08417140cc8b982cdb1dbf91ac471edc06ad52052cfc4b058a7b9343fd4332",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "Valid orders",
+     "direction": "include",
+     "id": "Valid orders"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "7656cf6253a4d2cb897cf7fb46d4df0eea61503ff6b4fac975adf0354e6c0d2c"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "guest"
+ },
+ {
+  "ask": "Valid orders 的总金额是多少？",
+  "beside": [],
+  "digest": "9ac139f2e9958da1ae264557eba679d45a31bb8717d9d083a5beb3a1022ccc61",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "Valid orders",
+     "direction": "exclude",
+     "id": "orders.status_code=Cancelled"
+    },
+    {
+     "basis": "Valid orders",
+     "direction": "exclude",
+     "id": "orders.status_code=Refunded"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "field": "status_code",
+      "not_equals": [
+       "Cancelled",
+       "Refunded"
+      ]
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "7656cf6253a4d2cb897cf7fb46d4df0eea61503ff6b4fac975adf0354e6c0d2c"
+  ],
+  "total": null,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "ask": "Valid orders 的总金额是多少？",
+  "beside": [],
+  "digest": "5e8a92c993e594501c5aa52bb653177c0890aa5e9d89f4c4029bfe6e664dd2db",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "field": "status_code",
+      "not_equals": [
+       "Cancelled",
+       "Refunded"
+      ]
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "7656cf6253a4d2cb897cf7fb46d4df0eea61503ff6b4fac975adf0354e6c0d2c"
+  ],
+  "total": null,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "ask": "Valid orders 的总金额是多少？",
+  "beside": [],
+  "digest": "a070e1979e42a898d17e1c9436c604366bbcf0f76b85eda4d8d891a6a9c51e82",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "7656cf6253a4d2cb897cf7fb46d4df0eea61503ff6b4fac975adf0354e6c0d2c"
+  ],
+  "total": null,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "ask": "Valid orders 的总金额是多少？",
+  "beside": [],
+  "digest": "53ea73f40440eafbce1eace401eef61d20bcbcd9a6822dec18464808980bd972",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "equals": "Cancelled",
+      "field": "status_code"
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "7656cf6253a4d2cb897cf7fb46d4df0eea61503ff6b4fac975adf0354e6c0d2c"
+  ],
+  "total": null,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "ask": "Valid orders 的总金额是多少？",
+  "beside": [],
+  "digest": "eda154abe3b232d0afd880c71a095a4e1fd4b53b1d1f4c1a723deea9fe22e164",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "Valid orders",
+     "direction": "include",
+     "id": "Valid orders"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "at_least": 1000,
+      "field": "amount"
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "7656cf6253a4d2cb897cf7fb46d4df0eea61503ff6b4fac975adf0354e6c0d2c"
+  ],
+  "total": 62,
+  "value": 94960,
+  "who": "guest"
+ },
+ {
+  "ask": "What is the total amount of valid orders?",
+  "beside": [
+   "Order"
+  ],
+  "digest": "30dd8ea716393c7c298f23ae90c11006c10c458b747f35f8df8a5a0761b6f07d",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "Valid orders",
+     "direction": "include",
+     "id": "Valid orders"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "4ac45e79786977674ddb5a2540e4312dd445dde44ca814554a35647c98ff06b0"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "guest"
+ },
+ {
+  "ask": "What is the total amount of valid orders?",
+  "beside": [],
+  "digest": "d68e485fb48bdb765876eee705e58a450791d79b3be2e0f10471e4da63dd8087",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": "not json",
+  "status": "no_query",
+  "today": false,
+  "told": [
+   "4ac45e79786977674ddb5a2540e4312dd445dde44ca814554a35647c98ff06b0"
+  ],
+  "total": null,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "ask": "有效订单的总金额是多少？",
+  "beside": [],
+  "digest": "308f6ed72addee1529efbf907bdc24c7a3163109d0f399a6a318050e611b4841",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "有效订单",
+     "direction": "exclude",
+     "id": "orders.status_code=Cancelled"
+    },
+    {
+     "basis": "有效订单",
+     "direction": "exclude",
+     "id": "orders.status_code=Refunded"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "field": "status_code",
+      "not_equals": [
+       "Cancelled",
+       "Refunded"
+      ]
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "7bfe349a880a3f35593dde80eba0c55c64240f9bc14dfa1617c772af23e099be"
+  ],
+  "total": null,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "ask": "有效订单的总金额是多少？",
+  "beside": [
+   "Order"
+  ],
+  "digest": "141a441db0e3f690a7c057036da2048572dbbe655f9cf5ca250002cd9c14da10",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "有效订单",
+     "direction": "include",
+     "id": "Valid orders"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "7bfe349a880a3f35593dde80eba0c55c64240f9bc14dfa1617c772af23e099be"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "guest"
+ },
+ {
+  "ask": "有效订单的总金额是多少？",
+  "beside": [],
+  "digest": "33a94894a02c509c357f1a70d5d234bcb4e42fae16d2dcd0d2621ba3adc4ec0b",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "有效订单",
+     "direction": "exclude",
+     "id": "orders.status_code=New"
+    },
+    {
+     "basis": "有效订单",
+     "direction": "exclude",
+     "id": "orders.status_code=Cancelled"
+    },
+    {
+     "basis": "有效订单",
+     "direction": "exclude",
+     "id": "orders.status_code=Refunded"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "field": "status_code",
+      "not_equals": [
+       "New",
+       "Cancelled",
+       "Refunded"
+      ]
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "7bfe349a880a3f35593dde80eba0c55c64240f9bc14dfa1617c772af23e099be"
+  ],
+  "total": null,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "ask": "不算新建、取消和退款的订单金额合计？",
+  "beside": [],
+  "digest": "6b5541708fd656ffc10b43a7380bb80300c26d56298f8019a7c7635100830c66",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)\nWHERE o.status_code NOT IN ('New', 'Cancelled', 'Refunded')",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "不算新建、取消和退款",
+     "direction": "exclude",
+     "id": "orders.status_code=New"
+    },
+    {
+     "basis": "不算新建、取消和退款",
+     "direction": "exclude",
+     "id": "orders.status_code=Cancelled"
+    },
+    {
+     "basis": "不算新建、取消和退款",
+     "direction": "exclude",
+     "id": "orders.status_code=Refunded"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "field": "status_code",
+      "not_equals": [
+       "New",
+       "Cancelled",
+       "Refunded"
+      ]
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "751f6565045ad67b0732de1ec368134d2aab201c1968284099ec7426396cf989"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "guest"
+ },
+ {
+  "ask": "只算付了款、发了货或送达的订单，金额合计？",
+  "beside": [],
+  "digest": "9e18e0f4573bf259a1c7a8de9857d3b98bce06d7a316e0d35a350f609efa89b8",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)\nWHERE o.status_code NOT IN ('New', 'Cancelled', 'Refunded')",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "付了款、发了货或送达",
+     "direction": "exclude",
+     "id": "orders.status_code=New"
+    },
+    {
+     "basis": "付了款、发了货或送达",
+     "direction": "exclude",
+     "id": "orders.status_code=Cancelled"
+    },
+    {
+     "basis": "付了款、发了货或送达",
+     "direction": "exclude",
+     "id": "orders.status_code=Refunded"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "field": "status_code",
+      "not_equals": [
+       "New",
+       "Cancelled",
+       "Refunded"
+      ]
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "ce1efb9b581e05e25ffa5d47cd6b01b7e740bfef4096f08ac99eaf194017eb7c"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "guest"
+ },
+ {
+  "ask": "valid-orders 的总金额是多少？",
+  "beside": [
+   "Order"
+  ],
+  "digest": "f05afe69d7ea95395ee6596542e90bf05166fef29f3954c6a49e5096c4d7df43",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "Valid orders",
+     "direction": "include",
+     "id": "Valid orders"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "0c714865f89537342744946dcd55de5584adfd85fe37ce49b81765e9aefbe389"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "guest"
+ },
+ {
+  "ask": "ValidOrders 的总金额是多少？",
+  "beside": [
+   "Order"
+  ],
+  "digest": "e9c280ca03bc0c65a68dbed0a17a3cb72ddf7dccf66e339c6dbb1a4afb7ca456",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "Valid orders",
+     "direction": "include",
+     "id": "Valid orders"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "bf792bdc97c258a8683db77aecf26eb57a531af50bc6761aee65abbfabec3796"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "guest"
+ },
+ {
+  "ask": "ｖａｌｉｄ　ｏｒｄｅｒｓ 的总金额是多少？",
+  "beside": [
+   "Order"
+  ],
+  "digest": "630ff95530a1961a29e3eb2afd33ea6169c9907b7c705504c428ce3d89d00cbc",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "Valid orders",
+     "direction": "include",
+     "id": "Valid orders"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "3db0d058204b2ea7eb6a46e475bbcdaa87c441ca0ff3523f4e3d6a6ea809c877"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "guest"
+ },
+ {
+  "ask": "已取消的订单有多少？",
+  "beside": [],
+  "digest": "41049cdb3b35e14c4edaa1a9ccf7f5648b99d952e23cb9ad1ab72c5906b10d39",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT count(o) AS 数量\nFROM (o:`Order`)\nWHERE o.status_code = 'Cancelled'",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "已取消",
+     "direction": "include",
+     "id": "orders.status_code=Cancelled"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": null,
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "equals": "Cancelled",
+      "field": "status_code"
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "89dcda1add3001995c69e060b8a6774159a3d222aa3c17adcbd92d4cf164fdb8"
+  ],
+  "total": 19,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "ask": "已取消的订单有多少？",
+  "beside": [],
+  "digest": "63ec5682a9166eaa9ca5efc1d2bd122619728071bdd533f0d531ecde43c4702a",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": null,
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "equals": "Cancelled",
+      "field": "status_code"
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "89dcda1add3001995c69e060b8a6774159a3d222aa3c17adcbd92d4cf164fdb8"
+  ],
+  "total": null,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "ask": "有多少订单被取消了",
+  "beside": [],
+  "digest": "01c40b630397573425a5e89b8b783b20072c5c294cc57822ad159070f8554497",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT count(o) AS 数量\nFROM (o:`Order`)\nWHERE o.status_code = 'Cancelled'",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "已取消",
+     "direction": "include",
+     "id": "orders.status_code=Cancelled"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": null,
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "equals": "Cancelled",
+      "field": "status_code"
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "2d5d9780a6a23e4bb045b00cfa8b091f263bd42cee7a3e4ce5c9dd9909add446"
+  ],
+  "total": 19,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "ask": "有多少订单被取消了",
+  "beside": [],
+  "digest": "be541b81b509369bb102d776e934ed3848135d6d57a3aeb828e98191a5c0dc02",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": null,
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "equals": "Cancelled",
+      "field": "status_code"
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "2d5d9780a6a23e4bb045b00cfa8b091f263bd42cee7a3e4ce5c9dd9909add446"
+  ],
+  "total": null,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "ask": "已取消的订单有多少？",
+  "beside": [],
+  "digest": "e565e4a7d1e793d15a6972d62cac8d0e211119d92e3f1326ede1a1516e39e766",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": null,
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "89dcda1add3001995c69e060b8a6774159a3d222aa3c17adcbd92d4cf164fdb8"
+  ],
+  "total": null,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "ask": "有多少订单被取消了",
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "6de3c7d3fd4d534d5acefb70e5fe0a6d2e57c667c4b6abdd51044ee12072e132",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT count(o) AS 数量\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": null,
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "2d5d9780a6a23e4bb045b00cfa8b091f263bd42cee7a3e4ce5c9dd9909add446"
+  ],
+  "total": 150,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "ask": "What is the total amount?",
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "fb5bf67fff3b8e69957e301389d7cd203dff1bf8b26fc4991818b4f64e975484",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "87e3983095d3aa1b638fe5eed6e9ca7868362bbc5edfae15900c96b73114f9ca"
+  ],
+  "total": 150,
+  "value": 162960,
+  "who": "guest"
+ },
+ {
+  "ask": "How many orders are there?",
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "c78846bd844c22453d31d75f7915203e02cb8bc8b42ce82ab8600d5bc6ef264b",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT count(o) AS 数量\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": null,
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "14b7bb40cd3616efc9caea0eb7425c914d2564a6c7120e3b444db3aa82be509f"
+  ],
+  "total": 150,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "ask": "What is the amount of an order?",
+  "beside": [],
+  "digest": "2c201311088e56ed8b0233f82bbb0464379175038e6bfd6fba4ef9375b0d2517",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": "not json",
+  "status": "no_query",
+  "today": false,
+  "told": [
+   "72ba24fabb20314cd46341846b741d250853d289ddd8718d1d5c306d7da9e357"
+  ],
+  "total": null,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "ask": "各状态的订单金额",
+  "beside": [],
+  "digest": "ffdf1da624d4bc01d97da1904ac2826fe576881229fba0767b1b34c22b37bb3d",
+  "groups": 6,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "状态",
+     "direction": "mention",
+     "id": "orders.status_code=New"
+    },
+    {
+     "basis": "状态",
+     "direction": "mention",
+     "id": "orders.status_code=Paid"
+    },
+    {
+     "basis": "状态",
+     "direction": "mention",
+     "id": "orders.status_code=Shipped"
+    },
+    {
+     "basis": "状态",
+     "direction": "mention",
+     "id": "orders.status_code=Delivered"
+    },
+    {
+     "basis": "状态",
+     "direction": "mention",
+     "id": "orders.status_code=Cancelled"
+    },
+    {
+     "basis": "状态",
+     "direction": "mention",
+     "id": "orders.status_code=Refunded"
+    }
+   ],
+   "query": {
+    "group_by": [
+     "status_code"
+    ],
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "af11dc2e0813f8ff4328fc7e87529b1fb98fe51cb063fcc0e07d356545774b28"
+  ],
+  "total": null,
+  "value": 162960,
+  "who": "guest"
+ },
+ {
+  "ask": "逾期交货怎么罚？",
+  "beside": [],
+  "digest": "4311817b8dc5943604f6a3e20c84b671de7b6131e19771dc031252f91c3fb542",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "missing": "ontology",
+   "query": null,
+   "reasoning": "test"
+  },
+  "status": "ontology_gap",
+  "today": false,
+  "told": [
+   "6dcc60c18af545e3746555d7d93a01fca5e780deaf8579bcb3b6751054a03bc0"
+  ],
+  "total": null,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "ask": "逾期交货怎么罚？",
+  "beside": [],
+  "digest": "0b2fdd0b92ebfd6720ec733a0035e0f8da9cec17855f53be57bdb270214323e6",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "missing": "query_language",
+   "query": null,
+   "reasoning": "test"
+  },
+  "status": "query_limit",
+  "today": false,
+  "told": [
+   "6dcc60c18af545e3746555d7d93a01fca5e780deaf8579bcb3b6751054a03bc0"
+  ],
+  "total": null,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "ask": "逾期交货怎么罚？",
+  "beside": [],
+  "digest": "4311817b8dc5943604f6a3e20c84b671de7b6131e19771dc031252f91c3fb542",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "document_answer": {
+    "claims": [
+     {
+      "quotes": [
+       {
+        "passage": "p1",
+        "quote": "每逾期一日，按逾期部分货款的0.5%支付违约金"
+       }
+      ],
+      "text": "逾期交货每逾期一日按逾期部分货款的0.5%支付违约金"
+     }
+    ]
+   },
+   "missing": "ontology",
+   "query": null,
+   "reasoning": "test"
+  },
+  "status": "ontology_gap",
+  "today": false,
+  "told": [
+   "6dcc60c18af545e3746555d7d93a01fca5e780deaf8579bcb3b6751054a03bc0"
+  ],
+  "total": null,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "ask": "逾期交货怎么罚？",
+  "beside": [],
+  "digest": "6adf9a031b77bfe564f01a58e8f934463035654660ebd5ec37012ecf26a2d2df",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": "{\"document_answer\": {\"claims\": [{\"text\": \"逾期交货每逾期一日按逾期部分货款的0.5%支付违约金\", \"quotes\": [{\"passage\": \"p1\", \"quote\": \"每逾期一日，按逾期部分货款的0.5%支付违约金\"}]}]}}",
+  "status": "no_query",
+  "today": false,
+  "told": [
+   "6dcc60c18af545e3746555d7d93a01fca5e780deaf8579bcb3b6751054a03bc0"
+  ],
+  "total": null,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "ask": "逾期交货怎么罚？",
+  "beside": [],
+  "digest": "6adf9a031b77bfe564f01a58e8f934463035654660ebd5ec37012ecf26a2d2df",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": "not json",
+  "status": "no_query",
+  "today": false,
+  "told": [
+   "6dcc60c18af545e3746555d7d93a01fca5e780deaf8579bcb3b6751054a03bc0"
+  ],
+  "total": null,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "ask": "What does the contract say about late delivery?",
+  "beside": [],
+  "digest": "633380a80fd7b32bf569145f4fbf8903897ac78a2c4bb96f17499e5682078fab",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "missing": "ontology",
+   "query": null,
+   "reasoning": "test"
+  },
+  "status": "ontology_gap",
+  "today": false,
+  "told": [
+   "a565816174a6782efbb3fe679b3e9bf0da705009ca13b3230bb08bb617ccdefa"
+  ],
+  "total": null,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "ask": "What does the contract say about late delivery?",
+  "beside": [],
+  "digest": "633380a80fd7b32bf569145f4fbf8903897ac78a2c4bb96f17499e5682078fab",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "document_answer": {
+    "claims": [
+     {
+      "quotes": [
+       {
+        "passage": "p1",
+        "quote": "每逾期一日，按逾期部分货款的0.5%支付违约金"
+       }
+      ],
+      "text": "逾期交货每逾期一日按逾期部分货款的0.5%支付违约金"
+     }
+    ]
+   },
+   "missing": "ontology",
+   "query": null,
+   "reasoning": "test"
+  },
+  "status": "ontology_gap",
+  "today": false,
+  "told": [
+   "a565816174a6782efbb3fe679b3e9bf0da705009ca13b3230bb08bb617ccdefa"
+  ],
+  "total": null,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "ask": "How many orders are there?",
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "c78846bd844c22453d31d75f7915203e02cb8bc8b42ce82ab8600d5bc6ef264b",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT count(o) AS 数量\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [],
+   "document_answer": {
+    "claims": [
+     {
+      "quotes": [
+       {
+        "passage": "p1",
+        "quote": "每逾期一日，按逾期部分货款的0.5%支付违约金"
+       }
+      ],
+      "text": "逾期交货每逾期一日按逾期部分货款的0.5%支付违约金"
+     }
+    ]
+   },
+   "query": {
+    "group_by": null,
+    "measure": null,
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "14b7bb40cd3616efc9caea0eb7425c914d2564a6c7120e3b444db3aa82be509f"
+  ],
+  "total": 150,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "ask": "订单的金额一共是多少？",
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "2cd5968dba0884ff1b8c16430e67107b62c1796ad3396042128a2e2a7092d5e9",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [],
+   "document_answer": {
+    "claims": [
+     {
+      "quotes": [
+       {
+        "passage": "p1",
+        "quote": "每逾期一日，按逾期部分货款的0.5%支付违约金"
+       }
+      ],
+      "text": "逾期交货每逾期一日按逾期部分货款的0.5%支付违约金"
+     }
+    ]
+   },
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "d2e1a683ac5039448c8403a006a3a4262f5daec0a5900e9ae3a35fe96b310737"
+  ],
+  "total": 150,
+  "value": 162960,
+  "who": "guest"
+ },
+ {
+  "ask": "订单的金额一共是多少？",
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "2cd5968dba0884ff1b8c16430e67107b62c1796ad3396042128a2e2a7092d5e9",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "d2e1a683ac5039448c8403a006a3a4262f5daec0a5900e9ae3a35fe96b310737"
+  ],
+  "total": 150,
+  "value": 162960,
+  "who": "guest"
+ },
+ {
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "8809002d0d7d8be1c36199c6d125a5089e7f9e44041bfa249877a015250df4f4",
+  "groups": null,
+  "objects": false,
+  "query": "SELECT count(o) FROM (o:Order)",
+  "query_text": null,
+  "status": "answered",
+  "today": false,
+  "total": 150,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "beside": [],
+  "digest": "be5a62c7437949a8299b3dae860792eb0f63dc947bc6110ea0cc32340764a015",
+  "groups": null,
+  "objects": false,
+  "query": "SELECT count(o) FROM (o:Order) WHERE o.status_code = 'Cancelled'",
+  "query_text": null,
+  "status": "answered",
+  "today": false,
+  "total": 19,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "c758e4b996d5a9cf98d42373f3f6265835ca9b958f1d28c83e6b7372d8277bf8",
+  "groups": null,
+  "objects": false,
+  "query": "SELECT sum(o.amount) FROM (o:Order)",
+  "query_text": null,
+  "status": "answered",
+  "today": false,
+  "total": 150,
+  "value": 162960,
+  "who": "guest"
+ },
+ {
+  "beside": [],
+  "digest": "a59c6ecaf813de8378d2685378038bb6a41d1f055832453f8786fab1a1c9a40e",
+  "groups": 6,
+  "objects": false,
+  "query": "SELECT o.status_code, count(o) FROM (o:Order) GROUP BY o.status_code",
+  "query_text": null,
+  "status": "answered",
+  "today": false,
+  "total": null,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "beside": [],
+  "digest": "e63b7ab6c7138a93a4f96cf6a138f109580d3b850a743ab140ddc2df5d0b6747",
+  "groups": 2,
+  "objects": false,
+  "query": "SELECT month(o.order_date), sum(o.amount) FROM (o:Order) GROUP BY month(o.order_date)",
+  "query_text": null,
+  "status": "answered",
+  "today": false,
+  "total": null,
+  "value": 162960,
+  "who": "guest"
+ },
+ {
+  "beside": [],
+  "digest": "8d9b04969d0230997c3ab8dd39b9ad98ac8d3d55469343130a0451b1fafc53c6",
+  "groups": null,
+  "objects": false,
+  "query": "SELECT count(o) FROM (o:Order) WHERE o.amount BETWEEN 9 AND 1",
+  "query_text": null,
+  "status": null,
+  "today": false,
+  "total": null,
+  "value": null,
+  "who": "guest"
+ },
+ {
+  "ask": "How many orders are there?",
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "1dbd67ff8aebd45369664671351338fd313f2f747b07c40caccd2daa71afe753",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT count(o) AS 数量\nFROM (o:`Order`)",
+  "status": "answered",
+  "today": false,
+  "told": [
+   "4617849376d6f7c99fff1918ef7bee8e3475f110fb250d62c809127c70327834"
+  ],
+  "total": 150,
+  "value": null,
+  "who": "guest",
+  "written": "{\"reasoning\": \"test\", \"query\": \"SELECT count(o) FROM (o:Order)\"}"
+ },
+ {
+  "ask": "有效订单的总金额是多少？",
+  "beside": [
+   "Order"
+  ],
+  "digest": "92f32b67295d06d1b76286cc33366de0247a31f9ca3b58c9bfe18789069a887f",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)",
+  "status": "answered",
+  "today": false,
+  "told": [
+   "2e20113f0b01e136d2d6b5cecf6a4526fc7d3bf426b4b2618c833ffe1ffe5101"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "guest",
+  "written": "{\"reasoning\": \"test\", \"query\": \"SELECT sum(o.amount) FROM (o:Order)\", \"views\": [\"Valid orders\"]}"
+ },
+ {
+  "ask": "How many orders before today?",
+  "beside": [],
+  "digest": "3b10231271f28987369d3d7d792850b1d0df11e9dd8ad018e9a2955fa0bbbac1",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "status": "query_limit",
+  "today": false,
+  "told": [
+   "9447862fd530e92cc9c9c97500ed7a2c41a20787e7d22942f92dec28f95956b2"
+  ],
+  "total": null,
+  "value": null,
+  "who": "guest",
+  "written": "{\"reasoning\": \"test\", \"query\": \"SELECT count(o) FROM (o:Order) WHERE o.order_date < 'today'\"}"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [
+   "Order"
+  ],
+  "digest": "614c71c3f80af53366b183d46c2bfd84c78c04c170b943abb9e7d97d9dec5b65",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS total\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "销售额",
+     "direction": "include",
+     "id": "Valid orders"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "bbddcd2b01a035dcda0d3d2722cda865df34bedf7de2c0149db8d133dfe15fae"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "admin_en"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "0c2e0ae8646fbecc80e1bd89dbd672b5b9956029352417de0e3f1ca887244d11",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS total\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "bbddcd2b01a035dcda0d3d2722cda865df34bedf7de2c0149db8d133dfe15fae"
+  ],
+  "total": 150,
+  "value": 162960,
+  "who": "admin_en"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [],
+  "digest": "d12afd280bae2201eedca8427aefa0537baa4b3fda727608fa836951f63cd763",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS total\nFROM (o:`Order`)\nWHERE o.status_code NOT IN ('New', 'Cancelled', 'Refunded')",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "销售额",
+     "direction": "exclude",
+     "id": "orders.status_code=New"
+    },
+    {
+     "basis": "销售额",
+     "direction": "exclude",
+     "id": "orders.status_code=Cancelled"
+    },
+    {
+     "basis": "销售额",
+     "direction": "exclude",
+     "id": "orders.status_code=Refunded"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "field": "status_code",
+      "not_equals": [
+       "New",
+       "Cancelled",
+       "Refunded"
+      ]
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "bbddcd2b01a035dcda0d3d2722cda865df34bedf7de2c0149db8d133dfe15fae"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "admin_en"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [],
+  "digest": "ac8d703f037df181fbdf5bb290b76c6f9cc5b5bb7bfea54dae1dd2a950beea71",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "field": "status_code",
+      "not_equals": [
+       "New",
+       "Cancelled",
+       "Refunded"
+      ]
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "bbddcd2b01a035dcda0d3d2722cda865df34bedf7de2c0149db8d133dfe15fae"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [],
+  "digest": "100b6d7df32669f42a6edb7578d9205314e1df59c0f40e9e5ee3f52151ab704b",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": "销售额要按哪个口径？",
+  "status": "no_query",
+  "today": false,
+  "told": [
+   "bbddcd2b01a035dcda0d3d2722cda865df34bedf7de2c0149db8d133dfe15fae"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [],
+  "digest": "100b6d7df32669f42a6edb7578d9205314e1df59c0f40e9e5ee3f52151ab704b",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": "{\"clarify\": [\"全部订单\", \"有效订单\"]}",
+  "status": "no_query",
+  "today": false,
+  "told": [
+   "bbddcd2b01a035dcda0d3d2722cda865df34bedf7de2c0149db8d133dfe15fae"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [],
+  "digest": "19de58e9d211e7f15891190ae6679bcaa2c16d9d7831c196093820fcad1bbedc",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "销售额",
+     "direction": "exclude",
+     "id": "orders.status_code=Cancelled"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "field": "status_code",
+      "not_equals": [
+       "Cancelled"
+      ]
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "bbddcd2b01a035dcda0d3d2722cda865df34bedf7de2c0149db8d133dfe15fae"
+  ],
+  "total": 131,
+  "value": 141855,
+  "who": "admin_en"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [],
+  "digest": "bae0e346b939eef6233414cedce7b9682798e9318968e22c555f19287dcde7c7",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "field": "status_code",
+      "not_equals": [
+       "Cancelled",
+       "Refunded"
+      ]
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "bbddcd2b01a035dcda0d3d2722cda865df34bedf7de2c0149db8d133dfe15fae"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [],
+  "digest": "75223566ffdeb8451746171c4b66385eddbd1841fc9ea1a0f9cd3da6c1642d47",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "at_least": 1000,
+      "field": "amount"
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "bbddcd2b01a035dcda0d3d2722cda865df34bedf7de2c0149db8d133dfe15fae"
+  ],
+  "total": 84,
+  "value": 127375,
+  "who": "admin_en"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [],
+  "digest": "894bee585ceaab9fd3f9babafd046705dee10867cc6a4d95461e89f2e022b62d",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS total\nFROM (o:`Order`)\nWHERE o.order_date BETWEEN '2026-06-01' AND '2026-06-30'",
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "at_least": "2026-06-01",
+      "at_most": "2026-06-30",
+      "field": "order_date"
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "bbddcd2b01a035dcda0d3d2722cda865df34bedf7de2c0149db8d133dfe15fae"
+  ],
+  "total": 70,
+  "value": 80600,
+  "who": "admin_en"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [],
+  "digest": "b90f2ecbe42386e0926cc8e7b59491d98d4db60796150c9c51aa15d3877e9d45",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "at_least": 4,
+      "at_most": 4,
+      "field": "status_code"
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "bbddcd2b01a035dcda0d3d2722cda865df34bedf7de2c0149db8d133dfe15fae"
+  ],
+  "total": 19,
+  "value": 21105,
+  "who": "admin_en"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "3e2ea1a0f5f0271f836357d49bd8af61dd155b283ed300fc6dd9559a22c64ca4",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT avg(o.amount) AS average\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "average"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "bbddcd2b01a035dcda0d3d2722cda865df34bedf7de2c0149db8d133dfe15fae"
+  ],
+  "total": 150,
+  "value": 1086.4,
+  "who": "admin_en"
+ },
+ {
+  "ask": "Valid orders 的总金额是多少？",
+  "beside": [
+   "Order"
+  ],
+  "digest": "c43b16c5e4039ae04122eccf03ff68ae21e7f25e64bc9880fffe0c1c2bba7504",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS total\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "Valid orders",
+     "direction": "include",
+     "id": "Valid orders"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "aee2ef3da114362aee4234e0b7f259f1a1092860ec253ea83a6562d853e26ee8"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "admin_en"
+ },
+ {
+  "ask": "Valid orders 的总金额是多少？",
+  "beside": [],
+  "digest": "4146bdd487457c4cb438367b930f5ef5c7ee4a4f7cdd9dbe4212d52f874aa6d8",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "Valid orders",
+     "direction": "exclude",
+     "id": "orders.status_code=Cancelled"
+    },
+    {
+     "basis": "Valid orders",
+     "direction": "exclude",
+     "id": "orders.status_code=Refunded"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "field": "status_code",
+      "not_equals": [
+       "Cancelled",
+       "Refunded"
+      ]
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "aee2ef3da114362aee4234e0b7f259f1a1092860ec253ea83a6562d853e26ee8"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "Valid orders 的总金额是多少？",
+  "beside": [],
+  "digest": "f1b18f711209d9651eb5ff80932609f7385bab43aed162c1021b37e4a3de4801",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "field": "status_code",
+      "not_equals": [
+       "Cancelled",
+       "Refunded"
+      ]
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "aee2ef3da114362aee4234e0b7f259f1a1092860ec253ea83a6562d853e26ee8"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "Valid orders 的总金额是多少？",
+  "beside": [],
+  "digest": "93e384c37f233e1f57664b5c2cc65ece49aae84eb7b14166a8dc3b4df137b1f1",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "aee2ef3da114362aee4234e0b7f259f1a1092860ec253ea83a6562d853e26ee8"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "Valid orders 的总金额是多少？",
+  "beside": [],
+  "digest": "bbde5b144ef25883c728dfe63d126956ebd12d88202e1f2c9ee59e22017fd312",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "equals": "Cancelled",
+      "field": "status_code"
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "aee2ef3da114362aee4234e0b7f259f1a1092860ec253ea83a6562d853e26ee8"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "Valid orders 的总金额是多少？",
+  "beside": [],
+  "digest": "782c88dbcdb10f0bdb23cc5cc7009ec9439307f7adfa0b9ad24b906dd0f4cc5f",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "Valid orders",
+     "direction": "include",
+     "id": "Valid orders"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "at_least": 1000,
+      "field": "amount"
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "aee2ef3da114362aee4234e0b7f259f1a1092860ec253ea83a6562d853e26ee8"
+  ],
+  "total": 62,
+  "value": 94960,
+  "who": "admin_en"
+ },
+ {
+  "ask": "What is the total amount of valid orders?",
+  "beside": [
+   "Order"
+  ],
+  "digest": "ef0fa6724f98ecaa84057a291c295606b2a4f7d53e623d5981a578144ca30133",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS total\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "Valid orders",
+     "direction": "include",
+     "id": "Valid orders"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "bab380b896e5605ef186f337ec105b3f927fc68841f9bc90e007ec904c418db4"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "admin_en"
+ },
+ {
+  "ask": "What is the total amount of valid orders?",
+  "beside": [],
+  "digest": "fbc17a4af8d54d34f4f170508955063c803d6f2210c0853730dfe28dab682476",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": "not json",
+  "status": "no_query",
+  "today": false,
+  "told": [
+   "bab380b896e5605ef186f337ec105b3f927fc68841f9bc90e007ec904c418db4"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "有效订单的总金额是多少？",
+  "beside": [],
+  "digest": "9617155b880a0c2a72a5f631e26b3914f887e19edb709093eadfb595ecc6346b",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "有效订单",
+     "direction": "exclude",
+     "id": "orders.status_code=Cancelled"
+    },
+    {
+     "basis": "有效订单",
+     "direction": "exclude",
+     "id": "orders.status_code=Refunded"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "field": "status_code",
+      "not_equals": [
+       "Cancelled",
+       "Refunded"
+      ]
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "698a52d3e444d5d567d1bb0bfeb230845381333543e607688ddf2be4aa311956"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "有效订单的总金额是多少？",
+  "beside": [
+   "Order"
+  ],
+  "digest": "f25de878842801873f415f6ccea000e885442ba9960e38f150671563d83bdf6a",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS total\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "有效订单",
+     "direction": "include",
+     "id": "Valid orders"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "698a52d3e444d5d567d1bb0bfeb230845381333543e607688ddf2be4aa311956"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "admin_en"
+ },
+ {
+  "ask": "有效订单的总金额是多少？",
+  "beside": [],
+  "digest": "37c2b5e560a9a942fbe3c9c8aff8b059548adf2075ec98006e3286de59b79632",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "有效订单",
+     "direction": "exclude",
+     "id": "orders.status_code=New"
+    },
+    {
+     "basis": "有效订单",
+     "direction": "exclude",
+     "id": "orders.status_code=Cancelled"
+    },
+    {
+     "basis": "有效订单",
+     "direction": "exclude",
+     "id": "orders.status_code=Refunded"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "field": "status_code",
+      "not_equals": [
+       "New",
+       "Cancelled",
+       "Refunded"
+      ]
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "698a52d3e444d5d567d1bb0bfeb230845381333543e607688ddf2be4aa311956"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "不算新建、取消和退款的订单金额合计？",
+  "beside": [],
+  "digest": "e45afda257cf6b0c8f0e9b91ca568228d7dc073140934ce5a9cdf04b6424cdcb",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS total\nFROM (o:`Order`)\nWHERE o.status_code NOT IN ('New', 'Cancelled', 'Refunded')",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "不算新建、取消和退款",
+     "direction": "exclude",
+     "id": "orders.status_code=New"
+    },
+    {
+     "basis": "不算新建、取消和退款",
+     "direction": "exclude",
+     "id": "orders.status_code=Cancelled"
+    },
+    {
+     "basis": "不算新建、取消和退款",
+     "direction": "exclude",
+     "id": "orders.status_code=Refunded"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "field": "status_code",
+      "not_equals": [
+       "New",
+       "Cancelled",
+       "Refunded"
+      ]
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "a91b25409294a16d769fe280031f31b36e064e3ef7fa914306386a8842b7547e"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "admin_en"
+ },
+ {
+  "ask": "只算付了款、发了货或送达的订单，金额合计？",
+  "beside": [],
+  "digest": "69e869c6bd1da1bf12f2be3f2595b97d34731880cbb45d13119f5db526e2494a",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS total\nFROM (o:`Order`)\nWHERE o.status_code NOT IN ('New', 'Cancelled', 'Refunded')",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "付了款、发了货或送达",
+     "direction": "exclude",
+     "id": "orders.status_code=New"
+    },
+    {
+     "basis": "付了款、发了货或送达",
+     "direction": "exclude",
+     "id": "orders.status_code=Cancelled"
+    },
+    {
+     "basis": "付了款、发了货或送达",
+     "direction": "exclude",
+     "id": "orders.status_code=Refunded"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "field": "status_code",
+      "not_equals": [
+       "New",
+       "Cancelled",
+       "Refunded"
+      ]
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "368c1b86005676250691a8114804ee823764160d09cbca88d6b4867749556fe5"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "admin_en"
+ },
+ {
+  "ask": "valid-orders 的总金额是多少？",
+  "beside": [
+   "Order"
+  ],
+  "digest": "fed7a3ddd6cd9a17ef3808e628c5619d2ccb3ad8ba4ac4737ee918fb5ec30f28",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS total\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "Valid orders",
+     "direction": "include",
+     "id": "Valid orders"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "7bdb260ad8d74ce089a6a4a4b224908a00d0455b000928770fd52eca899920a6"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "admin_en"
+ },
+ {
+  "ask": "ValidOrders 的总金额是多少？",
+  "beside": [
+   "Order"
+  ],
+  "digest": "28bbf6814ce0ecbdeffc34e045e7ae040db6b5589b58d92801ed9c0c1124ea0c",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS total\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "Valid orders",
+     "direction": "include",
+     "id": "Valid orders"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "9239d1621d41d1db04275efc6284aefd64039c3565937836db3fabc9d72cffac"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "admin_en"
+ },
+ {
+  "ask": "ｖａｌｉｄ　ｏｒｄｅｒｓ 的总金额是多少？",
+  "beside": [
+   "Order"
+  ],
+  "digest": "c108001bd2e78114557728491f0b148ada6bd551cc7e129b60a59e8d9d4b44cd",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS total\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "Valid orders",
+     "direction": "include",
+     "id": "Valid orders"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "dd0eeaf20b4ce9dc268ec6a9faa5dacce1aa1bd44f8cea2c4b32ba83dfbfcf64"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "admin_en"
+ },
+ {
+  "ask": "已取消的订单有多少？",
+  "beside": [],
+  "digest": "56c343737ec4366c35ff0de2bf391945b77e5db19e6b5330afd6358b35b5c507",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT count(o) AS count\nFROM (o:`Order`)\nWHERE o.status_code = 'Cancelled'",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "已取消",
+     "direction": "include",
+     "id": "orders.status_code=Cancelled"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": null,
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "equals": "Cancelled",
+      "field": "status_code"
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "910c37ac8165cb02941b5f35a96d951104c1b77badcd417fd987cb100558c845"
+  ],
+  "total": 19,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "已取消的订单有多少？",
+  "beside": [],
+  "digest": "a9a7d9a835bbeb3995a31738d5c1b63d53aff41ce04a094ed446bf733f64da10",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": null,
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "equals": "Cancelled",
+      "field": "status_code"
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "910c37ac8165cb02941b5f35a96d951104c1b77badcd417fd987cb100558c845"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "有多少订单被取消了",
+  "beside": [],
+  "digest": "5ff655ecd830d59e1c9c26b5fbbfdd01df4ad8d9ddf80a9af3a4d6e40ded729a",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT count(o) AS count\nFROM (o:`Order`)\nWHERE o.status_code = 'Cancelled'",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "已取消",
+     "direction": "include",
+     "id": "orders.status_code=Cancelled"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": null,
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "equals": "Cancelled",
+      "field": "status_code"
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "a3c0bb52b51642aea7ab261dc1089f82818e917baf9d8e7868b50a888eb84cc1"
+  ],
+  "total": 19,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "有多少订单被取消了",
+  "beside": [],
+  "digest": "311d3acc89aa43082112bc8e3837bfb1a429184bbc25745d537800a0cb3e5690",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": null,
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "equals": "Cancelled",
+      "field": "status_code"
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "a3c0bb52b51642aea7ab261dc1089f82818e917baf9d8e7868b50a888eb84cc1"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "已取消的订单有多少？",
+  "beside": [],
+  "digest": "957d26219e082a10b1c1e614e2e44c53eb122561f24282ea96c5667188229a8e",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": null,
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "910c37ac8165cb02941b5f35a96d951104c1b77badcd417fd987cb100558c845"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "有多少订单被取消了",
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "1ba44e288a889302df1c8e37ee20003d30b2785733f7e8d2b5a508013253922f",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT count(o) AS count\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": null,
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "a3c0bb52b51642aea7ab261dc1089f82818e917baf9d8e7868b50a888eb84cc1"
+  ],
+  "total": 150,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "What is the total amount?",
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "6e0081f394353f4c6353e201eb7548a9f9ebf7caffbf76a6aa621a3c9ca1543f",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS total\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "fd3e61846b09d689abf7a8c8d100dfd857aeb2643c9a67372900d8096851e684"
+  ],
+  "total": 150,
+  "value": 162960,
+  "who": "admin_en"
+ },
+ {
+  "ask": "How many orders are there?",
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "4f510227608d034cdb1ec67c761131901ed3fead528648828c50825180cbaaf8",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT count(o) AS count\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": null,
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "702b21c3ab9b581cfd7f31b41c5705059afddf38281e9086b9f5ec6044c9e5f2"
+  ],
+  "total": 150,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "What is the amount of an order?",
+  "beside": [],
+  "digest": "57b6390aa7a791a1e99fc76d38ba1780d11a3f71e537c11308f8b167a2a29cf9",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": "not json",
+  "status": "no_query",
+  "today": false,
+  "told": [
+   "7d50c952bf63fa9e9b2ae84d4d3c3410074334ee85066146c5f87276f9d638e5"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "各状态的订单金额",
+  "beside": [],
+  "digest": "6a483a6d139a2c184177ad199cff5dbce0fc91c5383c6f455e85839f95346039",
+  "groups": 6,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "状态",
+     "direction": "mention",
+     "id": "orders.status_code=New"
+    },
+    {
+     "basis": "状态",
+     "direction": "mention",
+     "id": "orders.status_code=Paid"
+    },
+    {
+     "basis": "状态",
+     "direction": "mention",
+     "id": "orders.status_code=Shipped"
+    },
+    {
+     "basis": "状态",
+     "direction": "mention",
+     "id": "orders.status_code=Delivered"
+    },
+    {
+     "basis": "状态",
+     "direction": "mention",
+     "id": "orders.status_code=Cancelled"
+    },
+    {
+     "basis": "状态",
+     "direction": "mention",
+     "id": "orders.status_code=Refunded"
+    }
+   ],
+   "query": {
+    "group_by": [
+     "status_code"
+    ],
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "28e2a13c608ebf82575048aef500a95f44038e42a423910f830ef8cc09011ab8"
+  ],
+  "total": null,
+  "value": 162960,
+  "who": "admin_en"
+ },
+ {
+  "ask": "逾期交货怎么罚？",
+  "beside": [],
+  "digest": "7a0110599b2d8fd092526ea153a18688928100bb150750bdc3b822481a9d04b5",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "missing": "ontology",
+   "query": null,
+   "reasoning": "test"
+  },
+  "status": "ontology_gap",
+  "today": false,
+  "told": [
+   "28bc87783214b801e2929fadf7b6936579457d005a37042a79a2f3edb170a377"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "逾期交货怎么罚？",
+  "beside": [],
+  "digest": "9e50bafdd27c6a929ca13d1c0f1730d1b5b5bb2da50e6885a443fdaa030c2976",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "missing": "query_language",
+   "query": null,
+   "reasoning": "test"
+  },
+  "status": "query_limit",
+  "today": false,
+  "told": [
+   "28bc87783214b801e2929fadf7b6936579457d005a37042a79a2f3edb170a377"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "逾期交货怎么罚？",
+  "beside": [],
+  "digest": "7a0110599b2d8fd092526ea153a18688928100bb150750bdc3b822481a9d04b5",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "document_answer": {
+    "claims": [
+     {
+      "quotes": [
+       {
+        "passage": "p1",
+        "quote": "每逾期一日，按逾期部分货款的0.5%支付违约金"
+       }
+      ],
+      "text": "逾期交货每逾期一日按逾期部分货款的0.5%支付违约金"
+     }
+    ]
+   },
+   "missing": "ontology",
+   "query": null,
+   "reasoning": "test"
+  },
+  "status": "ontology_gap",
+  "today": false,
+  "told": [
+   "28bc87783214b801e2929fadf7b6936579457d005a37042a79a2f3edb170a377"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "逾期交货怎么罚？",
+  "beside": [],
+  "digest": "95425501abad85090c149bebf092f59dbd91298d10cfc8162fc97b0fc25870e3",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": "{\"document_answer\": {\"claims\": [{\"text\": \"逾期交货每逾期一日按逾期部分货款的0.5%支付违约金\", \"quotes\": [{\"passage\": \"p1\", \"quote\": \"每逾期一日，按逾期部分货款的0.5%支付违约金\"}]}]}}",
+  "status": "no_query",
+  "today": false,
+  "told": [
+   "28bc87783214b801e2929fadf7b6936579457d005a37042a79a2f3edb170a377"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "逾期交货怎么罚？",
+  "beside": [],
+  "digest": "95425501abad85090c149bebf092f59dbd91298d10cfc8162fc97b0fc25870e3",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": "not json",
+  "status": "no_query",
+  "today": false,
+  "told": [
+   "28bc87783214b801e2929fadf7b6936579457d005a37042a79a2f3edb170a377"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "What does the contract say about late delivery?",
+  "beside": [],
+  "digest": "8e00b8b1462466bbe780ff246832cf27f0d9e7e3fa7d5f6efd29e4364764f37d",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "missing": "ontology",
+   "query": null,
+   "reasoning": "test"
+  },
+  "status": "ontology_gap",
+  "today": false,
+  "told": [
+   "37c7d92a1c5aaa46d3d87f44165de6932a2d3e93d016a3fa61d5f02f16564090"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "What does the contract say about late delivery?",
+  "beside": [],
+  "digest": "8e00b8b1462466bbe780ff246832cf27f0d9e7e3fa7d5f6efd29e4364764f37d",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "document_answer": {
+    "claims": [
+     {
+      "quotes": [
+       {
+        "passage": "p1",
+        "quote": "每逾期一日，按逾期部分货款的0.5%支付违约金"
+       }
+      ],
+      "text": "逾期交货每逾期一日按逾期部分货款的0.5%支付违约金"
+     }
+    ]
+   },
+   "missing": "ontology",
+   "query": null,
+   "reasoning": "test"
+  },
+  "status": "ontology_gap",
+  "today": false,
+  "told": [
+   "37c7d92a1c5aaa46d3d87f44165de6932a2d3e93d016a3fa61d5f02f16564090"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "How many orders are there?",
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "4f510227608d034cdb1ec67c761131901ed3fead528648828c50825180cbaaf8",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT count(o) AS count\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [],
+   "document_answer": {
+    "claims": [
+     {
+      "quotes": [
+       {
+        "passage": "p1",
+        "quote": "每逾期一日，按逾期部分货款的0.5%支付违约金"
+       }
+      ],
+      "text": "逾期交货每逾期一日按逾期部分货款的0.5%支付违约金"
+     }
+    ]
+   },
+   "query": {
+    "group_by": null,
+    "measure": null,
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "702b21c3ab9b581cfd7f31b41c5705059afddf38281e9086b9f5ec6044c9e5f2"
+  ],
+  "total": 150,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "订单的金额一共是多少？",
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "ce01a275f6ff3362a26c76956366ca15d99b3753b03913b50c4505bea9c2ad77",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS total\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [],
+   "document_answer": {
+    "claims": [
+     {
+      "quotes": [
+       {
+        "passage": "p1",
+        "quote": "每逾期一日，按逾期部分货款的0.5%支付违约金"
+       }
+      ],
+      "text": "逾期交货每逾期一日按逾期部分货款的0.5%支付违约金"
+     }
+    ]
+   },
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "a6c12da359c6b23ba8ce61d606d755ac9e868ef372b68dfcfa2695d1763abade"
+  ],
+  "total": 150,
+  "value": 162960,
+  "who": "admin_en"
+ },
+ {
+  "ask": "订单的金额一共是多少？",
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "ce01a275f6ff3362a26c76956366ca15d99b3753b03913b50c4505bea9c2ad77",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS total\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "a6c12da359c6b23ba8ce61d606d755ac9e868ef372b68dfcfa2695d1763abade"
+  ],
+  "total": 150,
+  "value": 162960,
+  "who": "admin_en"
+ },
+ {
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "b2fba921f30f9b65ace85211a645353d747221ab27db3c554fb140230fe8bc4a",
+  "groups": null,
+  "objects": false,
+  "query": "SELECT count(o) FROM (o:Order)",
+  "query_text": null,
+  "status": "answered",
+  "today": false,
+  "total": 150,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "beside": [],
+  "digest": "b4eaf93306697b51849898daa67fdd5921c1a61c4e414b72cbaf04ed96e75ea1",
+  "groups": null,
+  "objects": false,
+  "query": "SELECT count(o) FROM (o:Order) WHERE o.status_code = 'Cancelled'",
+  "query_text": null,
+  "status": "answered",
+  "today": false,
+  "total": 19,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "87d799306d5550205d0e547a1a3dc56497cab8bd73ac0c825ee2132063c93080",
+  "groups": null,
+  "objects": false,
+  "query": "SELECT sum(o.amount) FROM (o:Order)",
+  "query_text": null,
+  "status": "answered",
+  "today": false,
+  "total": 150,
+  "value": 162960,
+  "who": "admin_en"
+ },
+ {
+  "beside": [],
+  "digest": "96760c99bc359b806c5e2f57ad5d6cc13bce5c87c8ab50ff27b40ef68ff89239",
+  "groups": 6,
+  "objects": false,
+  "query": "SELECT o.status_code, count(o) FROM (o:Order) GROUP BY o.status_code",
+  "query_text": null,
+  "status": "answered",
+  "today": false,
+  "total": null,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "beside": [],
+  "digest": "0d5c31d4877ddf705f9ef4d9d7eeb1a2776cd333a0fe7231fa4d0e0daaf542bb",
+  "groups": 2,
+  "objects": false,
+  "query": "SELECT month(o.order_date), sum(o.amount) FROM (o:Order) GROUP BY month(o.order_date)",
+  "query_text": null,
+  "status": "answered",
+  "today": false,
+  "total": null,
+  "value": 162960,
+  "who": "admin_en"
+ },
+ {
+  "beside": [],
+  "digest": "36f77ab3a15f01b062c57008b8676ca0720687662e617af1e123abea14294c17",
+  "groups": null,
+  "objects": false,
+  "query": "SELECT count(o) FROM (o:Order) WHERE o.amount BETWEEN 9 AND 1",
+  "query_text": null,
+  "status": null,
+  "today": false,
+  "total": null,
+  "value": null,
+  "who": "admin_en"
+ },
+ {
+  "ask": "How many orders are there?",
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "d4c14a8a6d511f7000f8b3bc73daba4810aac7871c168318e46fb93e66128ba1",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT count(o) AS count\nFROM (o:`Order`)",
+  "status": "answered",
+  "today": false,
+  "told": [
+   "43a177622f50f75dc7ab455b3e8357e05fadd4af4ade03bc129d6929d7865852"
+  ],
+  "total": 150,
+  "value": null,
+  "who": "admin_en",
+  "written": "{\"reasoning\": \"test\", \"query\": \"SELECT count(o) FROM (o:Order)\"}"
+ },
+ {
+  "ask": "有效订单的总金额是多少？",
+  "beside": [
+   "Order"
+  ],
+  "digest": "9d2aec2cc735ef1bd0b75b7f0b51453bc91d2495e52722cdae6edca7c838dc55",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS total\nFROM (o:`Order`)",
+  "status": "answered",
+  "today": false,
+  "told": [
+   "a3ff65b5d5c28fe90130d1bc4b85c5c84bee47f3115714654b072468f9201d12"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "admin_en",
+  "written": "{\"reasoning\": \"test\", \"query\": \"SELECT sum(o.amount) FROM (o:Order)\", \"views\": [\"Valid orders\"]}"
+ },
+ {
+  "ask": "How many orders before today?",
+  "beside": [],
+  "digest": "f8ea4ac1b5ed974270c4c72bd541d9b9226b83d71180473f8c4890e1bc22e00f",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "status": "query_limit",
+  "today": false,
+  "told": [
+   "61aa2ac6452091f68699a9e5a7419210bff203ef2e037833e8816c064e8636f3"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin_en",
+  "written": "{\"reasoning\": \"test\", \"query\": \"SELECT count(o) FROM (o:Order) WHERE o.order_date < 'today'\"}"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [
+   "Order"
+  ],
+  "digest": "df438d8b0e9a2a289fa1b1013644e0459bad1584fa3c3253592ee9827f58095b",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "销售额",
+     "direction": "include",
+     "id": "Valid orders"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "6da8ef2aff854ef9da71590d648bebf0655845be42e3e9fe1bdbb773e97da606"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "admin"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "94e5ca211a4e548467d82fc7c179d213d7412d3e11d36f3584071770f7199642",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "6da8ef2aff854ef9da71590d648bebf0655845be42e3e9fe1bdbb773e97da606"
+  ],
+  "total": 150,
+  "value": 162960,
+  "who": "admin"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [],
+  "digest": "53655ced0ea52eceb593774e33fb7a0f736f31b8aad453579f2cff87554ee77e",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)\nWHERE o.status_code NOT IN ('New', 'Cancelled', 'Refunded')",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "销售额",
+     "direction": "exclude",
+     "id": "orders.status_code=New"
+    },
+    {
+     "basis": "销售额",
+     "direction": "exclude",
+     "id": "orders.status_code=Cancelled"
+    },
+    {
+     "basis": "销售额",
+     "direction": "exclude",
+     "id": "orders.status_code=Refunded"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "field": "status_code",
+      "not_equals": [
+       "New",
+       "Cancelled",
+       "Refunded"
+      ]
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "6da8ef2aff854ef9da71590d648bebf0655845be42e3e9fe1bdbb773e97da606"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "admin"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [],
+  "digest": "5642fb1b0cc1da78a9eed01e5267d566ec5f8af064e952e1c9d07087271f1e61",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "field": "status_code",
+      "not_equals": [
+       "New",
+       "Cancelled",
+       "Refunded"
+      ]
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "6da8ef2aff854ef9da71590d648bebf0655845be42e3e9fe1bdbb773e97da606"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [],
+  "digest": "0a27b3d5f96b9a270fe33b2ac359dfb758ee780cba861964ca27d306fdb1e061",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": "销售额要按哪个口径？",
+  "status": "no_query",
+  "today": false,
+  "told": [
+   "6da8ef2aff854ef9da71590d648bebf0655845be42e3e9fe1bdbb773e97da606"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [],
+  "digest": "0a27b3d5f96b9a270fe33b2ac359dfb758ee780cba861964ca27d306fdb1e061",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": "{\"clarify\": [\"全部订单\", \"有效订单\"]}",
+  "status": "no_query",
+  "today": false,
+  "told": [
+   "6da8ef2aff854ef9da71590d648bebf0655845be42e3e9fe1bdbb773e97da606"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [],
+  "digest": "384f86b8fc484fc8933a4c8a7a2cfd18f78e6233b2622d42d3542959998b6241",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "销售额",
+     "direction": "exclude",
+     "id": "orders.status_code=Cancelled"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "field": "status_code",
+      "not_equals": [
+       "Cancelled"
+      ]
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "6da8ef2aff854ef9da71590d648bebf0655845be42e3e9fe1bdbb773e97da606"
+  ],
+  "total": 131,
+  "value": 141855,
+  "who": "admin"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [],
+  "digest": "ee889e6e37e5262ba37f8ff04e948fae7afc2ee5c903baecc565c489761e0764",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "field": "status_code",
+      "not_equals": [
+       "Cancelled",
+       "Refunded"
+      ]
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "6da8ef2aff854ef9da71590d648bebf0655845be42e3e9fe1bdbb773e97da606"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [],
+  "digest": "947a5a25203afe9da4d0643c37e3e109bc55898cae031a9e4c82ab961674af77",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "at_least": 1000,
+      "field": "amount"
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "6da8ef2aff854ef9da71590d648bebf0655845be42e3e9fe1bdbb773e97da606"
+  ],
+  "total": 84,
+  "value": 127375,
+  "who": "admin"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [],
+  "digest": "597cb22515e51d9521048b8383784db67a34404e197b6e14f218904df1c0210e",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)\nWHERE o.order_date BETWEEN '2026-06-01' AND '2026-06-30'",
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "at_least": "2026-06-01",
+      "at_most": "2026-06-30",
+      "field": "order_date"
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "6da8ef2aff854ef9da71590d648bebf0655845be42e3e9fe1bdbb773e97da606"
+  ],
+  "total": 70,
+  "value": 80600,
+  "who": "admin"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [],
+  "digest": "37331b1c17b9840b1ef39068c0329ceaab00dc43b5cbac44e56978dcf3501f51",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "at_least": 4,
+      "at_most": 4,
+      "field": "status_code"
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "6da8ef2aff854ef9da71590d648bebf0655845be42e3e9fe1bdbb773e97da606"
+  ],
+  "total": 19,
+  "value": 21105,
+  "who": "admin"
+ },
+ {
+  "ask": "销售额是多少？",
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "89f084098eabbd07c30fcbcf90da1a4975cd99013f673accdaf11408bc26a6d1",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT avg(o.amount) AS 平均\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "average"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "6da8ef2aff854ef9da71590d648bebf0655845be42e3e9fe1bdbb773e97da606"
+  ],
+  "total": 150,
+  "value": 1086.4,
+  "who": "admin"
+ },
+ {
+  "ask": "Valid orders 的总金额是多少？",
+  "beside": [
+   "Order"
+  ],
+  "digest": "7d08417140cc8b982cdb1dbf91ac471edc06ad52052cfc4b058a7b9343fd4332",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "Valid orders",
+     "direction": "include",
+     "id": "Valid orders"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "7656cf6253a4d2cb897cf7fb46d4df0eea61503ff6b4fac975adf0354e6c0d2c"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "admin"
+ },
+ {
+  "ask": "Valid orders 的总金额是多少？",
+  "beside": [],
+  "digest": "9ac139f2e9958da1ae264557eba679d45a31bb8717d9d083a5beb3a1022ccc61",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "Valid orders",
+     "direction": "exclude",
+     "id": "orders.status_code=Cancelled"
+    },
+    {
+     "basis": "Valid orders",
+     "direction": "exclude",
+     "id": "orders.status_code=Refunded"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "field": "status_code",
+      "not_equals": [
+       "Cancelled",
+       "Refunded"
+      ]
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "7656cf6253a4d2cb897cf7fb46d4df0eea61503ff6b4fac975adf0354e6c0d2c"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin"
+ },
+ {
+  "ask": "Valid orders 的总金额是多少？",
+  "beside": [],
+  "digest": "5e8a92c993e594501c5aa52bb653177c0890aa5e9d89f4c4029bfe6e664dd2db",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "field": "status_code",
+      "not_equals": [
+       "Cancelled",
+       "Refunded"
+      ]
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "7656cf6253a4d2cb897cf7fb46d4df0eea61503ff6b4fac975adf0354e6c0d2c"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin"
+ },
+ {
+  "ask": "Valid orders 的总金额是多少？",
+  "beside": [],
+  "digest": "a070e1979e42a898d17e1c9436c604366bbcf0f76b85eda4d8d891a6a9c51e82",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "7656cf6253a4d2cb897cf7fb46d4df0eea61503ff6b4fac975adf0354e6c0d2c"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin"
+ },
+ {
+  "ask": "Valid orders 的总金额是多少？",
+  "beside": [],
+  "digest": "53ea73f40440eafbce1eace401eef61d20bcbcd9a6822dec18464808980bd972",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "equals": "Cancelled",
+      "field": "status_code"
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "7656cf6253a4d2cb897cf7fb46d4df0eea61503ff6b4fac975adf0354e6c0d2c"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin"
+ },
+ {
+  "ask": "Valid orders 的总金额是多少？",
+  "beside": [],
+  "digest": "b598342a379945ca8214a76c7febffe857b02f09b6e5e2dc064aabf2f36c7a90",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "Valid orders",
+     "direction": "include",
+     "id": "Valid orders"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "at_least": 1000,
+      "field": "amount"
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "7656cf6253a4d2cb897cf7fb46d4df0eea61503ff6b4fac975adf0354e6c0d2c"
+  ],
+  "total": 62,
+  "value": 94960,
+  "who": "admin"
+ },
+ {
+  "ask": "What is the total amount of valid orders?",
+  "beside": [
+   "Order"
+  ],
+  "digest": "30dd8ea716393c7c298f23ae90c11006c10c458b747f35f8df8a5a0761b6f07d",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "Valid orders",
+     "direction": "include",
+     "id": "Valid orders"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "4ac45e79786977674ddb5a2540e4312dd445dde44ca814554a35647c98ff06b0"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "admin"
+ },
+ {
+  "ask": "What is the total amount of valid orders?",
+  "beside": [],
+  "digest": "d68e485fb48bdb765876eee705e58a450791d79b3be2e0f10471e4da63dd8087",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": "not json",
+  "status": "no_query",
+  "today": false,
+  "told": [
+   "4ac45e79786977674ddb5a2540e4312dd445dde44ca814554a35647c98ff06b0"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin"
+ },
+ {
+  "ask": "有效订单的总金额是多少？",
+  "beside": [],
+  "digest": "308f6ed72addee1529efbf907bdc24c7a3163109d0f399a6a318050e611b4841",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "有效订单",
+     "direction": "exclude",
+     "id": "orders.status_code=Cancelled"
+    },
+    {
+     "basis": "有效订单",
+     "direction": "exclude",
+     "id": "orders.status_code=Refunded"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "field": "status_code",
+      "not_equals": [
+       "Cancelled",
+       "Refunded"
+      ]
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "7bfe349a880a3f35593dde80eba0c55c64240f9bc14dfa1617c772af23e099be"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin"
+ },
+ {
+  "ask": "有效订单的总金额是多少？",
+  "beside": [
+   "Order"
+  ],
+  "digest": "141a441db0e3f690a7c057036da2048572dbbe655f9cf5ca250002cd9c14da10",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "有效订单",
+     "direction": "include",
+     "id": "Valid orders"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "7bfe349a880a3f35593dde80eba0c55c64240f9bc14dfa1617c772af23e099be"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "admin"
+ },
+ {
+  "ask": "有效订单的总金额是多少？",
+  "beside": [],
+  "digest": "33a94894a02c509c357f1a70d5d234bcb4e42fae16d2dcd0d2621ba3adc4ec0b",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "有效订单",
+     "direction": "exclude",
+     "id": "orders.status_code=New"
+    },
+    {
+     "basis": "有效订单",
+     "direction": "exclude",
+     "id": "orders.status_code=Cancelled"
+    },
+    {
+     "basis": "有效订单",
+     "direction": "exclude",
+     "id": "orders.status_code=Refunded"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "field": "status_code",
+      "not_equals": [
+       "New",
+       "Cancelled",
+       "Refunded"
+      ]
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "7bfe349a880a3f35593dde80eba0c55c64240f9bc14dfa1617c772af23e099be"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin"
+ },
+ {
+  "ask": "不算新建、取消和退款的订单金额合计？",
+  "beside": [],
+  "digest": "d33a2404acfdaf6cf27271d111496e676e6832f20c6d5f5538a2f80ad039620c",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)\nWHERE o.status_code NOT IN ('New', 'Cancelled', 'Refunded')",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "不算新建、取消和退款",
+     "direction": "exclude",
+     "id": "orders.status_code=New"
+    },
+    {
+     "basis": "不算新建、取消和退款",
+     "direction": "exclude",
+     "id": "orders.status_code=Cancelled"
+    },
+    {
+     "basis": "不算新建、取消和退款",
+     "direction": "exclude",
+     "id": "orders.status_code=Refunded"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "field": "status_code",
+      "not_equals": [
+       "New",
+       "Cancelled",
+       "Refunded"
+      ]
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "751f6565045ad67b0732de1ec368134d2aab201c1968284099ec7426396cf989"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "admin"
+ },
+ {
+  "ask": "只算付了款、发了货或送达的订单，金额合计？",
+  "beside": [],
+  "digest": "b32eaca65624a538b49841a593544f306bb91f2b371c7c3318d97198746307c3",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)\nWHERE o.status_code NOT IN ('New', 'Cancelled', 'Refunded')",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "付了款、发了货或送达",
+     "direction": "exclude",
+     "id": "orders.status_code=New"
+    },
+    {
+     "basis": "付了款、发了货或送达",
+     "direction": "exclude",
+     "id": "orders.status_code=Cancelled"
+    },
+    {
+     "basis": "付了款、发了货或送达",
+     "direction": "exclude",
+     "id": "orders.status_code=Refunded"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "field": "status_code",
+      "not_equals": [
+       "New",
+       "Cancelled",
+       "Refunded"
+      ]
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "ce1efb9b581e05e25ffa5d47cd6b01b7e740bfef4096f08ac99eaf194017eb7c"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "admin"
+ },
+ {
+  "ask": "valid-orders 的总金额是多少？",
+  "beside": [
+   "Order"
+  ],
+  "digest": "f05afe69d7ea95395ee6596542e90bf05166fef29f3954c6a49e5096c4d7df43",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "Valid orders",
+     "direction": "include",
+     "id": "Valid orders"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "0c714865f89537342744946dcd55de5584adfd85fe37ce49b81765e9aefbe389"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "admin"
+ },
+ {
+  "ask": "ValidOrders 的总金额是多少？",
+  "beside": [
+   "Order"
+  ],
+  "digest": "e9c280ca03bc0c65a68dbed0a17a3cb72ddf7dccf66e339c6dbb1a4afb7ca456",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "Valid orders",
+     "direction": "include",
+     "id": "Valid orders"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "bf792bdc97c258a8683db77aecf26eb57a531af50bc6761aee65abbfabec3796"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "admin"
+ },
+ {
+  "ask": "ｖａｌｉｄ　ｏｒｄｅｒｓ 的总金额是多少？",
+  "beside": [
+   "Order"
+  ],
+  "digest": "630ff95530a1961a29e3eb2afd33ea6169c9907b7c705504c428ce3d89d00cbc",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "Valid orders",
+     "direction": "include",
+     "id": "Valid orders"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "3db0d058204b2ea7eb6a46e475bbcdaa87c441ca0ff3523f4e3d6a6ea809c877"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "admin"
+ },
+ {
+  "ask": "已取消的订单有多少？",
+  "beside": [],
+  "digest": "305e6653eb12544f6d05dbca49a31696866154961d061757cad0781e901f9fdc",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT count(o) AS 数量\nFROM (o:`Order`)\nWHERE o.status_code = 'Cancelled'",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "已取消",
+     "direction": "include",
+     "id": "orders.status_code=Cancelled"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": null,
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "equals": "Cancelled",
+      "field": "status_code"
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "89dcda1add3001995c69e060b8a6774159a3d222aa3c17adcbd92d4cf164fdb8"
+  ],
+  "total": 19,
+  "value": null,
+  "who": "admin"
+ },
+ {
+  "ask": "已取消的订单有多少？",
+  "beside": [],
+  "digest": "63ec5682a9166eaa9ca5efc1d2bd122619728071bdd533f0d531ecde43c4702a",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": null,
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "equals": "Cancelled",
+      "field": "status_code"
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "89dcda1add3001995c69e060b8a6774159a3d222aa3c17adcbd92d4cf164fdb8"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin"
+ },
+ {
+  "ask": "有多少订单被取消了",
+  "beside": [],
+  "digest": "bac4fed8aa2ce45633fd59a603ec21e7412836c85066e1eed6a47f38d2028082",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT count(o) AS 数量\nFROM (o:`Order`)\nWHERE o.status_code = 'Cancelled'",
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "已取消",
+     "direction": "include",
+     "id": "orders.status_code=Cancelled"
+    }
+   ],
+   "query": {
+    "group_by": null,
+    "measure": null,
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "equals": "Cancelled",
+      "field": "status_code"
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "2d5d9780a6a23e4bb045b00cfa8b091f263bd42cee7a3e4ce5c9dd9909add446"
+  ],
+  "total": 19,
+  "value": null,
+  "who": "admin"
+ },
+ {
+  "ask": "有多少订单被取消了",
+  "beside": [],
+  "digest": "be541b81b509369bb102d776e934ed3848135d6d57a3aeb828e98191a5c0dc02",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": null,
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": [
+     {
+      "equals": "Cancelled",
+      "field": "status_code"
+     }
+    ]
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "2d5d9780a6a23e4bb045b00cfa8b091f263bd42cee7a3e4ce5c9dd9909add446"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin"
+ },
+ {
+  "ask": "已取消的订单有多少？",
+  "beside": [],
+  "digest": "e565e4a7d1e793d15a6972d62cac8d0e211119d92e3f1326ede1a1516e39e766",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": null,
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "definition_unmet",
+  "today": false,
+  "told": [
+   "89dcda1add3001995c69e060b8a6774159a3d222aa3c17adcbd92d4cf164fdb8"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin"
+ },
+ {
+  "ask": "有多少订单被取消了",
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "6de3c7d3fd4d534d5acefb70e5fe0a6d2e57c667c4b6abdd51044ee12072e132",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT count(o) AS 数量\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": null,
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "2d5d9780a6a23e4bb045b00cfa8b091f263bd42cee7a3e4ce5c9dd9909add446"
+  ],
+  "total": 150,
+  "value": null,
+  "who": "admin"
+ },
+ {
+  "ask": "What is the total amount?",
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "fb5bf67fff3b8e69957e301389d7cd203dff1bf8b26fc4991818b4f64e975484",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "87e3983095d3aa1b638fe5eed6e9ca7868362bbc5edfae15900c96b73114f9ca"
+  ],
+  "total": 150,
+  "value": 162960,
+  "who": "admin"
+ },
+ {
+  "ask": "How many orders are there?",
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "c78846bd844c22453d31d75f7915203e02cb8bc8b42ce82ab8600d5bc6ef264b",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT count(o) AS 数量\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": null,
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "14b7bb40cd3616efc9caea0eb7425c914d2564a6c7120e3b444db3aa82be509f"
+  ],
+  "total": 150,
+  "value": null,
+  "who": "admin"
+ },
+ {
+  "ask": "What is the amount of an order?",
+  "beside": [],
+  "digest": "2c201311088e56ed8b0233f82bbb0464379175038e6bfd6fba4ef9375b0d2517",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": "not json",
+  "status": "no_query",
+  "today": false,
+  "told": [
+   "72ba24fabb20314cd46341846b741d250853d289ddd8718d1d5c306d7da9e357"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin"
+ },
+ {
+  "ask": "各状态的订单金额",
+  "beside": [],
+  "digest": "ffdf1da624d4bc01d97da1904ac2826fe576881229fba0767b1b34c22b37bb3d",
+  "groups": 6,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "definitions_used": [
+    {
+     "basis": "状态",
+     "direction": "mention",
+     "id": "orders.status_code=New"
+    },
+    {
+     "basis": "状态",
+     "direction": "mention",
+     "id": "orders.status_code=Paid"
+    },
+    {
+     "basis": "状态",
+     "direction": "mention",
+     "id": "orders.status_code=Shipped"
+    },
+    {
+     "basis": "状态",
+     "direction": "mention",
+     "id": "orders.status_code=Delivered"
+    },
+    {
+     "basis": "状态",
+     "direction": "mention",
+     "id": "orders.status_code=Cancelled"
+    },
+    {
+     "basis": "状态",
+     "direction": "mention",
+     "id": "orders.status_code=Refunded"
+    }
+   ],
+   "query": {
+    "group_by": [
+     "status_code"
+    ],
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "af11dc2e0813f8ff4328fc7e87529b1fb98fe51cb063fcc0e07d356545774b28"
+  ],
+  "total": null,
+  "value": 162960,
+  "who": "admin"
+ },
+ {
+  "ask": "逾期交货怎么罚？",
+  "beside": [],
+  "digest": "289cf5d97b2f14c9b02a59d561a912a1a34013e9db101f9adc84ca5920c89bdc",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "missing": "ontology",
+   "query": null,
+   "reasoning": "test"
+  },
+  "status": "ontology_gap",
+  "today": false,
+  "told": [
+   "6dcc60c18af545e3746555d7d93a01fca5e780deaf8579bcb3b6751054a03bc0"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin"
+ },
+ {
+  "ask": "逾期交货怎么罚？",
+  "beside": [],
+  "digest": "c64020819ddb1d2cbba11dba88087a0fc0891c535a2b4875b3ed26ab30a60cb0",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "missing": "query_language",
+   "query": null,
+   "reasoning": "test"
+  },
+  "status": "query_limit",
+  "today": false,
+  "told": [
+   "6dcc60c18af545e3746555d7d93a01fca5e780deaf8579bcb3b6751054a03bc0"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin"
+ },
+ {
+  "ask": "逾期交货怎么罚？",
+  "beside": [],
+  "digest": "289cf5d97b2f14c9b02a59d561a912a1a34013e9db101f9adc84ca5920c89bdc",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "document_answer": {
+    "claims": [
+     {
+      "quotes": [
+       {
+        "passage": "p1",
+        "quote": "每逾期一日，按逾期部分货款的0.5%支付违约金"
+       }
+      ],
+      "text": "逾期交货每逾期一日按逾期部分货款的0.5%支付违约金"
+     }
+    ]
+   },
+   "missing": "ontology",
+   "query": null,
+   "reasoning": "test"
+  },
+  "status": "ontology_gap",
+  "today": false,
+  "told": [
+   "6dcc60c18af545e3746555d7d93a01fca5e780deaf8579bcb3b6751054a03bc0"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin"
+ },
+ {
+  "ask": "逾期交货怎么罚？",
+  "beside": [],
+  "digest": "6adf9a031b77bfe564f01a58e8f934463035654660ebd5ec37012ecf26a2d2df",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": "{\"document_answer\": {\"claims\": [{\"text\": \"逾期交货每逾期一日按逾期部分货款的0.5%支付违约金\", \"quotes\": [{\"passage\": \"p1\", \"quote\": \"每逾期一日，按逾期部分货款的0.5%支付违约金\"}]}]}}",
+  "status": "no_query",
+  "today": false,
+  "told": [
+   "6dcc60c18af545e3746555d7d93a01fca5e780deaf8579bcb3b6751054a03bc0"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin"
+ },
+ {
+  "ask": "逾期交货怎么罚？",
+  "beside": [],
+  "digest": "6adf9a031b77bfe564f01a58e8f934463035654660ebd5ec37012ecf26a2d2df",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": "not json",
+  "status": "no_query",
+  "today": false,
+  "told": [
+   "6dcc60c18af545e3746555d7d93a01fca5e780deaf8579bcb3b6751054a03bc0"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin"
+ },
+ {
+  "ask": "What does the contract say about late delivery?",
+  "beside": [],
+  "digest": "8a2ca16c51155ef4efb6b7e9dd2448ca58d5f011e115888e75fe68877e0b6dfa",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "missing": "ontology",
+   "query": null,
+   "reasoning": "test"
+  },
+  "status": "ontology_gap",
+  "today": false,
+  "told": [
+   "a565816174a6782efbb3fe679b3e9bf0da705009ca13b3230bb08bb617ccdefa"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin"
+ },
+ {
+  "ask": "What does the contract say about late delivery?",
+  "beside": [],
+  "digest": "8a2ca16c51155ef4efb6b7e9dd2448ca58d5f011e115888e75fe68877e0b6dfa",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "reply": {
+   "document_answer": {
+    "claims": [
+     {
+      "quotes": [
+       {
+        "passage": "p1",
+        "quote": "每逾期一日，按逾期部分货款的0.5%支付违约金"
+       }
+      ],
+      "text": "逾期交货每逾期一日按逾期部分货款的0.5%支付违约金"
+     }
+    ]
+   },
+   "missing": "ontology",
+   "query": null,
+   "reasoning": "test"
+  },
+  "status": "ontology_gap",
+  "today": false,
+  "told": [
+   "a565816174a6782efbb3fe679b3e9bf0da705009ca13b3230bb08bb617ccdefa"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin"
+ },
+ {
+  "ask": "How many orders are there?",
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "c78846bd844c22453d31d75f7915203e02cb8bc8b42ce82ab8600d5bc6ef264b",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT count(o) AS 数量\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [],
+   "document_answer": {
+    "claims": [
+     {
+      "quotes": [
+       {
+        "passage": "p1",
+        "quote": "每逾期一日，按逾期部分货款的0.5%支付违约金"
+       }
+      ],
+      "text": "逾期交货每逾期一日按逾期部分货款的0.5%支付违约金"
+     }
+    ]
+   },
+   "query": {
+    "group_by": null,
+    "measure": null,
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "14b7bb40cd3616efc9caea0eb7425c914d2564a6c7120e3b444db3aa82be509f"
+  ],
+  "total": 150,
+  "value": null,
+  "who": "admin"
+ },
+ {
+  "ask": "订单的金额一共是多少？",
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "2cd5968dba0884ff1b8c16430e67107b62c1796ad3396042128a2e2a7092d5e9",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [],
+   "document_answer": {
+    "claims": [
+     {
+      "quotes": [
+       {
+        "passage": "p1",
+        "quote": "每逾期一日，按逾期部分货款的0.5%支付违约金"
+       }
+      ],
+      "text": "逾期交货每逾期一日按逾期部分货款的0.5%支付违约金"
+     }
+    ]
+   },
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "d2e1a683ac5039448c8403a006a3a4262f5daec0a5900e9ae3a35fe96b310737"
+  ],
+  "total": 150,
+  "value": 162960,
+  "who": "admin"
+ },
+ {
+  "ask": "订单的金额一共是多少？",
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "2cd5968dba0884ff1b8c16430e67107b62c1796ad3396042128a2e2a7092d5e9",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)",
+  "reply": {
+   "definitions_used": [],
+   "query": {
+    "group_by": null,
+    "measure": {
+     "field": "amount",
+     "op": "sum"
+    },
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "today": false,
+  "told": [
+   "d2e1a683ac5039448c8403a006a3a4262f5daec0a5900e9ae3a35fe96b310737"
+  ],
+  "total": 150,
+  "value": 162960,
+  "who": "admin"
+ },
+ {
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "8809002d0d7d8be1c36199c6d125a5089e7f9e44041bfa249877a015250df4f4",
+  "groups": null,
+  "objects": false,
+  "query": "SELECT count(o) FROM (o:Order)",
+  "query_text": null,
+  "status": "answered",
+  "today": false,
+  "total": 150,
+  "value": null,
+  "who": "admin"
+ },
+ {
+  "beside": [],
+  "digest": "8fdd3e02be14697c7862cb184cc0ae59d0cf76033592bc8036487342e92f69b0",
+  "groups": null,
+  "objects": false,
+  "query": "SELECT count(o) FROM (o:Order) WHERE o.status_code = 'Cancelled'",
+  "query_text": null,
+  "status": "answered",
+  "today": false,
+  "total": 19,
+  "value": null,
+  "who": "admin"
+ },
+ {
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "c758e4b996d5a9cf98d42373f3f6265835ca9b958f1d28c83e6b7372d8277bf8",
+  "groups": null,
+  "objects": false,
+  "query": "SELECT sum(o.amount) FROM (o:Order)",
+  "query_text": null,
+  "status": "answered",
+  "today": false,
+  "total": 150,
+  "value": 162960,
+  "who": "admin"
+ },
+ {
+  "beside": [],
+  "digest": "a59c6ecaf813de8378d2685378038bb6a41d1f055832453f8786fab1a1c9a40e",
+  "groups": 6,
+  "objects": false,
+  "query": "SELECT o.status_code, count(o) FROM (o:Order) GROUP BY o.status_code",
+  "query_text": null,
+  "status": "answered",
+  "today": false,
+  "total": null,
+  "value": null,
+  "who": "admin"
+ },
+ {
+  "beside": [],
+  "digest": "e63b7ab6c7138a93a4f96cf6a138f109580d3b850a743ab140ddc2df5d0b6747",
+  "groups": 2,
+  "objects": false,
+  "query": "SELECT month(o.order_date), sum(o.amount) FROM (o:Order) GROUP BY month(o.order_date)",
+  "query_text": null,
+  "status": "answered",
+  "today": false,
+  "total": null,
+  "value": 162960,
+  "who": "admin"
+ },
+ {
+  "beside": [],
+  "digest": "8d9b04969d0230997c3ab8dd39b9ad98ac8d3d55469343130a0451b1fafc53c6",
+  "groups": null,
+  "objects": false,
+  "query": "SELECT count(o) FROM (o:Order) WHERE o.amount BETWEEN 9 AND 1",
+  "query_text": null,
+  "status": null,
+  "today": false,
+  "total": null,
+  "value": null,
+  "who": "admin"
+ },
+ {
+  "ask": "How many orders are there?",
+  "beside": [
+   "Valid orders"
+  ],
+  "digest": "1dbd67ff8aebd45369664671351338fd313f2f747b07c40caccd2daa71afe753",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT count(o) AS 数量\nFROM (o:`Order`)",
+  "status": "answered",
+  "today": false,
+  "told": [
+   "4617849376d6f7c99fff1918ef7bee8e3475f110fb250d62c809127c70327834"
+  ],
+  "total": 150,
+  "value": null,
+  "who": "admin",
+  "written": "{\"reasoning\": \"test\", \"query\": \"SELECT count(o) FROM (o:Order)\"}"
+ },
+ {
+  "ask": "有效订单的总金额是多少？",
+  "beside": [
+   "Order"
+  ],
+  "digest": "92f32b67295d06d1b76286cc33366de0247a31f9ca3b58c9bfe18789069a887f",
+  "groups": null,
+  "objects": false,
+  "query_text": "SELECT sum(o.amount) AS 合计\nFROM (o:`Order`)",
+  "status": "answered",
+  "today": false,
+  "told": [
+   "2e20113f0b01e136d2d6b5cecf6a4526fc7d3bf426b4b2618c833ffe1ffe5101"
+  ],
+  "total": 107,
+  "value": 119810,
+  "who": "admin",
+  "written": "{\"reasoning\": \"test\", \"query\": \"SELECT sum(o.amount) FROM (o:Order)\", \"views\": [\"Valid orders\"]}"
+ },
+ {
+  "ask": "How many orders before today?",
+  "beside": [],
+  "digest": "3b10231271f28987369d3d7d792850b1d0df11e9dd8ad018e9a2955fa0bbbac1",
+  "groups": null,
+  "objects": false,
+  "query_text": null,
+  "status": "query_limit",
+  "today": false,
+  "told": [
+   "9447862fd530e92cc9c9c97500ed7a2c41a20787e7d22942f92dec28f95956b2"
+  ],
+  "total": null,
+  "value": null,
+  "who": "admin",
+  "written": "{\"reasoning\": \"test\", \"query\": \"SELECT count(o) FROM (o:Order) WHERE o.order_date < 'today'\"}"
+ }
+]

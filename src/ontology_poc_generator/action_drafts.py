@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from ontology_poc_generator.lang import tr
 from ontology_poc_generator.object_actions import (
-    MAX_REASON, NUMBER_TYPES, OPS, SubmitRefused, _action_row, _label, _of_type, _phrase, _shown_columns, _texts, _type_name, action_visible, check_submit, conditions_of,
+    MAX_REASON, NUMBER_TYPES, OPS, SubmitRefused, _action_row, _label, _of_type, _phrase, _shown_columns, _texts, _type_name, action_id, action_visible, check_submit, conditions_of,
     describe, kind_of, parameters, waiting_on)
 from ontology_poc_generator.object_types import TypeRefused, _content, element_row, enum_id, type_id
 from ontology_poc_generator.object_views import meaning_labels
@@ -154,6 +154,50 @@ def kept(result: dict) -> dict:
         reason = tr(f'没有起草：{said}', f'Not drafted: {said}')
         return {**result, 'reason': reason, 'refusal': {**refusal, 'said': said}, 'steps': [{**st, 'text': said} if st.get('failed') else st for st in result.get('steps', [])]}
     return result
+
+
+SEALED = {   # check: the service's own sentence for a draft refused once passages were sent, naming at most the action, in its confirmed spelling
+    'confirmed': ('「{a}」还没有确认，要另一位建设者确认之后才能提交', '"{a}" is not confirmed: another builder must confirm it before it can be submitted'),
+    'type_confirmed': ('「{a}」所在的对象类型现在不是已确认的状态', 'The object type of "{a}" is not confirmed now'),
+    'submitter': ('你不在「{a}」能提交的人里', 'You are not one of the people who may submit "{a}"'),
+    'dataset': ('「{a}」读的数据集已经不在了', 'The dataset "{a}" reads is gone'),
+    'key': ('没有用完整的主键指定是哪一个对象', 'The object was not named by its whole key'),
+    'reason': ('理由不合要求：最多 {n} 个字、一行，删除要写理由', 'The reason does not fit: at most {n} characters on one line, and a delete needs one'),
+    'key_taken': ('这个主键已经被占用了：新建不会改写已有的对象', 'This key is already taken: create does not overwrite an existing object'),
+    'value': ('有一个值不合它的属性的类型或已确认的含义', 'A value does not fit its property\'s type or confirmed meanings'),
+    'row_rule': ('新对象不在你看得到的范围里：行规则会把它挡在你外面', 'The new object would be outside what you can see: a row rule keeps it from you'),
+    'object': ('没有这个对象，或者你看不到它', 'There is no such object, or you cannot see it'),
+    'condition': ('对象现在不满足「{a}」的条件', 'The object does not meet the conditions of "{a}" now'),
+    'rule_clash': ('改后的值不合这个类型的值规则', 'The values asked for break a value rule of this type'),
+    'nothing_to_change': ('对象已经是这些值了，没有要改的', 'The object already has these values, so there is nothing to change'),
+}
+
+
+def sealed(conn, user: dict | None, sc: dict, result: dict) -> dict:
+    """A refusal of a draft, once passages were sent with the question, with no string the model wrote: not its reasoning, not the action name, key, values or
+    type of its query (none is kept, not even for reopening), not a column or a value the submit's words quoted. What is left: the refusal's kind and check, a
+    fixed sentence of the service's per check (naming only the action code matched, in its confirmed spelling; a name that matched nothing is answered as "no
+    confirmed action does this", with the actions as today), and the ids of the confirmed definitions code matched (`refusal.matched`, checked again on
+    reopening). A refusal whose words are the service's alone (no_action, unsettled, one_draft, not_a_draft) keeps them."""
+    refusal = dict(result.get('refusal') or {})
+    out = {**result, 'query': None, **({'reasoning': ''} if 'reasoning' in result else {})}
+    understood = _step(tr('理解问题', 'Understand the question'), tr('问题要改数据：起草一个行为，不算数', 'The question asks for a change: draft an action, no number'))
+    if refusal.get('kind') == 'no_action':
+        return {**out, 'refusal': {**refusal, 'matched': [type_id(refusal['type'])] if refusal.get('type') else []}}
+    if refusal.get('kind') != 'action_check' or refusal.get('check') in ('one_draft', 'not_a_draft'):
+        return out
+    row = element_row(conn, action_id(refusal['action'])) if refusal.get('check') != 'action' and isinstance(refusal.get('action'), str) else None
+    if row is None or row['state'] != 'confirmed':   # no confirmed action matched: never the name the model wrote
+        listed = _no_action(conn, user, sc, None, understood)
+        return {**out, 'reason': listed['reason'], 'steps': listed['steps'], 'types': [], 'definitions': [], 'datasets': {},
+                'refusal': {'kind': 'action_check', 'check': 'action', 'actions': listed['refusal']['actions'], 'matched': []}}
+    name = _content(row)['name']
+    zh, en = SEALED.get(refusal['check'], ('没有通过「{a}」提交前的检查', 'It did not pass the checks a submit of "{a}" makes'))
+    said = tr(zh.format(a=name, n=MAX_REASON), en.format(a=name, n=MAX_REASON))
+    types = [t for t in result.get('types', []) if isinstance(t, dict) and t.get('id') in sc['types']]
+    return {**out, 'reason': tr(f'没有起草：{said}', f'Not drafted: {said}'), 'steps': [understood, _step(tr('核对行为', 'Check the action'), said, True)],
+            'types': [{'id': t['id'], 'name': sc['types'][t['id']]['content']['name']} for t in types], 'definitions': [], 'datasets': {},
+            'refusal': {'kind': 'action_check', 'check': refusal['check'], 'action': name, 'said': said, 'matched': [row['element_id'], *(type_id(t['id']) for t in types)]}}
 
 
 def again(conn, user: dict | None, record: dict, question: str) -> dict:

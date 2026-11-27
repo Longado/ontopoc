@@ -7,6 +7,7 @@ export default {
   "group.data": "Data",
   "group.data.hint": "Definitions are built on these tables; every upload or pull is a new version",
   "datasets": "Datasets",
+  "documents": "Documents",
   "sources": "Sources",
   "pipelines": "Pipelines",
   "schedules": "Schedules",

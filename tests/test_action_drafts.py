@@ -17,7 +17,7 @@ AMOUNT = {'name': '调金额', 'type': 'order', 'properties': ['金额'], 'descr
 UNCONFIRMED = {'name': '加急改金额', 'type': 'order', 'properties': ['金额'], 'description': '还没有人确认'}
 GUARDED = {'name': '锁定大单', 'type': 'order', 'properties': ['状态码'], 'description': '只给几张指定的大单',
            'conditions': [{'column': '订单号', 'op': 'in', 'value': [IN_PRODUCTION, 'DD20260004']}, {'column': '金额', 'op': 'gt', 'value': '45678'}]}
-MAIN_ASK_DESCRIPTION = '4a6216ac04295dd8a7066479be26a70bcebff5735243d91da8e69637625c38db'   # sha256 of the ask tool's description at a0de22fe (main's)
+MAIN_ASK_DESCRIPTION = 'dc2e1d8e82150a551d7c4bf4fc889e4e741068e65c428ab3f6beae1f3b168cdc'   # sha256 of the ask tool's description before drafts: at 41512ad6 (doc-answers, which added the documents' sentence to main's 4a6216ac…)
 PICK = {'name': '转客户', 'type': 'order', 'properties': ['客户编号'], 'choices': {'客户编号': {'type': 'order', 'column': '客户编号'}}, 'description': '换一个已有的客户'}
 KH001_IN_PRODUCTION = next(r for r in ORDERS if r['客户编号'] == 'KH001' and r['状态码'] == '1')['订单号']   # DD20260136
 HIDDEN_IN_PRODUCTION = next(r for r in ORDERS if r['客户编号'] != 'KH001' and r['状态码'] == '1')['订单号']

@@ -48,6 +48,9 @@ def person_only(path: str) -> str:
     if path.startswith('/api/workspace/needed'):
         return tr('要回答的问题由本人登录页面来写、确认和运行，令牌不能做（不论令牌的范围）。请登录团队应用，打开“要回答的问题”。',
                   'Questions we need are written, confirmed and run by a person signed in to the page, not with a token (whatever its scope). Sign in to the team app and open Questions we need.')
+    if path == '/api/workspace/documents/remove':
+        return tr('移除文档要由本人登录页面来做，令牌不能做（不论令牌的范围）：移除后段落不能恢复。请登录团队应用，在“文档”页上移除。',
+                  'Removing a document is done by a person signed in to the page, not with a token (whatever its scope): its passages cannot come back. Sign in to the team app and remove it on the Documents page.')
     if path == '/api/workspace/checked':
         return tr('核对过的数要由本人登录页面来记，令牌不能记（不论令牌的范围）。请登录团队应用，在看板卡片上或自己存下的回答上点“核对过”。',
                   'A checked number is recorded by a person signed in to the page, not with a token (whatever its scope). Sign in to the team app and choose Mark as checked on the board card or on your saved answer.')

@@ -286,6 +286,16 @@ export const getAgentTokens = () => request("/api/users/tokens").then((b) => b.t
 export const createAgentToken = (userId, label, scope, days) => send("/api/users/tokens", { user_id: userId, label, scope, days });
 export const revokeAgentToken = (id) => send("/api/users/tokens/revoke", { id });
 
+// documents that answer questions once a second person confirmed them (document_answers.py)
+/** {available, unavailable?, documents, limits, may_upload, sent_to_model}: the documents this person may read. */
+export const getDocuments = () => request("/api/workspace/documents");
+/** One document with its passages; 404 when it is not this person's to read. */
+export const getDocument = (id) => request(`/api/workspace/documents/${encodeURIComponent(id)}`);
+export const uploadDocument = (filename, contentBase64, buildersOnly) => send("/api/workspace/documents/upload", { filename, content_base64: contentBase64, builders_only: buildersOnly });
+export const confirmDocument = (id, version) => send("/api/workspace/documents/confirm", { id, version });
+export const sendBackDocument = (id, version, reason) => send("/api/workspace/documents/send-back", { id, version, reason });
+export const removeDocument = (id, version, reason) => send("/api/workspace/documents/remove", { id, version, reason });
+
 /** A file's bytes as base64, which is how the service takes them. */
 export async function fileToBase64(file) {
   const bytes = new Uint8Array(await file.arrayBuffer());

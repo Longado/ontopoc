@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 import json
 import re
 
-from ontology_poc_generator import action_drafts, other_names
+from ontology_poc_generator import action_drafts, document_answers, other_names
 from ontology_poc_generator.answer_checks import _use, _uses, choose_rows, column_values, definition_catalog, definition_check, meaning_id, picks_objects, refusal
 from ontology_poc_generator.derived_properties import derived_id, derived_visible, describe as describe_derived, evaluate as evaluate_derived, row_values, text_of
 from ontology_poc_generator.named_views import name_views
@@ -1070,6 +1070,7 @@ def _beside(sc: dict, parts: dict, answer, item: dict, asked: str, applied: list
 
 def _answered(conn, gateway, user: dict | None, question: str, sc: dict, actions: list | None = None) -> dict:
     """`actions`: the confirmed actions this person may submit, as the model is told them (action_drafts.told); none, and the question is asked as it was."""
+    docs = document_answers.found(conn, user, question)   # None when there is nothing of documents for this person: then everything below is as it was
     parts = _inputs(conn, sc, question)
     ontology = parts['ontology']
     catalog, definitions = _catalog_for_model(conn, sc, parts)
@@ -1085,16 +1086,19 @@ def _answered(conn, gateway, user: dict | None, question: str, sc: dict, actions
     answer.unmatched = unmatched
     more = (ROWS_PROMPT_VERSION, ROWS_PROMPT) if ROW_ANSWERS else None
     asked = ask_questions(ontology, parts['bundle'], gateway, question, answerer=action_drafts.answering(conn, user, sc, question, answer) if actions else answer,
-                          definitions=definitions, catalog=catalog, more=action_drafts.prompt(more) if actions else more)
+                          definitions=definitions, catalog=catalog, **document_answers.asking(docs, action_drafts.prompt(more) if actions else more))
     if asked.get('request_failed'):   # the model could not be reached: nothing was answered
         raise QaRefused(asked['error'], 502)
     if asked['error'] or not asked['items']:   # it replied, but with no query for this question: kept as unanswered, said in the reader's words
         item = {'question': question, 'reasoning': '', 'query': None, 'status': 'no_query', 'reason': _no_query_reason(sc)}
-        return {**_finish(conn, user, sc, parts, item, []), 'model': asked['model']}
-    if asked['items'][0].get(action_drafts.MARK):   # a draft of an action, or why there is none
-        return {**action_drafts.finish(asked['items'][0]), 'model': asked['model']}
-    return {**_finish(conn, user, sc, parts, asked['items'][0], answer.applied, spoken.get('spec'), beside=(answer, question)), 'model': asked['model'],
-            **({'ran': answer.ran()} if ROW_ANSWERS else {})}
+        return document_answers.settled(conn, user, docs, item, {**_finish(conn, user, sc, parts, item, []), 'model': asked['model']})
+    if asked['items'][0].get(action_drafts.MARK):   # a draft of an action, or why there is none: before a data query and a document answer (a quote beside it is ignored)
+        result = action_drafts.finish(asked['items'][0])
+        if document_answers.sent(docs) and result.get('status') != 'draft':   # it read passages: nothing the model wrote, only the service's sentences (a draft code checked is shown as it is)
+            result = document_answers.beside_a_draft(action_drafts.sealed(conn, user, sc, result))
+        return {**result, 'model': asked['model']}
+    return document_answers.settled(conn, user, docs, asked['items'][0], {**_finish(conn, user, sc, parts, asked['items'][0], answer.applied, spoken.get('spec'), beside=(answer, question)), 'model': asked['model'],
+                                                                          **({'ran': answer.ran()} if ROW_ANSWERS else {})})
 
 
 ROWS_PROMPT_VERSION = 'workspace_rows.v2'
@@ -1435,6 +1439,8 @@ def _named_ids(result: dict, sc: dict) -> list[str]:
         ids += [d['id'] for d in refusal['definitions'] if 'id' in d]   # a viewer's line that says only that something waits names nothing
     elif refusal.get('kind') in ('not_in_scope', 'definition_unmet'):   # these say what is in scope (and for a builder what is left out)
         ids += [type_id(k) for k in sc['types']] + [v['row']['element_id'] for v in sc['views'].values()] + [d['id'] for d in refusal.get('left_out', []) if 'id' in d]
+    ids += document_answers.named(result)   # the documents a refusal names as waiting
+    ids += [i for i in refusal.get('matched', []) if isinstance(i, str)]   # a draft refused once passages were sent: the confirmed definitions code matched (action_drafts.sealed)
     return list(dict.fromkeys(ids))
 
 
@@ -1550,7 +1556,7 @@ def history(conn, user: dict | None) -> list[dict]:
 
 TALLY_DAYS = 7
 HELD_BACK_LIMIT = 5
-ANSWERED = ('answered', 'no_data')
+ANSWERED = ('answered', 'no_data', 'from_documents')   # from_documents: answered from confirmed documents (document_answers), never a number from the data
 HELD_BACK = ('refused', 'definition_unmet', 'needs_derived')   # a check stopped it: a definition not confirmed, nothing in scope, a relation that cannot be walked, a query that left out a confirmed definition, a measure that waits for confirming
 
 
@@ -1611,6 +1617,8 @@ def _may_see(conn, user: dict | None, element_id: str) -> bool:
         return view_visible(conn, row, user)
     if element_id.startswith(DERIVED_PREFIX):
         return derived_visible(conn, row, user)
+    if element_id.startswith(document_answers.DOCUMENT_PREFIX):
+        return document_answers.may_read(conn, user, row)
     type_row = element_row(conn, type_id(_content(row)['type']))
     return type_row is not None and _visible(conn, type_row, user) and not reads_hidden(conn, element_id, user)   # a meaning of a column kept from them is not theirs
 
@@ -1626,6 +1634,8 @@ def reopen(conn, user: dict | None, question_id: int, page=None) -> dict:
     i, question, at, stored = found
     record = json.loads(stored)
     named = list(dict.fromkeys([*record.pop('named', []), *(type_id(t['id']) for t in record['types'])]))
+    if (gone := document_answers.reopened_removed(conn, user, named)) is not None:   # a document it quoted or named was removed: said so, never its old quotes
+        return {'id': i, 'question': question, 'asked_at': at, 'status': record['status'], **gone}
     lost = [element_id for element_id in named if not _may_see(conn, user, element_id)]
     waiting = [_waiting_line(conn, row, user) for row in (element_row(conn, e) for e in lost) if waiting_for_viewer(conn, row, user)]
     if lost and len(waiting) == len(lost):   # each waits for a second look: said as a fresh question would say it, the name and who it waits for, nothing of why

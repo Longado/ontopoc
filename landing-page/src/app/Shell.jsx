@@ -16,6 +16,7 @@ import { ConfirmPage } from "./ConfirmPage.jsx";
 import { NeededPage } from "./NeededPage.jsx";
 import { DatasetList } from "./DatasetList.jsx";
 import { DatasetPage } from "./DatasetPage.jsx";
+import { DocumentPage, DocumentsPage } from "./DocumentsPage.jsx";
 import { LineagePage } from "./LineagePage.jsx";
 import { ObjectPage } from "./ObjectPage.jsx";
 import { PermissionsPage } from "./PermissionsPage.jsx";
@@ -253,6 +254,8 @@ const VIEWS = {
   tasks: () => <TasksPage />,
   datasets: () => <DatasetList />,
   dataset: (route) => <DatasetPage route={route} />,
+  documents: () => <DocumentsPage />,
+  document: (route) => <DocumentPage key={route.id} route={route} />,
   pipelines: () => <PipelinesPage />,
   pipelinenew: () => <PipelineNew />,
   pipeline: (route) => <PipelinePage key={route.name} route={route} />,

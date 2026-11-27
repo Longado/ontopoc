@@ -15,6 +15,7 @@
 import { useSyncExternalStore } from "react";
 import enAgents from "./en/agents.js"; // areas
 import enAsk from "./en/ask.js"; // areas
+import enDocuments from "./en/documents.js"; // areas
 import enBoards from "./en/boards.js"; // areas
 import enNotices from "./en/notices.js"; // areas
 import enNeeded from "./en/needed.js"; // areas
@@ -35,6 +36,7 @@ import enSteps from "./en/steps.js"; // areas
 import enUi from "./en/ui.js"; // areas
 import zhAgents from "./zh/agents.js"; // areas
 import zhAsk from "./zh/ask.js"; // areas
+import zhDocuments from "./zh/documents.js"; // areas
 import zhBoards from "./zh/boards.js"; // areas
 import zhNotices from "./zh/notices.js"; // areas
 import zhNeeded from "./zh/needed.js"; // areas
@@ -70,8 +72,8 @@ export const AREAS = {
   zh: { account: zhAccount, actions: zhActions, auth: zhAuth, common: zhCommon, data: zhData, home: zhHome, lineage: zhLineage, nav: zhNav, objects: zhObjects, pipeline: zhPipeline, relations: zhRelations, review: zhReview, settings: zhSettings, shell: zhShell, sources: zhSources, status: zhStatus, steps: zhSteps, types: zhTypes, ui: zhUi, users: zhUsers }, // areas
 };
 
-Object.assign(AREAS.en, { agents: enAgents, ask: enAsk, boards: enBoards, needed: enNeeded, notices: enNotices }); // areas (T3)
-Object.assign(AREAS.zh, { agents: zhAgents, ask: zhAsk, boards: zhBoards, needed: zhNeeded, notices: zhNotices }); // areas (T3)
+Object.assign(AREAS.en, { agents: enAgents, ask: enAsk, boards: enBoards, documents: enDocuments, needed: enNeeded, notices: enNotices }); // areas (T3)
+Object.assign(AREAS.zh, { agents: zhAgents, ask: zhAsk, boards: zhBoards, documents: zhDocuments, needed: zhNeeded, notices: zhNotices }); // areas (T3)
 
 export const LOCALES = ["en", "zh"];
 const STORAGE_KEY = "ontopoc.locale";

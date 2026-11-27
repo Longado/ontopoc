@@ -46,6 +46,8 @@ ROUTES: list[tuple[str, str, str]] = [
     ('GET', r'/api/ontology/library(/.+)?', 'viewer'),   # reference ontologies, no company data
     ('POST', r'/api/ontology/ask', UNLIMITED),
     ('POST', r'/api/workspace/ask', 'viewer'),
+    ('GET', r'/api/workspace/documents(/[^/]+)?', 'viewer'),   # the documents a person may read: a viewer only confirmed ones not kept for builders (document_answers.may_read)
+    ('POST', r'/api/workspace/documents/(upload|confirm|send-back|remove)', 'builder'),   # send back or remove one that turned out wrong (with a reason, logged)   # a document is put forward by one builder and confirmed by another (document_answers)
     ('GET', r'/api/workspace/assistant/turns(/[0-9]+)?', 'builder'),   # a builder's own assistant turns (assistant_history): nobody else's
     ('POST', r'/api/workspace/assistant/turns(/[0-9]+/(outcome|delete))?', 'builder'),
     ('POST', r'/api/workspace/query(/text)?', 'viewer'),   # OntoPoc Query: run a text, or read a structured query back as text, within what the person may see (no model)
@@ -125,6 +127,8 @@ PERSON_ONLY_POSTS = (
     '/api/workspace/queue/confirm-group',     # what one upload moved, confirmed together
     '/api/workspace/checked',                 # "checked by <person>" on a board card or a saved answer: the mark carries a person's name
     '/api/workspace/needed/confirm',          # what a question on the list of questions we need should give, confirmed by a person
+    '/api/workspace/documents/confirm',       # a document that answers questions, confirmed by a person
+    '/api/workspace/documents/remove',        # a document removed, with a reason: its passages cannot come back (sending one back takes trust away and stays open to a token)
 )
 
 # What a token may not do either, though no one vouches by it: write a question we need with what it should give (it is proposed by a named person, like the

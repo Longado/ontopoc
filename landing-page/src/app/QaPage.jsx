@@ -19,11 +19,12 @@ import { draftView, isDraft } from "./draftModel.js";
 import { State } from "./TypesPage.jsx";
 import { formatDate, useT } from "./i18n/index.js";
 import { hrefFor } from "./routeModel.js";
+import { answerFromDocuments } from "./documentModel.js";
 import { Icon } from "./ui/Icon.jsx";
 import { useLoad } from "./useLoad.js";
 
 const MODEL_KINDS = ["model", "pipeline", "meanings"];   // the turn kinds that call the model and answer with a card
-const KIND = { type: "ask.kind.type", meaning: "ask.kind.meaning", relation: "ask.kind.relation", view: "ask.kind.view", derived: "ask.kind.derived", action: "ask.kind.action" };
+const KIND = { type: "ask.kind.type", meaning: "ask.kind.meaning", relation: "ask.kind.relation", view: "ask.kind.view", derived: "ask.kind.derived", document: "ask.kind.document", action: "ask.kind.action" };
 
 /** The definitions a refusal names, bottom of the chain first: what it is, where it stands and why, who could confirm it. */
 function Named({ list, mayBuild }) {
@@ -60,7 +61,7 @@ function Refusal({ record, mayBuild }) {
       {r?.kind === "not_in_scope" && (
         <>
           {r.left_out?.some((d) => d.kind === "relation" && d.state === "confirmed") && <p>{t("ask.refusal.relationLeftOut")}</p>}
-          <p className={r.left_out?.some((d) => d.kind === "relation" && d.state === "confirmed") ? "muted" : undefined}>{record.reason}</p>
+          <p className={r.left_out?.some((d) => d.kind === "relation" && d.state === "confirmed") ? "muted reason-text" : "reason-text"}>{record.reason}</p>
           <p className="muted">{t("ask.refusal.inScope", { list: r.in_scope.length ? r.in_scope.join(t("ask.sep")) : t("ask.refusal.noTypes") })}</p>
           {r.left_out?.length > 0 && (
             <>
@@ -78,7 +79,7 @@ function Refusal({ record, mayBuild }) {
           </ul>
         </>
       )}
-      {branch.kind === "reason" && <p>{branch.text}</p>}
+      {branch.kind === "reason" && <p className="reason-text">{branch.text}</p>}
     </div>
   );
 }
@@ -120,6 +121,22 @@ export function Answer({ record }) {
       )}
       {rangeNotes(record).map((n) => <p className="warn" key={n}>{n}</p>)}
       {notes.length > 0 && <p className="warn">{then ? notes.join(t("ask.stale.sep")) : t("ask.stale.withHeading", { heading: staleHeading(record), notes: notes.join(t("ask.stale.sep")) })}</p>}
+    </div>
+  );
+}
+
+/** An answer from confirmed documents: the line that says so, then the documents' own words, each with where it comes from (code checked each is word for
+ * word in its document). No figure and no sentence of the model's: it is never a number from the data. */
+function DocumentAnswer({ record }) {
+  const view = answerFromDocuments(record);
+  const notes = staleLines(record);
+  return (
+    <div className={isThenAnswer(record) ? "answer then doc-answer" : "answer doc-answer"}>
+      {notes.length > 0 && <p className="warn">{staleHeading(record)} {notes.join(" ")}</p>}
+      <p className="criteria">{view.line}</p>
+      <ul className="doc-claims">
+        {view.quotes.map((q) => <li key={q.key}><blockquote><p>{q.parts[0]}<mark>{q.parts[1]}</mark>{q.parts[2]}</p><footer className="muted small"><a href={q.href}>{q.source}</a></footer></blockquote></li>)}
+      </ul>
     </div>
   );
 }
@@ -284,7 +301,7 @@ function AnswerCardBody({ record, mayBuild, onEdit }) {
     <section className="qa-card">
       {record.withheld ? <p className="warn">{record.reason}</p> : (
         <>
-          {isDraft(record) ? <DraftCard record={record} /> : isAnswer(record) ? <Answer record={record} /> : <Refusal record={record} mayBuild={mayBuild} />}
+          {isDraft(record) ? <DraftCard record={record} /> : answerFromDocuments(record) ? <DocumentAnswer record={record} /> : isAnswer(record) ? <Answer record={record} /> : <Refusal record={record} mayBuild={mayBuild} />}
           {warning && <p className="time-warn" role="alert">{warning}</p>}
           {line && <p className="criteria">{line}</p>}
           <details className="basis">
@@ -361,7 +378,7 @@ function SavedTurn({ turn, mayBuild, onEdit, followUps, onAsk, last, onLoaded })
   return (
     <>
       <UserBubble text={r.question} />
-      <AssistantMsg><AnswerCard record={r} mayBuild={mayBuild} onEdit={onEdit} /><FollowUps list={last && !isAnswer(r) ? followUps : []} onAsk={onAsk} /></AssistantMsg>
+      <AssistantMsg><AnswerCard record={r} mayBuild={mayBuild} onEdit={onEdit} /><FollowUps list={last && !isAnswer(r) && !answerFromDocuments(r) ? followUps : []} onAsk={onAsk} /></AssistantMsg>
     </>
   );
 }
@@ -386,7 +403,7 @@ function TurnView({ turn, mayBuild, admin, onEdit, followUps, onAsk, busy, last,
     );
   }
   const r = turn.record;
-  const unanswered = r && !isDraft(r) && (!isAnswer(r) || r.status === "no_data");
+  const unanswered = r && !isDraft(r) && !answerFromDocuments(r) && (!isAnswer(r) || r.status === "no_data");
   return (
     <>
       <UserBubble text={turn.text} query={turn.kind === "query"} />

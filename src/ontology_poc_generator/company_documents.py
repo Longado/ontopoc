@@ -15,9 +15,12 @@ import zipfile
 
 from ontology_poc_generator.company_sources import DEFAULT_PURPOSE, MAX_BYTES
 from ontology_poc_generator.agent_harness import ask_model
+from ontology_poc_generator.lang import tr
 
 DOCUMENT_SUFFIXES = ('.md', '.txt', '.docx', '.pdf')
 CHUNK_CHARS = 6000
+MAX_DOCX_XML = 20_000_000   # bytes of word/document.xml once unpacked: a small .docx can unpack to hundreds of megabytes, so it is refused before it is read
+PDF_SECONDS = 60
 MAX_CHUNKS = 12   # ponytail: about 70,000 characters per upload, one model call each; the page says when a document is cut
 DOCUMENT_PROMPT_VERSION = 'company_document_modeler.v1'
 DOCUMENT_SYSTEM_PROMPT = '''You read one part of a company's business document and extract its ontology: the business
@@ -48,15 +51,18 @@ def _decode(data: bytes) -> str:
             return data.decode(encoding)
         except UnicodeDecodeError:
             continue
-    raise DocumentFileError('文本不是 UTF-8 或 GBK 编码，请另存为 UTF-8 后再上传')
+    raise DocumentFileError(tr('文本不是 UTF-8 或 GBK 编码，请另存为 UTF-8 后再上传', 'The text is neither UTF-8 nor GBK. Save it as UTF-8 and upload it again'))
 
 
 def _docx_text(data: bytes) -> str:
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as z:
+            size = z.getinfo('word/document.xml').file_size
+            if size > MAX_DOCX_XML:
+                raise DocumentFileError(tr(f'这个 Word 文件解开后有 {size:,} 字节，上限 {MAX_DOCX_XML:,} 字节：请分成几份或另存为文本', f'This Word file unpacks to {size:,} bytes; the limit is {MAX_DOCX_XML:,}. Split it or save it as text'))
             root = ElementTree.fromstring(z.read('word/document.xml'))
     except (zipfile.BadZipFile, KeyError, ElementTree.ParseError) as exc:
-        raise DocumentFileError(f'无法作为 Word（.docx）读取：{exc}') from None
+        raise DocumentFileError(tr(f'无法作为 Word（.docx）读取：{exc}', f'This cannot be read as Word (.docx): {exc}')) from None
     w = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
     return '\n\n'.join(''.join(t.text or '' for t in p.iter(f'{w}t')) for p in root.iter(f'{w}p'))
 
@@ -64,13 +70,16 @@ def _docx_text(data: bytes) -> str:
 def _pdf_text(data: bytes) -> str:
     tool = shutil.which('pdftotext')
     if tool is None:
-        raise DocumentFileError('读取 PDF 需要本机安装 pdftotext（poppler）；也可以把 PDF 另存为 Word 或文本再上传')
+        raise DocumentFileError(tr('读取 PDF 需要本机安装 pdftotext（poppler）；也可以把 PDF 另存为 Word 或文本再上传', 'Reading a PDF needs pdftotext (poppler) on this machine; or save the PDF as Word or text and upload that'))
     with tempfile.NamedTemporaryFile(suffix='.pdf') as f:
         f.write(data)
         f.flush()
-        done = subprocess.run([tool, '-enc', 'UTF-8', f.name, '-'], capture_output=True, timeout=60)
+        try:
+            done = subprocess.run([tool, '-enc', 'UTF-8', f.name, '-'], capture_output=True, timeout=PDF_SECONDS)
+        except subprocess.TimeoutExpired:
+            raise DocumentFileError(tr(f'读这个 PDF 超过了 {PDF_SECONDS} 秒，没有读完：请分成几份或另存为文本再上传', f'Reading this PDF took more than {PDF_SECONDS} seconds and was stopped. Split it or save it as text, then upload it again')) from None
     if done.returncode != 0:
-        raise DocumentFileError(f'PDF 读取失败：{done.stderr.decode("utf-8", "replace")[:200]}')
+        raise DocumentFileError(tr(f'PDF 读取失败：{done.stderr.decode("utf-8", "replace")[:200]}', f'The PDF could not be read: {done.stderr.decode("utf-8", "replace")[:200]}'))
     return done.stdout.decode('utf-8', 'replace')
 
 
@@ -87,14 +96,14 @@ def chunk_paragraphs(paragraphs: list[str], size: int = CHUNK_CHARS) -> list[str
 def load_document_file(filename: str, data: bytes, purpose: str | None = None) -> dict:
     suffix = PurePath(filename).suffix.lower()
     if suffix not in DOCUMENT_SUFFIXES:
-        raise DocumentFileError(f'文档只支持 {" / ".join(DOCUMENT_SUFFIXES)}，不支持 {suffix or "无扩展名"} 文件')
+        raise DocumentFileError(tr(f'文档只支持 {" / ".join(DOCUMENT_SUFFIXES)}，不支持 {suffix or "无扩展名"} 文件', f'Documents can only be {" / ".join(DOCUMENT_SUFFIXES)}, not {suffix or "a file without an extension"}'))
     if len(data) > MAX_BYTES:
-        raise DocumentFileError(f'文件太大，上限 {MAX_BYTES // 1024 // 1024} MB')
+        raise DocumentFileError(tr(f'文件太大，上限 {MAX_BYTES // 1024 // 1024} MB', f'The file is too large; the limit is {MAX_BYTES // 1024 // 1024} MB'))
     text = _docx_text(data) if suffix == '.docx' else _pdf_text(data) if suffix == '.pdf' else _decode(data)
     paragraphs = [re.sub(r'\s+', ' ', p).strip() for p in re.split(r'\n\s*\n|\r\n\s*\r\n', text.replace('\f', '\n\n'))]
     paragraphs = [p.lstrip('#').strip() for p in paragraphs if p.strip('# ')]
     if not paragraphs:
-        raise DocumentFileError('文件里没有文字')
+        raise DocumentFileError(tr('文件里没有文字', 'The file has no text'))
     return {
         'schema': 'company_document_bundle.v1',
         'decision': (purpose or '').strip() or DEFAULT_PURPOSE,
