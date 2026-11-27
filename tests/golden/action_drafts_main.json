@@ -1,0 +1,1642 @@
+[
+ {
+  "ask": "订单有多少？",
+  "digest": "d9a664db0a21db3b417d6ea730529c44553063979e8e35e218658bdcae440739",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": null,
+  "reply": {
+   "query": {
+    "group_by": null,
+    "measure": null,
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "who": "ann"
+ },
+ {
+  "ask": "把订单 DD20260003 标成已交付",
+  "digest": "eaf3161bbdbb1a68264cd4960dd94f550f18d4b3c2d354dba8f1d658291bc6bd",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260003"
+     },
+     "name": "改订单状态",
+     "reason": "客户来电",
+     "values": {
+      "状态码": "0"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "ann"
+ },
+ {
+  "ask": "用改订单状态把订单 DD20260003 标成已交付",
+  "digest": "55bba65d96dd99aac096fee1a07a0448e65754a4d6b27ab662b141cf3b553b83",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260003"
+     },
+     "name": "改订单状态",
+     "reason": "客户来电",
+     "values": {
+      "状态码": "0"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "ann"
+ },
+ {
+  "ask": "把订单 DD20260001 标成已交付",
+  "digest": "6aae0561304e0edd79beb979a551ac46843ee088f144deb72455c746e9773e16",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260001"
+     },
+     "name": "改订单状态",
+     "reason": "客户来电",
+     "values": {
+      "状态码": "0"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "ann"
+ },
+ {
+  "ask": "把订单 DD20260003 的金额改成 5",
+  "digest": "eef0fc406f2b2945f16ab2ada8742eac2d1565a3beffd3bba7c25efc19ec5d9c",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260003"
+     },
+     "name": "改金额",
+     "reason": "客户来电",
+     "values": {
+      "金额": "5"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "ann"
+ },
+ {
+  "ask": "新建订单 DD29990001，金额 1200，客户 KH001",
+  "digest": "07c4afcdc77b01266b34209046ab421f6619e5062a70fe295afe5f751c7033ce",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD29990001"
+     },
+     "name": "新建订单",
+     "reason": "电话下单",
+     "values": {
+      "客户编号": "KH001",
+      "状态码": "1",
+      "金额": "1200"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "ann"
+ },
+ {
+  "ask": "删掉订单 DD20260034",
+  "digest": "3461996c9ebd9cd8df57344cf7865d6a00bf9a370e4863ac48ebb68270cca329",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260034"
+     },
+     "name": "删除取消的订单",
+     "reason": "客户撤单",
+     "values": {}
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "ann"
+ },
+ {
+  "ask": "把订单 DD20260003 的客户改成 KH002",
+  "digest": "b6545517b043d34eb17f308d2d0dea04c4fd7a49c880755e10be368c15a67c59",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "name": null,
+     "type": "order"
+    }
+   },
+   "reasoning": "没有行为能改客户编号"
+  },
+  "status": "ontology_gap",
+  "who": "ann"
+ },
+ {
+  "ask": "天气怎么样？",
+  "digest": "d3a1dd9acae94ef46d55c36e62502bac5f94f69e9350d2b718e7a6596841ab20",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": "本体里没有",
+  "reply": {
+   "missing": "ontology",
+   "query": null,
+   "reasoning": "本体里没有"
+  },
+  "status": "ontology_gap",
+  "who": "ann"
+ },
+ {
+  "ask": "订单有多少？",
+  "digest": "3ec3ede49027c831fcda6b9157f4f43e26dd8915e81fce30473f5eb60bc839d4",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": null,
+  "reply": {
+   "query": {
+    "group_by": null,
+    "measure": null,
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "who": "ann_en"
+ },
+ {
+  "ask": "把订单 DD20260003 标成已交付",
+  "digest": "78a23191bd7e74b7afcee2e16d4d7a18816a7507d7aa3639c483a8b25ad17156",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": "There is no object type None in the ontology",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260003"
+     },
+     "name": "改订单状态",
+     "reason": "客户来电",
+     "values": {
+      "状态码": "0"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "ann_en"
+ },
+ {
+  "ask": "用改订单状态把订单 DD20260003 标成已交付",
+  "digest": "0d207bbea22ac15e3e924b118de823353b506210dc8647fb0b121372893249e3",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": "There is no object type None in the ontology",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260003"
+     },
+     "name": "改订单状态",
+     "reason": "客户来电",
+     "values": {
+      "状态码": "0"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "ann_en"
+ },
+ {
+  "ask": "把订单 DD20260001 标成已交付",
+  "digest": "11b2e834dd9ef04f638d6247a8948a5a6d10a909e5024fceb6559bdc52cd5de1",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": "There is no object type None in the ontology",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260001"
+     },
+     "name": "改订单状态",
+     "reason": "客户来电",
+     "values": {
+      "状态码": "0"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "ann_en"
+ },
+ {
+  "ask": "把订单 DD20260003 的金额改成 5",
+  "digest": "d89192fcd75c6a5b6285866202ee0b603cd82dd870bf845253602b09fd067508",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": "There is no object type None in the ontology",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260003"
+     },
+     "name": "改金额",
+     "reason": "客户来电",
+     "values": {
+      "金额": "5"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "ann_en"
+ },
+ {
+  "ask": "新建订单 DD29990001，金额 1200，客户 KH001",
+  "digest": "e915821eb341b1a61bf847416563db3e65dc282aa70a7a02945b2bf3a5cd5358",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": "There is no object type None in the ontology",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD29990001"
+     },
+     "name": "新建订单",
+     "reason": "电话下单",
+     "values": {
+      "客户编号": "KH001",
+      "状态码": "1",
+      "金额": "1200"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "ann_en"
+ },
+ {
+  "ask": "删掉订单 DD20260034",
+  "digest": "5a853d25bc8540610a6e7a1b98dbba7952da65a99664f7e84c49e8a2c95502c5",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": "There is no object type None in the ontology",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260034"
+     },
+     "name": "删除取消的订单",
+     "reason": "客户撤单",
+     "values": {}
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "ann_en"
+ },
+ {
+  "ask": "把订单 DD20260003 的客户改成 KH002",
+  "digest": "390cc95ba5e531e76c7aab18b92083c3854859af6f22f8c09c47acb4ba191f57",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": "There is no object type None in the ontology",
+  "reply": {
+   "query": {
+    "action": {
+     "name": null,
+     "type": "order"
+    }
+   },
+   "reasoning": "没有行为能改客户编号"
+  },
+  "status": "ontology_gap",
+  "who": "ann_en"
+ },
+ {
+  "ask": "天气怎么样？",
+  "digest": "d90c43ea761a25782422b6dca3c6edc2bc28fdbbb800e4830686a7b51dcdfc72",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": "本体里没有",
+  "reply": {
+   "missing": "ontology",
+   "query": null,
+   "reasoning": "本体里没有"
+  },
+  "status": "ontology_gap",
+  "who": "ann_en"
+ },
+ {
+  "ask": "订单有多少？",
+  "digest": "d9a664db0a21db3b417d6ea730529c44553063979e8e35e218658bdcae440739",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": null,
+  "reply": {
+   "query": {
+    "group_by": null,
+    "measure": null,
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "who": "carl"
+ },
+ {
+  "ask": "把订单 DD20260003 标成已交付",
+  "digest": "eaf3161bbdbb1a68264cd4960dd94f550f18d4b3c2d354dba8f1d658291bc6bd",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260003"
+     },
+     "name": "改订单状态",
+     "reason": "客户来电",
+     "values": {
+      "状态码": "0"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "carl"
+ },
+ {
+  "ask": "用改订单状态把订单 DD20260003 标成已交付",
+  "digest": "55bba65d96dd99aac096fee1a07a0448e65754a4d6b27ab662b141cf3b553b83",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260003"
+     },
+     "name": "改订单状态",
+     "reason": "客户来电",
+     "values": {
+      "状态码": "0"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "carl"
+ },
+ {
+  "ask": "把订单 DD20260001 标成已交付",
+  "digest": "6aae0561304e0edd79beb979a551ac46843ee088f144deb72455c746e9773e16",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260001"
+     },
+     "name": "改订单状态",
+     "reason": "客户来电",
+     "values": {
+      "状态码": "0"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "carl"
+ },
+ {
+  "ask": "把订单 DD20260003 的金额改成 5",
+  "digest": "eef0fc406f2b2945f16ab2ada8742eac2d1565a3beffd3bba7c25efc19ec5d9c",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260003"
+     },
+     "name": "改金额",
+     "reason": "客户来电",
+     "values": {
+      "金额": "5"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "carl"
+ },
+ {
+  "ask": "新建订单 DD29990001，金额 1200，客户 KH001",
+  "digest": "07c4afcdc77b01266b34209046ab421f6619e5062a70fe295afe5f751c7033ce",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD29990001"
+     },
+     "name": "新建订单",
+     "reason": "电话下单",
+     "values": {
+      "客户编号": "KH001",
+      "状态码": "1",
+      "金额": "1200"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "carl"
+ },
+ {
+  "ask": "删掉订单 DD20260034",
+  "digest": "3461996c9ebd9cd8df57344cf7865d6a00bf9a370e4863ac48ebb68270cca329",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260034"
+     },
+     "name": "删除取消的订单",
+     "reason": "客户撤单",
+     "values": {}
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "carl"
+ },
+ {
+  "ask": "把订单 DD20260003 的客户改成 KH002",
+  "digest": "b6545517b043d34eb17f308d2d0dea04c4fd7a49c880755e10be368c15a67c59",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "name": null,
+     "type": "order"
+    }
+   },
+   "reasoning": "没有行为能改客户编号"
+  },
+  "status": "ontology_gap",
+  "who": "carl"
+ },
+ {
+  "ask": "天气怎么样？",
+  "digest": "d3a1dd9acae94ef46d55c36e62502bac5f94f69e9350d2b718e7a6596841ab20",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": "本体里没有",
+  "reply": {
+   "missing": "ontology",
+   "query": null,
+   "reasoning": "本体里没有"
+  },
+  "status": "ontology_gap",
+  "who": "carl"
+ },
+ {
+  "ask": "订单有多少？",
+  "digest": "d9a664db0a21db3b417d6ea730529c44553063979e8e35e218658bdcae440739",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": null,
+  "reply": {
+   "query": {
+    "group_by": null,
+    "measure": null,
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "who": "vera"
+ },
+ {
+  "ask": "把订单 DD20260003 标成已交付",
+  "digest": "eaf3161bbdbb1a68264cd4960dd94f550f18d4b3c2d354dba8f1d658291bc6bd",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260003"
+     },
+     "name": "改订单状态",
+     "reason": "客户来电",
+     "values": {
+      "状态码": "0"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "vera"
+ },
+ {
+  "ask": "用改订单状态把订单 DD20260003 标成已交付",
+  "digest": "55bba65d96dd99aac096fee1a07a0448e65754a4d6b27ab662b141cf3b553b83",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260003"
+     },
+     "name": "改订单状态",
+     "reason": "客户来电",
+     "values": {
+      "状态码": "0"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "vera"
+ },
+ {
+  "ask": "把订单 DD20260001 标成已交付",
+  "digest": "6aae0561304e0edd79beb979a551ac46843ee088f144deb72455c746e9773e16",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260001"
+     },
+     "name": "改订单状态",
+     "reason": "客户来电",
+     "values": {
+      "状态码": "0"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "vera"
+ },
+ {
+  "ask": "把订单 DD20260003 的金额改成 5",
+  "digest": "eef0fc406f2b2945f16ab2ada8742eac2d1565a3beffd3bba7c25efc19ec5d9c",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260003"
+     },
+     "name": "改金额",
+     "reason": "客户来电",
+     "values": {
+      "金额": "5"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "vera"
+ },
+ {
+  "ask": "新建订单 DD29990001，金额 1200，客户 KH001",
+  "digest": "07c4afcdc77b01266b34209046ab421f6619e5062a70fe295afe5f751c7033ce",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD29990001"
+     },
+     "name": "新建订单",
+     "reason": "电话下单",
+     "values": {
+      "客户编号": "KH001",
+      "状态码": "1",
+      "金额": "1200"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "vera"
+ },
+ {
+  "ask": "删掉订单 DD20260034",
+  "digest": "3461996c9ebd9cd8df57344cf7865d6a00bf9a370e4863ac48ebb68270cca329",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260034"
+     },
+     "name": "删除取消的订单",
+     "reason": "客户撤单",
+     "values": {}
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "vera"
+ },
+ {
+  "ask": "把订单 DD20260003 的客户改成 KH002",
+  "digest": "b6545517b043d34eb17f308d2d0dea04c4fd7a49c880755e10be368c15a67c59",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "name": null,
+     "type": "order"
+    }
+   },
+   "reasoning": "没有行为能改客户编号"
+  },
+  "status": "ontology_gap",
+  "who": "vera"
+ },
+ {
+  "ask": "天气怎么样？",
+  "digest": "d3a1dd9acae94ef46d55c36e62502bac5f94f69e9350d2b718e7a6596841ab20",
+  "draft": false,
+  "error": null,
+  "phase": "none",
+  "reason": "本体里没有",
+  "reply": {
+   "missing": "ontology",
+   "query": null,
+   "reasoning": "本体里没有"
+  },
+  "status": "ontology_gap",
+  "who": "vera"
+ },
+ {
+  "ask": "订单有多少？",
+  "digest": "d9a664db0a21db3b417d6ea730529c44553063979e8e35e218658bdcae440739",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": null,
+  "reply": {
+   "query": {
+    "group_by": null,
+    "measure": null,
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "who": "ann"
+ },
+ {
+  "ask": "把订单 DD20260003 标成已交付",
+  "digest": "eaf3161bbdbb1a68264cd4960dd94f550f18d4b3c2d354dba8f1d658291bc6bd",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260003"
+     },
+     "name": "改订单状态",
+     "reason": "客户来电",
+     "values": {
+      "状态码": "0"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "ann"
+ },
+ {
+  "ask": "用改订单状态把订单 DD20260003 标成已交付",
+  "digest": "55bba65d96dd99aac096fee1a07a0448e65754a4d6b27ab662b141cf3b553b83",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260003"
+     },
+     "name": "改订单状态",
+     "reason": "客户来电",
+     "values": {
+      "状态码": "0"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "ann"
+ },
+ {
+  "ask": "把订单 DD20260001 标成已交付",
+  "digest": "6aae0561304e0edd79beb979a551ac46843ee088f144deb72455c746e9773e16",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260001"
+     },
+     "name": "改订单状态",
+     "reason": "客户来电",
+     "values": {
+      "状态码": "0"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "ann"
+ },
+ {
+  "ask": "把订单 DD20260003 的金额改成 5",
+  "digest": "eef0fc406f2b2945f16ab2ada8742eac2d1565a3beffd3bba7c25efc19ec5d9c",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260003"
+     },
+     "name": "改金额",
+     "reason": "客户来电",
+     "values": {
+      "金额": "5"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "ann"
+ },
+ {
+  "ask": "新建订单 DD29990001，金额 1200，客户 KH001",
+  "digest": "07c4afcdc77b01266b34209046ab421f6619e5062a70fe295afe5f751c7033ce",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD29990001"
+     },
+     "name": "新建订单",
+     "reason": "电话下单",
+     "values": {
+      "客户编号": "KH001",
+      "状态码": "1",
+      "金额": "1200"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "ann"
+ },
+ {
+  "ask": "删掉订单 DD20260034",
+  "digest": "3461996c9ebd9cd8df57344cf7865d6a00bf9a370e4863ac48ebb68270cca329",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260034"
+     },
+     "name": "删除取消的订单",
+     "reason": "客户撤单",
+     "values": {}
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "ann"
+ },
+ {
+  "ask": "把订单 DD20260003 的客户改成 KH002",
+  "digest": "b6545517b043d34eb17f308d2d0dea04c4fd7a49c880755e10be368c15a67c59",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "name": null,
+     "type": "order"
+    }
+   },
+   "reasoning": "没有行为能改客户编号"
+  },
+  "status": "ontology_gap",
+  "who": "ann"
+ },
+ {
+  "ask": "天气怎么样？",
+  "digest": "d3a1dd9acae94ef46d55c36e62502bac5f94f69e9350d2b718e7a6596841ab20",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": "本体里没有",
+  "reply": {
+   "missing": "ontology",
+   "query": null,
+   "reasoning": "本体里没有"
+  },
+  "status": "ontology_gap",
+  "who": "ann"
+ },
+ {
+  "ask": "订单有多少？",
+  "digest": "3ec3ede49027c831fcda6b9157f4f43e26dd8915e81fce30473f5eb60bc839d4",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": null,
+  "reply": {
+   "query": {
+    "group_by": null,
+    "measure": null,
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "who": "ann_en"
+ },
+ {
+  "ask": "把订单 DD20260003 标成已交付",
+  "digest": "78a23191bd7e74b7afcee2e16d4d7a18816a7507d7aa3639c483a8b25ad17156",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": "There is no object type None in the ontology",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260003"
+     },
+     "name": "改订单状态",
+     "reason": "客户来电",
+     "values": {
+      "状态码": "0"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "ann_en"
+ },
+ {
+  "ask": "用改订单状态把订单 DD20260003 标成已交付",
+  "digest": "0d207bbea22ac15e3e924b118de823353b506210dc8647fb0b121372893249e3",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": "There is no object type None in the ontology",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260003"
+     },
+     "name": "改订单状态",
+     "reason": "客户来电",
+     "values": {
+      "状态码": "0"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "ann_en"
+ },
+ {
+  "ask": "把订单 DD20260001 标成已交付",
+  "digest": "11b2e834dd9ef04f638d6247a8948a5a6d10a909e5024fceb6559bdc52cd5de1",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": "There is no object type None in the ontology",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260001"
+     },
+     "name": "改订单状态",
+     "reason": "客户来电",
+     "values": {
+      "状态码": "0"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "ann_en"
+ },
+ {
+  "ask": "把订单 DD20260003 的金额改成 5",
+  "digest": "d89192fcd75c6a5b6285866202ee0b603cd82dd870bf845253602b09fd067508",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": "There is no object type None in the ontology",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260003"
+     },
+     "name": "改金额",
+     "reason": "客户来电",
+     "values": {
+      "金额": "5"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "ann_en"
+ },
+ {
+  "ask": "新建订单 DD29990001，金额 1200，客户 KH001",
+  "digest": "e915821eb341b1a61bf847416563db3e65dc282aa70a7a02945b2bf3a5cd5358",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": "There is no object type None in the ontology",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD29990001"
+     },
+     "name": "新建订单",
+     "reason": "电话下单",
+     "values": {
+      "客户编号": "KH001",
+      "状态码": "1",
+      "金额": "1200"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "ann_en"
+ },
+ {
+  "ask": "删掉订单 DD20260034",
+  "digest": "5a853d25bc8540610a6e7a1b98dbba7952da65a99664f7e84c49e8a2c95502c5",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": "There is no object type None in the ontology",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260034"
+     },
+     "name": "删除取消的订单",
+     "reason": "客户撤单",
+     "values": {}
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "ann_en"
+ },
+ {
+  "ask": "把订单 DD20260003 的客户改成 KH002",
+  "digest": "390cc95ba5e531e76c7aab18b92083c3854859af6f22f8c09c47acb4ba191f57",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": "There is no object type None in the ontology",
+  "reply": {
+   "query": {
+    "action": {
+     "name": null,
+     "type": "order"
+    }
+   },
+   "reasoning": "没有行为能改客户编号"
+  },
+  "status": "ontology_gap",
+  "who": "ann_en"
+ },
+ {
+  "ask": "天气怎么样？",
+  "digest": "d90c43ea761a25782422b6dca3c6edc2bc28fdbbb800e4830686a7b51dcdfc72",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": "本体里没有",
+  "reply": {
+   "missing": "ontology",
+   "query": null,
+   "reasoning": "本体里没有"
+  },
+  "status": "ontology_gap",
+  "who": "ann_en"
+ },
+ {
+  "ask": "订单有多少？",
+  "digest": "d9a664db0a21db3b417d6ea730529c44553063979e8e35e218658bdcae440739",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": null,
+  "reply": {
+   "query": {
+    "group_by": null,
+    "measure": null,
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "who": "carl"
+ },
+ {
+  "ask": "把订单 DD20260003 标成已交付",
+  "digest": "eaf3161bbdbb1a68264cd4960dd94f550f18d4b3c2d354dba8f1d658291bc6bd",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260003"
+     },
+     "name": "改订单状态",
+     "reason": "客户来电",
+     "values": {
+      "状态码": "0"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "carl"
+ },
+ {
+  "ask": "用改订单状态把订单 DD20260003 标成已交付",
+  "digest": "55bba65d96dd99aac096fee1a07a0448e65754a4d6b27ab662b141cf3b553b83",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260003"
+     },
+     "name": "改订单状态",
+     "reason": "客户来电",
+     "values": {
+      "状态码": "0"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "carl"
+ },
+ {
+  "ask": "把订单 DD20260001 标成已交付",
+  "digest": "6aae0561304e0edd79beb979a551ac46843ee088f144deb72455c746e9773e16",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260001"
+     },
+     "name": "改订单状态",
+     "reason": "客户来电",
+     "values": {
+      "状态码": "0"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "carl"
+ },
+ {
+  "ask": "把订单 DD20260003 的金额改成 5",
+  "digest": "eef0fc406f2b2945f16ab2ada8742eac2d1565a3beffd3bba7c25efc19ec5d9c",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260003"
+     },
+     "name": "改金额",
+     "reason": "客户来电",
+     "values": {
+      "金额": "5"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "carl"
+ },
+ {
+  "ask": "新建订单 DD29990001，金额 1200，客户 KH001",
+  "digest": "07c4afcdc77b01266b34209046ab421f6619e5062a70fe295afe5f751c7033ce",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD29990001"
+     },
+     "name": "新建订单",
+     "reason": "电话下单",
+     "values": {
+      "客户编号": "KH001",
+      "状态码": "1",
+      "金额": "1200"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "carl"
+ },
+ {
+  "ask": "删掉订单 DD20260034",
+  "digest": "3461996c9ebd9cd8df57344cf7865d6a00bf9a370e4863ac48ebb68270cca329",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260034"
+     },
+     "name": "删除取消的订单",
+     "reason": "客户撤单",
+     "values": {}
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "carl"
+ },
+ {
+  "ask": "把订单 DD20260003 的客户改成 KH002",
+  "digest": "b6545517b043d34eb17f308d2d0dea04c4fd7a49c880755e10be368c15a67c59",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "name": null,
+     "type": "order"
+    }
+   },
+   "reasoning": "没有行为能改客户编号"
+  },
+  "status": "ontology_gap",
+  "who": "carl"
+ },
+ {
+  "ask": "天气怎么样？",
+  "digest": "d3a1dd9acae94ef46d55c36e62502bac5f94f69e9350d2b718e7a6596841ab20",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": "本体里没有",
+  "reply": {
+   "missing": "ontology",
+   "query": null,
+   "reasoning": "本体里没有"
+  },
+  "status": "ontology_gap",
+  "who": "carl"
+ },
+ {
+  "ask": "订单有多少？",
+  "digest": "d9a664db0a21db3b417d6ea730529c44553063979e8e35e218658bdcae440739",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": null,
+  "reply": {
+   "query": {
+    "group_by": null,
+    "measure": null,
+    "share": null,
+    "start": "order",
+    "via": [],
+    "where": []
+   },
+   "reasoning": "test"
+  },
+  "status": "answered",
+  "who": "vera"
+ },
+ {
+  "ask": "把订单 DD20260003 标成已交付",
+  "digest": "eaf3161bbdbb1a68264cd4960dd94f550f18d4b3c2d354dba8f1d658291bc6bd",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260003"
+     },
+     "name": "改订单状态",
+     "reason": "客户来电",
+     "values": {
+      "状态码": "0"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "vera"
+ },
+ {
+  "ask": "用改订单状态把订单 DD20260003 标成已交付",
+  "digest": "55bba65d96dd99aac096fee1a07a0448e65754a4d6b27ab662b141cf3b553b83",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260003"
+     },
+     "name": "改订单状态",
+     "reason": "客户来电",
+     "values": {
+      "状态码": "0"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "vera"
+ },
+ {
+  "ask": "把订单 DD20260001 标成已交付",
+  "digest": "6aae0561304e0edd79beb979a551ac46843ee088f144deb72455c746e9773e16",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260001"
+     },
+     "name": "改订单状态",
+     "reason": "客户来电",
+     "values": {
+      "状态码": "0"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "vera"
+ },
+ {
+  "ask": "把订单 DD20260003 的金额改成 5",
+  "digest": "eef0fc406f2b2945f16ab2ada8742eac2d1565a3beffd3bba7c25efc19ec5d9c",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260003"
+     },
+     "name": "改金额",
+     "reason": "客户来电",
+     "values": {
+      "金额": "5"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "vera"
+ },
+ {
+  "ask": "新建订单 DD29990001，金额 1200，客户 KH001",
+  "digest": "07c4afcdc77b01266b34209046ab421f6619e5062a70fe295afe5f751c7033ce",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD29990001"
+     },
+     "name": "新建订单",
+     "reason": "电话下单",
+     "values": {
+      "客户编号": "KH001",
+      "状态码": "1",
+      "金额": "1200"
+     }
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "vera"
+ },
+ {
+  "ask": "删掉订单 DD20260034",
+  "digest": "3461996c9ebd9cd8df57344cf7865d6a00bf9a370e4863ac48ebb68270cca329",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "key": {
+      "订单号": "DD20260034"
+     },
+     "name": "删除取消的订单",
+     "reason": "客户撤单",
+     "values": {}
+    }
+   },
+   "reasoning": "这是要改数据"
+  },
+  "status": "ontology_gap",
+  "who": "vera"
+ },
+ {
+  "ask": "把订单 DD20260003 的客户改成 KH002",
+  "digest": "b6545517b043d34eb17f308d2d0dea04c4fd7a49c880755e10be368c15a67c59",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": "本体里没有对象类型 None",
+  "reply": {
+   "query": {
+    "action": {
+     "name": null,
+     "type": "order"
+    }
+   },
+   "reasoning": "没有行为能改客户编号"
+  },
+  "status": "ontology_gap",
+  "who": "vera"
+ },
+ {
+  "ask": "天气怎么样？",
+  "digest": "d3a1dd9acae94ef46d55c36e62502bac5f94f69e9350d2b718e7a6596841ab20",
+  "draft": false,
+  "error": null,
+  "phase": "some",
+  "reason": "本体里没有",
+  "reply": {
+   "missing": "ontology",
+   "query": null,
+   "reasoning": "本体里没有"
+  },
+  "status": "ontology_gap",
+  "who": "vera"
+ }
+]

@@ -543,7 +543,7 @@ def _lean(body: dict, keys: tuple, narrow: str = 'ORDER BY 那个数 DESC LIMIT 
 
 def ask(s, a):
     body = s.request('/api/workspace/ask', {'question': _text(a.get('question'), 'question')})
-    out = _lean(body, ('id', 'question', 'status', 'answer', 'beside', 'path', 'reason', 'refusal', 'query_text', 'definitions', 'datasets', 'limited_by_rule', 'today'),
+    out = _lean(body, ('id', 'question', 'status', 'answer', 'beside', 'path', 'reason', 'refusal', 'query_text', 'definitions', 'datasets', 'limited_by_rule', 'today', 'draft'),
                 '把 query_text 加上 ORDER BY 那个数 DESC LIMIT n 或 WHERE，用 ontopoc_query 再跑（不调用模型）')
     if body.get('status') in ('answered', 'no_data') and re.search(r'\bWHERE\b', str(body.get('query_text') or ''), re.I):   # the number is the model's reading, not a confirmed view: say so, not "valid orders"
         where = re.split(r'\bWHERE\b', str(body['query_text']), maxsplit=1, flags=re.I)[1]
@@ -797,6 +797,15 @@ for _t in TOOLS:
     _title, _hints = ANNOTATIONS[_t['name']]   # a tool without a line here fails at import
     _t['annotations'] = {'title': _title, **_hints, 'openWorldHint': _t['name'] in MODEL_TOOLS}
 BY_NAME = {t['name']: t for t in TOOLS}
+ASK_DRAFT_NOTE = ('问的是要改数据（例如 把订单 DD20260004 标成已交付）且令牌主人有能提交的已确认行为时，status 是 draft：draft 是一份行为草稿（action、object、key、values、reason、'
+                  'current 是对象现在的值），这一问什么都没有写；draft.submit 原样就是 POST /api/workspace/actions/submit 的内容，要由人自己提交（要有写权限的令牌），再由另一位建设者批准。'
+                  '没有行为能做这个改动时 refusal.kind 是 no_action，列出能提交的行为。')   # said only while drafts are on (action_drafts.DRAFTS): off, ask reads as it did before them
+
+
+def described(tool: dict) -> str:
+    """A tool's description as it is served (tools/list) and shown on the agent page: ask's tells of drafts only while they are on."""
+    from ontology_poc_generator import action_drafts
+    return tool['description'] + (ASK_DRAFT_NOTE if tool['name'] == 'ask' and action_drafts.DRAFTS else '')
 
 
 def handle(message: dict, service, only: tuple | None = None) -> dict | None:
@@ -816,7 +825,7 @@ def handle(message: dict, service, only: tuple | None = None) -> dict | None:
     if method == 'ping':
         return reply({})
     if method == 'tools/list':
-        return reply({'tools': [{k: t[k] for k in ('name', 'description', 'inputSchema', 'annotations')} for t in offered]})
+        return reply({'tools': [{k: described(t) if k == 'description' else t[k] for k in ('name', 'description', 'inputSchema', 'annotations')} for t in offered]})
     if method == 'tools/call':
         params = message.get('params') or {}
         tool = next((t for t in offered if t['name'] == params.get('name')), None)

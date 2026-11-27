@@ -308,7 +308,7 @@ def skill_zip(conn, user: dict | None) -> bytes:
 def agent_info(conn, user: dict | None) -> dict:
     """What the 智能体 page says: the tools an outside agent can call (name and what it does), how to start the server, and what is in the skill folder."""
     from ontology_poc_generator import mcp_server   # not at the top: the server module is the one that imports the service's routes
-    tools = [{'name': t['name'], 'description': t['description'], 'arguments': [{'name': k, 'description': v.get('description', ''), 'required': k in t['inputSchema']['required']}
+    tools = [{'name': t['name'], 'description': mcp_server.described(t), 'arguments': [{'name': k, 'description': v.get('description', ''), 'required': k in t['inputSchema']['required']}
                                                                                 for k, v in t['inputSchema']['properties'].items()]}
              for t in mcp_server.TOOLS if t['name'] in mcp_server.READ_TOOLS]
     d = definitions(conn, user)

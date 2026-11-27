@@ -83,7 +83,7 @@ export function refusalBranch(record) {
 }
 
 /** The answer, or the refusal, in one word for the history list. */
-export const statusText = (status) => t(status === "answered" ? "ask.status.answered" : status === "no_data" ? "ask.status.noData" : "ask.status.refused");
+export const statusText = (status) => t(status === "answered" ? "ask.status.answered" : status === "no_data" ? "ask.status.noData" : status === "draft" ? "ask.status.draft" : "ask.status.refused");
 export const isAnswer = (record) => record.status === "answered" || record.status === "no_data";
 
 /** What an answer read: "orders v1". */
@@ -113,6 +113,7 @@ export function definitionHref(id, type = null) {
   if (typeof id !== "string") return null;
   if (id.startsWith("objview:")) return `#/types/${encodeURIComponent(type ?? "")}/views`;   // a view is shown on its type's page
   if (id.startsWith("derived:")) return `#/types/${encodeURIComponent(type ?? id.slice("derived:".length).split(":")[0])}/derived`;   // so is a derived property
+  if (id.startsWith("objaction:")) return `#/types/${encodeURIComponent(type ?? "")}/actions`;   // an action is on its type's actions tab
   if (id.startsWith("relation:")) return `#/relations/${encodeURIComponent(id.slice("relation:".length))}`;
   const name = id.startsWith("enum:") ? id.slice("enum:".length).split(":")[0] : id.slice("objtype:".length);
   return `#/types/${encodeURIComponent(name)}`;
