@@ -3,7 +3,7 @@ import { KIND_STYLE, litDepth, stateTone } from "./graphModel.js";
 import { formatNumber, t } from "./i18n/index.js";
 import { statusOf } from "./statusModel.js";
 
-/** The header colour and icon of each kind on the map: graphModel's (datasets green, pipelines teal, object types blue, actions orange, as in DIP). */
+/** The header colour and icon of each kind on the map: graphModel's (datasets green, pipelines teal, object types blue, actions orange). */
 export const TWIN_STYLE = KIND_STYLE;
 export const TWIN_KINDS = Object.keys(TWIN_STYLE);
 

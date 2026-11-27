@@ -45,7 +45,7 @@ function readPlaces(place) {
 }
 
 export function PipelineGraph({ steps, nodes, selected, onSelect, issues = {}, results = {}, place = null, relayout = 0, onLink = null, onUnlink = null }) {
-  // `onLink(from, to, slot)` given: dragging from a card's out-port to another card draws a link (like DIP); `onUnlink(from, to)`: a picked edge can be removed
+  // `onLink(from, to, slot)` given: dragging from a card's out-port to another card draws a link; `onUnlink(from, to)`: a picked edge can be removed
   // `place` names the pipeline: given, the cards can be dragged and their places are kept in this browser for that pipeline
   const [moved, setMoved] = useState(() => readPlaces(place));
   useEffect(() => setMoved(readPlaces(place)), [place]);

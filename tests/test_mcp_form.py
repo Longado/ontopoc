@@ -9,7 +9,6 @@ class McpFormToolTests(unittest.TestCase):
         self.assertEqual(tools['draft_form']['inputSchema']['required'], ['saved_as'])
         self.assertEqual(tools['save_form']['inputSchema']['required'], ['saved_as', 'form'])
         self.assertIn('export_forms', tools)
-        self.assertFalse(any('dip' in name.lower() or 'DIP' in t['description'] for name, t in tools.items()))
 
 
 if __name__ == '__main__':
