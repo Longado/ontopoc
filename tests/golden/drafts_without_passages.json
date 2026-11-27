@@ -1,0 +1,65 @@
+[
+ {
+  "case": "action name",
+  "digest": "272bb3d79700220ad71dc2b33657029af23980ad57ce384406fdb2796f6259e3",
+  "marker": true,
+  "refusal": "action_check",
+  "status": "refused"
+ },
+ {
+  "case": "key value",
+  "digest": "f7a8e68bede5cab24cfee87ddcdecde165667581fca5eecb3b689ecf6eceeec9",
+  "marker": true,
+  "refusal": "action_check",
+  "status": "refused"
+ },
+ {
+  "case": "value",
+  "digest": "5a5f31e99959eb20d3393cde59d8b23146c614e5ac6f98cb3559db098fa6cbc7",
+  "marker": true,
+  "refusal": "action_check",
+  "status": "refused"
+ },
+ {
+  "case": "key column",
+  "digest": "0ecd286db38b93a54a61ea43df4935b85ff733826e6fb3d18b4e158ce84f22bc",
+  "marker": true,
+  "refusal": "action_check",
+  "status": "refused"
+ },
+ {
+  "case": "value column",
+  "digest": "7b51bb94ee53cfbe14cf0154acd2aa68702d44e9340db28987f9c55dee52f9b2",
+  "marker": true,
+  "refusal": "action_check",
+  "status": "refused"
+ },
+ {
+  "case": "type",
+  "digest": "e706369e41deca78283c518203121a236a0193f581fe215e99ecfd86dce1e28e",
+  "marker": true,
+  "refusal": "no_action",
+  "status": "refused"
+ },
+ {
+  "case": "condition",
+  "digest": "316fc46a1e94ad0278a3acc18aeed15ce59b294bf59b2f7b42ee941be4f1d3c0",
+  "marker": true,
+  "refusal": "action_check",
+  "status": "refused"
+ },
+ {
+  "case": "draft, reason",
+  "digest": "094162c1cde4e897a27ce757eba01509da1ed9030c12e8412edbba71bfdbf449",
+  "marker": true,
+  "refusal": null,
+  "status": "draft"
+ },
+ {
+  "case": "draft, reasoning",
+  "digest": "1c2874db1c081ed26ca21bc72dd233c01990ec16afb3c63e93783b3ddd59263e",
+  "marker": true,
+  "refusal": null,
+  "status": "draft"
+ }
+]

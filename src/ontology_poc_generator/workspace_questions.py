@@ -1093,7 +1093,10 @@ def _answered(conn, gateway, user: dict | None, question: str, sc: dict, actions
         item = {'question': question, 'reasoning': '', 'query': None, 'status': 'no_query', 'reason': _no_query_reason(sc)}
         return document_answers.settled(conn, user, docs, item, {**_finish(conn, user, sc, parts, item, []), 'model': asked['model']})
     if asked['items'][0].get(action_drafts.MARK):   # a draft of an action, or why there is none: before a data query and a document answer (a quote beside it is ignored)
-        return {**document_answers.beside_a_draft(docs, action_drafts.finish(asked['items'][0])), 'model': asked['model']}
+        result = action_drafts.finish(asked['items'][0])
+        if document_answers.sent(docs) and result.get('status') != 'draft':   # it read passages: nothing the model wrote, only the service's sentences (a draft code checked is shown as it is)
+            result = document_answers.beside_a_draft(action_drafts.sealed(conn, user, sc, result))
+        return {**result, 'model': asked['model']}
     return document_answers.settled(conn, user, docs, asked['items'][0], {**_finish(conn, user, sc, parts, asked['items'][0], answer.applied, spoken.get('spec'), beside=(answer, question)), 'model': asked['model'],
                                                                           **({'ran': answer.ran()} if ROW_ANSWERS else {})})
 
@@ -1437,6 +1440,7 @@ def _named_ids(result: dict, sc: dict) -> list[str]:
     elif refusal.get('kind') in ('not_in_scope', 'definition_unmet'):   # these say what is in scope (and for a builder what is left out)
         ids += [type_id(k) for k in sc['types']] + [v['row']['element_id'] for v in sc['views'].values()] + [d['id'] for d in refusal.get('left_out', []) if 'id' in d]
     ids += document_answers.named(result)   # the documents a refusal names as waiting
+    ids += [i for i in refusal.get('matched', []) if isinstance(i, str)]   # a draft refused once passages were sent: the confirmed definitions code matched (action_drafts.sealed)
     return list(dict.fromkeys(ids))
 
 

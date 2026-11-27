@@ -131,6 +131,46 @@ class Together(DraftTests):
             self.assertEqual((body['refusal']['kind'], body['reasoning']), ('no_action', MARK), body)
             self.assertNotIn('documents', body)
 
+    # --- round 2: the reviewer's probe, a marker in each field the model writes ---------------------------------------------------------------------------
+
+    def test_a_draft_refusal_while_passages_were_sent_echoes_no_value_key_name_column_or_type_the_model_wrote(self):
+        from unittest import mock
+        from ontology_poc_generator import workspace_questions
+        from tests.test_drafts_without_passages import CASES, MK
+        with self.started() as (base, folder):
+            team = self.workspace(base)
+            expected = {   # case: (kind, check, the service's sentence, the ids code matched)
+                'action name': ('action_check', 'action', '没有已确认的行为能做这个改动', []),
+                'key value': ('action_check', 'object', '没有这个对象，或者你看不到它', ['objaction:改订单状态', 'objtype:order']),
+                'value': ('action_check', 'value', '有一个值不合它的属性的类型或已确认的含义', ['objaction:改订单状态', 'objtype:order']),
+                'key column': ('action_check', 'key', '没有用完整的主键指定是哪一个对象', ['objaction:改订单状态', 'objtype:order']),
+                'value column': ('action_check', 'value', '有一个值不合它的属性的类型或已确认的含义', ['objaction:改订单状态', 'objtype:order']),
+                'type': ('no_action', None, '没有已确认的行为能做这个改动', []),
+                'condition': ('action_check', 'condition', '对象现在不满足「改订单状态」的条件', ['objaction:改订单状态', 'objtype:order']),
+            }
+            for label, question, reply in CASES:
+                if label not in expected:
+                    continue
+                kind, check, said, matched = expected[label]
+                with self.subTest(case=label):
+                    body = self.asking(team['ann'], question, lambda r, reply=reply: {**reply, 'document_answer': quotes(r)})
+                    self.assertEqual((body['status'], body['refusal']['kind'], body['refusal'].get('check')), ('refused', kind, check), body)
+                    self.assertIn(said, body['reason'])
+                    self.assertEqual(body['refusal'].get('matched'), matched)
+                    self.assertIsNone(body['query'])
+                    reopened = team['ann'].get(f'/api/workspace/ask/{body["id"]}')[1]
+                    self.assertEqual(reopened['reason'], body['reason'])   # the fixed sentence, as kept
+                    for where, text in (('response', json.dumps(body, ensure_ascii=False)), ('record', self.kept_text(folder, body['id'])),
+                                        ('reopen', json.dumps(reopened, ensure_ascii=False)), ('mcp', json.dumps(self.mcp(body), ensure_ascii=False))):
+                        self.assertNotIn(MK, text, where)
+                        self.assertNotIn('ZZMK', text, where)
+                    if matched:   # reopening checks the matched ids against what the asker may see now
+                        seen = workspace_questions._may_see
+                        with mock.patch.object(workspace_questions, '_may_see', lambda conn, user, e: e != 'objaction:改订单状态' and seen(conn, user, e)):
+                            hidden = team['ann'].get(f'/api/workspace/ask/{body["id"]}')[1]
+                        self.assertIn('withheld', hidden)
+                        self.assertNotIn('改订单状态', hidden['reason'])
+
     # --- 3. a document answer while actions were offered: quotes only, no draft ---------------------------------------------------------------------------
 
     def test_a_document_answer_while_actions_were_offered_is_quotes_only(self):
