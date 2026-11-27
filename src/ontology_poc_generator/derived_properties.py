@@ -301,6 +301,23 @@ def _evaluate_function(conn, content: dict, chain: dict, tables: dict) -> dict:
     return {'values': values, 'objects': len(rows), 'failed': failed, 'no_value': {'empty_input': sum(1 for i, v, bad in rows if v is None and not bad)}, 'rows_used': None}
 
 
+def row_values(conn, content: dict, rows: list[int]) -> dict[int, str | None]:
+    """A per-row formula (kind function) worked out on these rows of its type's table only, {row number: the value as text}; {} for a statistic or one that cannot
+    be read now. For a lookup by key: the rows were found by the key and checked against the reader's row rule before this is asked."""
+    if content['kind'] != 'function' or not rows:
+        return {}
+    chain = _chain(conn, content, None)
+    if chain['problems']:
+        return {}
+    register(conn)
+    result = chain['compiled']
+    failing, failing_params = error_condition(result['sql'], result['params'], result['fields'])
+    table = _q(chain['types'][chain['owner']]['dataset']['table_name'])
+    found = conn.execute(f'SELECT rowid, ({result["sql"]}), ({failing}) FROM {table} WHERE rowid IN ({",".join("?" * len(rows))}) ORDER BY rowid',
+                         [*result['params'], *failing_params, *rows]).fetchall()
+    return {i: text_of(_plain(v, chain['output_type']) if not bad else None, chain['output_type']) for i, v, bad in found}
+
+
 def _outside(conn, chain: dict, tables: dict, everything: dict) -> set[int]:
     """The objects of the owner type that have related rows, none of which this person may read."""
     owner = chain['owner']
@@ -767,7 +784,10 @@ def update_derived(conn, payload: dict, who: str | None, user: dict | None) -> d
     reset = reset_reasons(old, content) or edit_sends_back(row, user, (old['name'], old['description']) != (content['name'], content['description']), others)
     if reset or row['state'] in ('proposed', 'rejected'):
         chain, result = _chain(conn, content, None), evaluate(conn, content, None)
-        write_elements(conn, [_change(content, result, who)], {row['element_id']: _reads(content, chain)}, {row['element_id']: row['version']})
+        from ontology_poc_generator.object_types import _flag_readers   # a view that uses it as a condition stops being confirmed with it
+        said = tr(f'它用的派生属性“{old["name"]}”改了，要重新确认', f'The derived property "{old["name"]}" it uses changed and needs confirming again')
+        write_elements(conn, [_change(content, result, who)], {row['element_id']: _reads(content, chain)}, {row['element_id']: row['version']},
+                       after=(lambda c: _flag_readers(c, row['element_id'], said, [])) if row['state'] == 'confirmed' else None)
     elif (old['name'], old['description']) != (content['name'], content['description']) or others:
         _edit_names(conn, row, content, who)
     return {'id': old['english_name'], 'type': old['type'], 'state': element_row(conn, row['element_id'])['state'], 'reset': reset}

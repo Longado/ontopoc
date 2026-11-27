@@ -192,7 +192,10 @@ def columns_read(conn, element_id: str, content: dict | None = None) -> set[tupl
         return {(t(content['type']), content['column'])} if 'type' in content and 'column' in content else {(t(element_id.split(':')[1]), element_id.split(':', 2)[2])}
     if kind == 'objview':
         latest = content.get('latest') or {}
-        return {(t(content['type']), c) for c in [*(f['column'] for f in content['filters']), *latest.get('key', []), *([latest['order']] if latest.get('order') else [])]}
+        out = {(t(content['type']), c) for c in [*(f['column'] for f in content['filters']), *latest.get('key', []), *([latest['order']] if latest.get('order') else [])]}
+        for d in content.get('derived') or []:   # a per-row formula it compares reads that formula's columns
+            out |= columns_read(conn, f'derived:{content["type"]}:{d["property"]}')
+        return out
     if kind == 'relation':
         return {(t(content['from']), content['from_column']), (t(content['to']), content['to_column'])}
     if kind == 'objaction':

@@ -13,6 +13,7 @@ export function answerView(record) {
   if (!a) return record.status === "no_data" ? { big: t("ask.noData"), note: record.reason ?? "", table: null } : null;   // a query that found nothing has no answer, only why
   const unit = a.relation_gap?.many ?? record.types?.[0]?.name ?? "";
   if (a.graph) return { big: countText(a.graph.starts, unit), note: graphNote(a.graph), table: null, graph: a.graph };   // SELECT GRAPH: the objects, drawn
+  if (a.objects) return { big: a.lookup ? t("ask.objects.found", { unit }) : countText(a.total, unit), note: "", table: null, objects: objectsView(a) };   // a list, or one object by its key
   if (a.groups) {
     const shape = a.measure ? null : a.share ? "share" : a.groups[0]?.length === 3 ? "measure" : "count";
     const m = a.measure;   // a total per group: [group, the total, how many were added up]
@@ -29,6 +30,31 @@ export function answerView(record) {
   if (a.share) return { big: `${count(a.matched)} / ${count(a.total)}`, note: t("ask.share.note", { unit, field: a.share.field, equals: a.share.equals, pct: a.total ? Math.round((a.matched / a.total) * 1000) / 10 : 0 }), table: null };
   return { big: unit ? countText(a.total, unit) : count(a.total), note: record.status === "no_data" ? record.reason ?? "" : "", table: null };
 }
+
+/** A cell of a list as it is read: a code by its confirmed meaning, with the code beside it; an empty value as a dash. */
+export function cellText(column, value) {
+  if (value == null || value === "") return t("ask.objects.empty");
+  const label = column?.meanings?.[String(value)];
+  return label ? t("ask.objects.coded", { label, code: String(value) }) : String(value);
+}
+
+/** A list or one object (answer.objects) as the card's table: {head, rows, keys (which columns are the key), page, pages, pageText, hasPrev, hasNext}. The service
+ * orders the objects by their key and pages them; the total is the reader's own count. */
+export function objectsView(answer) {
+  const o = answer?.objects;
+  if (!o) return null;
+  const columns = o.columns ?? [];
+  return {
+    head: columns.map((c) => c.name ?? c.column), keys: columns.map((c) => Boolean(c.key)),
+    rows: (o.rows ?? []).map((r) => r.map((v, i) => cellText(columns[i], v))),
+    page: o.page, pages: o.pages, hasPrev: o.page > 1, hasNext: o.page < o.pages,
+    pageText: o.pages > 1 ? t("ask.objects.page", { page: o.page, pages: o.pages, size: o.page_size, total: count(answer.total) }) : "",
+    order: (o.order_by ?? []).length ? t("ask.objects.order", { key: o.order_by.join(t("ask.sep")) }) : "",
+  };
+}
+
+/** The date `today` was taken as, when the answer's query used it, else "". */
+export const todayNote = (record) => (record.today ? t("ask.today", { date: record.today.date, zone: record.today.time_zone }) : "");
 
 /** The same question worked out on other rows, beside an answer (the service adds it when the answer covers every row of a type, or exactly one confirmed view):
  * {title, lines: [{key, name, text, of, by}], more, hint}, or null when there is none. Every row is the first line when the answer read one view. */

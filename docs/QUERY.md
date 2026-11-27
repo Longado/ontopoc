@@ -41,6 +41,7 @@ LIMIT 3
   - 只写月份（`'2026-02'`、`'2026年2月'`）表示整个月：`<= '2026-01'` 包括 1 月整月，`> '2026-02'` 从 3 月算起，`BETWEEN '2026-01' AND '2026-02'` 是 1、2 两个月。
   - 下限比上限大（例如 `BETWEEN 9 AND 1`）会直接拒绝，不会悄悄返回 0。
   - 边界既不是数字也不是日期时，直接拒绝。数据里读不成数字或日期的值不算符合，并在结果里单独数出来，附上几个例子。
+- 和今天比：`o.承诺日期 < today`、`BETWEEN '2026-01-01' AND today`。`today` 不加引号，只能和日期属性比，在查询运行的时候按服务所在的时区换成那一天，回答里的 `today` 写着用的是哪一天和哪个时区。只认不加引号的这个词：加引号的 `'today'`、参数给的 `'today'`、和数字比的 `today` 都是普通文字，和以前一样拒绝；问答里模型写的结构化查询也只认日期属性范围边界上正好写成 `"today"` 的值（`"Today "` 不算）。看板的查询不认 `today`。没有别的相对时间写法：`yesterday`、本周、上个月都不认，会拒绝。
 - 按月、按年：`SELECT month(o.下单日期), sum(o.金额) … GROUP BY month(o.下单日期)`，`year()` 同理。没有日期或读不成日期的对象算在“没有可分的值”里。
 - `ORDER BY` 按算出来的那个数排（`DESC` 从高到低，`ASC` 从低到高），`LIMIT n` 只留前 n 组。
 - `$名字` 是参数，调用时用 `params` 传值。参数只能当值用，不会被当成查询文字：在看板上输入 `KH001' OR '1'='1`，查的就是编号为这串字的客户，结果是没有数据；把值直接拼进 SQL 字符串的模板会因此数出全部 160 张订单。
@@ -65,6 +66,31 @@ LIMIT 10
 - 浏览者只能看数，看不到一个个对象，所以对浏览者拒绝（403）。看板组件和问答模型也只用算数的查询，`SELECT GRAPH` 只在问答页的“写查询”里用。
 - 在页面上，起点在左边一列，往右每一列多走一步。点一个对象，和它相连的线会亮起来。
 
+## 列出对象，按主键找一个：SELECT LIST、SELECT ONE
+
+不算数，而是给出对象本身：
+
+```sql
+SELECT LIST o
+FROM (o:订单)
+WHERE o.紧急程度 = '加急' AND o.承诺日期 < today
+```
+
+```sql
+SELECT ONE m FROM (m:处置措施) WHERE m.措施编号 = 'M-17'
+```
+
+- `SELECT LIST` 列出的对象，就是同一条件下 `count(o)` 数到的那些：同样的条件、同样按提问人能读的行和属性算。问答里模型点名一个视图（`views`，或结构化查询的 `definitions_used`）时，代码先按视图取行，和算数一样。回答下面那一行说明按哪个视图、哪些条件挑的，模型自己加的条件照样标出来。
+- 只写 `o` 给主键和前 8 个属性；`SELECT LIST o.金额, o.状态码` 给主键和这几个属性。代码列的值带着确认过的含义（`columns` 里的 `meanings`）。
+- 只能是一个对象类型自己的对象：`FROM` 里一个节点，不沿关系走，不写 `GROUP BY`、`ORDER BY`。
+- 按主键排，一页最多 50 个。`LIMIT n` 是每页几个，1 到 50；超过 50 直接拒绝，不会悄悄截断。`answer.total` 是全部符合的个数（提问人自己能看到的），`answer.objects` 里是这一页：`columns`、`rows`、`page`、`pages`、`page_size`、`order_by`。翻页在接口上给 `page`，页码超过最后一页给最后一页。
+- 问答里模型在列表之外还写了求和、平均、占比、分组、排名或沿关系走时，列表不管，照原样回答那个数（和没写列表一样）；只是计数时，计数照旧在前，`answer.objects` 跟着给出这些对象，旁边的数（`beside`）也照旧。按主键找是一个条件，不会被丢掉：写在一个数旁边时整条拒答（`query_limit`，和以前一样），带着按主键找的回答永远不是一个数。
+- `SELECT ONE` 要写出整个主键，每个主键列一个 `=`，别的条件不写。主键值按存的写法比（数字按普通写法，`1.0` 和 `1` 一样），值是绑定的参数，不会被当成查询文字。给出这个对象能看的属性（看不到的列不在里面）、代码列的含义，以及这个类型上已确认的逐行派生属性（函数）；沿关系的统计不在里面。
+- 提问人的行规则读不到的编号，和根本不存在的编号回答完全一样（`no_data`，“没有 订单号 = … 的订单”），不透露它存在。
+- 问题点名了一个已确认的视图（问答里模型写在 `definitions_used` 或 `views` 里）时，只在这个视图留下的行里找，回答下面那一行写着视图名；视图外的编号和不存在的编号回答完全一样。问题点名了视图而模型没有用它，和算数一样拒答。按含义挑行（例如“加急的”）不是按主键找能做的条件，会拒答。
+- 浏览者也可以用：浏览者本来就能在类型的“对象”页看到已确认类型的对象（按行规则，看不到的列不在），这里给的不比那里多。`SELECT GRAPH` 仍然不给浏览者。
+- 看板的查询组件只出数，不认 `SELECT LIST`、`SELECT ONE`。
+
 ## 现在不支持的写法
 
 下面这些写法会直接拒绝，并说明原因，不会被理解成别的意思：
@@ -82,6 +108,8 @@ LIMIT 10
 ```
 query     := SELECT item {, item} FROM chain {, chain} [WHERE cond {AND cond}] [GROUP BY group {, group}] [ORDER BY target [ASC|DESC]] [LIMIT n]
            | SELECT GRAPH FROM chain {, chain} [WHERE cond {AND cond}] [LIMIT n]
+           | SELECT LIST var [{, var.property}] FROM node [WHERE cond {AND cond}] [LIMIT n]
+           | SELECT ONE var FROM node WHERE ref = value {AND ref = value}
 item      := group | agg [AS name]
 group     := ref | month(ref) | year(ref)
 agg       := count(var) | count(*) | sum(ref) | avg(ref) | share(ref = value)
@@ -91,7 +119,7 @@ edge      := -[:relation]-> | <-[:relation]- | -[:relation]-
 cond      := ref = value | ref <> value | ref != value | ref [NOT] IN (value {, value})
            | ref (> | >= | < | <=) value | ref BETWEEN value AND value
 ref       := var.property
-value     := 'text' | number | $param
+value     := 'text' | number | $param            （范围的边界还可以是 today）
 target    := name | agg
 ```
 
@@ -99,11 +127,12 @@ target    := name | agg
 
 ## 接口
 
-- `POST /api/workspace/query {text, params?}`：按提问人的权限运行，返回 `status`、`answer`、`definitions`（用到的确认定义，带确认人）、`limited_by_rule`、`query`（编译后的结构化查询）和 `text`（规范写法）。写错时返回 400，并说明能写什么，例如这个类型有哪些关系、有哪些属性。
-- `POST /api/workspace/query/text {query}`：把结构化查询（问答里模型写的那种）写回成本体查询文字。
+- `POST /api/workspace/query {text, params?, page?}`：按提问人的权限运行（`page` 是 `SELECT LIST` 的第几页），返回 `status`、`answer`、`definitions`（用到的确认定义，带确认人）、`limited_by_rule`、`query`（编译后的结构化查询）和 `text`（规范写法）。写错时返回 400，并说明能写什么，例如这个类型有哪些关系、有哪些属性。
+- `POST /api/workspace/query/text {query}`：把结构化查询（问答里模型写的那种）写回成本体查询文字。里面的 `'today'` 照原样写成加引号的文字；只有真按今天算过的回答，它的 `query_text` 才写成不加引号的 `today`。
 - 浏览者和只读令牌都可以用，不调用模型，也不记入问答历史。
 - MCP：外部智能体用 `ontopoc_query` 工具，见 [MCP.md](MCP.md)。
-- 问答的每个回答都带着 `query_text`，也就是这道题写成本体查询的样子。代码列写的是确认过的含义（`'已取消'`），不是代码本身。只有这段文字能跑出同一个查询时才会带上。
+- 问“哪些”的回答保存时只存列和分页，不存行。`GET /api/workspace/ask/<id>?page=N` 打开时按打开的人现在能看的行、列和定义重新算一遍（回答带 `again: true`），翻页也是这样。
+- 问答的每个回答都带着 `query_text`，也就是这道题写成本体查询的样子，由代码按实际运行的那条查询写出，不取模型写的文字（列表旁边写了一个数时，是那个数的查询）。代码列写的是确认过的含义（`'已取消'`），不是代码本身。只有这段文字能跑出同一个查询时才会带上。
 
 ## 在页面上
 

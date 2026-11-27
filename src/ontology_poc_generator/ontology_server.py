@@ -96,7 +96,7 @@ from ontology_poc_generator.object_relations import (
 from ontology_poc_generator.ontology_graph import lineage_graph, relation_graph, type_uses
 from ontology_poc_generator.batch_confirm import confirm_group, group_detail, queue_with_groups
 from ontology_poc_generator.review_queue import confirm_item, send_back
-from ontology_poc_generator import ask_budget, lang, needed_questions, use_layer
+from ontology_poc_generator import ask_budget, lang, needed_questions, use_layer, workspace_questions
 from ontology_poc_generator.dashboards import DashboardRefused
 from ontology_poc_generator.type_access import AccessRefused, access_table, dataset_hidden, hidden_columns, set_access, set_column_access, set_values_hidden
 
@@ -1593,8 +1593,13 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             self.reply(*reply)
 
         def ask_get(self):
-            """/api/workspace/ask (the scope line and the person's own history), /api/workspace/ask/<id> (one saved answer as it stands now)."""
+            """/api/workspace/ask (the scope line and the person's own history), /api/workspace/ask/<id> (one saved answer as it stands now; ?page=N: that page of a
+            list, worked out again)."""
             parts = [p for p in urlsplit(self.path).path[len('/api/workspace/ask'):].split('/') if p]
+            page = (parse_qs(urlsplit(self.path).query).get('page') or [None])[0] if workspace_questions.ROW_ANSWERS else None
+            if page is not None and not re.fullmatch(r'[0-9]{1,9}', page):
+                self.reply(400, {'error': tr('页码要写成数字', 'The page must be a number')})
+                return
             conn = open_workspace(output_dir / 'workspace.sqlite')
             try:
                 if not parts:
@@ -1602,7 +1607,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
                 elif parts == ['tally']:
                     body = question_tally(conn, self.user)
                 elif len(parts) == 1 and re.fullmatch(r'[0-9]{1,15}', parts[0]):   # an id sqlite can hold
-                    body = reopen_question(conn, self.user, int(parts[0]))
+                    body = reopen_question(conn, self.user, int(parts[0]), int(page) if page is not None else None)
                 else:
                     self.reply(404, {'error': lang.unknown_endpoint()})
                     return
@@ -1728,7 +1733,7 @@ def make_server(port=8767, gateway=None, output_dir: Path = ROOT / 'output/ontol
             conn = open_workspace(output_dir / 'workspace.sqlite')
             try:
                 if self.path == '/api/workspace/query':
-                    body = run_query_text(conn, self.user, payload.get('text'), payload.get('params'), beside=True)   # with the confirmed views beside the number, as a question's answer
+                    body = run_query_text(conn, self.user, payload.get('text'), payload.get('params'), beside=True, rows=True, page=payload.get('page'))   # with the confirmed views beside the number, as a question's answer; a list's page
                 else:
                     body = {'text': query_as_text(conn, self.user, payload.get('query'))}
             except QaRefused as exc:

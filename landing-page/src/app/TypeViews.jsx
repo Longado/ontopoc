@@ -5,7 +5,7 @@ import { State } from "./TypesPage.jsx";
 import { t } from "./i18n/index.js";
 import { alsoCalled, confirmersText, stateLine } from "./typeModel.js";
 import { useLoad } from "./useLoad.js";
-import { OP_LABEL, confirmWords, emptyViewForm, newValueChoices, newValueText, rowsText, viewPayload, viewProblem, viewWaitingText } from "./viewModel.js";
+import { FORMULA_OP, OP_LABEL, confirmWords, emptyViewForm, formulaOption, newValueChoices, newValueText, rowsText, viewPayload, viewProblem, viewWaitingText } from "./viewModel.js";
 
 function ViewCard({ view, mayBuild, onChanged }) {
   const [error, setError] = useState("");
@@ -86,6 +86,26 @@ function Condition({ row, codes, onChange, onRemove, only }) {
   );
 }
 
+/** One row comparing a per-row formula (a derived property of this type) with a number. */
+function Formula({ row, formulas, onChange, onRemove }) {
+  return (
+    <div className="inline wide">
+      <Select label={t("types.view.formula")} value={row.property} onChange={(property) => onChange({ ...row, property })}>
+        <option value="">{t("types.view.pickFormula")}</option>
+        {formulas.map((f) => <option key={f.property} value={f.property}>{formulaOption(f)}</option>)}
+      </Select>
+      <Select label={t("types.derived.condOp")} value={row.op} onChange={(op) => onChange({ ...row, op })}>
+        {Object.entries(FORMULA_OP).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+      </Select>
+      <label className="field">
+        <span className="caption">{t("types.view.formulaValue")}</span>
+        <input type="number" value={row.value} onChange={(e) => onChange({ ...row, value: e.target.value })} />
+      </label>
+      <button className="plain" onClick={onRemove}>{t("types.derived.remove")}</button>
+    </div>
+  );
+}
+
 function NewView({ type, form: options, onSaved }) {
   const [form, setForm] = useState({ ...emptyViewForm(), otherNames: "" });
   const [error, setError] = useState("");
@@ -127,6 +147,18 @@ function NewView({ type, form: options, onSaved }) {
         {form.filters.length < 5 && <button className="plain" style={{ alignSelf: "flex-start" }} onClick={() => setForm({ ...form, filters: [...form.filters, { column: "", op: "is_not", label: "" }] })}>{t("types.view.addCondition")}</button>}
         {options.codes.every((c) => !c.labels.length) && <p className="muted small">{t("types.view.noCodes")}</p>}
       </div>
+      {options.formulas?.length > 0 && (
+        <div className="field">
+          <span className="caption">{t("types.view.formulas")}</span>
+          {form.derived.map((row, i) => (
+            <Formula key={i} row={row} formulas={options.formulas}
+              onChange={(next) => setForm({ ...form, derived: form.derived.map((r, j) => (j === i ? next : r)) })}
+              onRemove={() => setForm({ ...form, derived: form.derived.filter((_, j) => j !== i) })} />
+          ))}
+          {form.filters.length + form.derived.length < 5 && <button className="plain" style={{ alignSelf: "flex-start" }} onClick={() => setForm({ ...form, derived: [...form.derived, { property: "", op: "equals", value: "1" }] })}>{t("types.view.addFormula")}</button>}
+          <p className="muted small">{t("types.view.formulaNote")}</p>
+        </div>
+      )}
       <div className="field">
         <label className="check">
           <input type="checkbox" checked={form.latest.on} onChange={(e) => setForm({ ...form, latest: { ...form.latest, on: e.target.checked } })} />

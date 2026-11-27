@@ -13,7 +13,7 @@ import json
 from ontology_poc_generator.derived_properties import describe as describe_derived
 from ontology_poc_generator.object_types import DERIVED_PREFIX, ENUM_PREFIX, RELATION_PREFIX, TYPE_PREFIX, VIEW_PREFIX, _content, _settled_since, element_row, presented_row, stale_word
 from ontology_poc_generator.lang import tr
-from ontology_poc_generator.object_views import in_out_text
+from ontology_poc_generator.object_views import FORMULA_OPS, in_out_text
 
 def _state_word(state):
     words = {'proposed': tr('模型提出了，还没有人确认', 'Proposed by the model, not confirmed yet'), 'checked': tr('已经提出，还没有另一位确认', 'Proposed, waiting for a second person to confirm'),
@@ -32,6 +32,7 @@ def _type_name(conn, english: str) -> str:
 
 def _view_text(conn, content: dict) -> str:
     parts = [in_out_text(conn, content)] if content['filters'] else []
+    parts += [f'{d.get("name") or d["property"]} {FORMULA_OPS[d["op"]]} {d["value"]}' for d in content.get('derived') or []]   # a per-row formula it compares
     latest = content.get('latest')
     if latest:
         parts.insert(0, tr(f'每个 {"、".join(latest["key"])} 只留 {latest["order"]} 最新的一行', f'Keep only the latest row by {latest["order"]} for each {", ".join(latest["key"])}'))

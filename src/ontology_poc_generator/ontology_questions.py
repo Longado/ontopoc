@@ -538,9 +538,11 @@ def _found_elsewhere(types: dict, graph: dict, start: str, wanted: list) -> list
     return out
 
 
-def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = None, derived: list | None = None, card: dict | None = None) -> dict:
+def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = None, derived: list | None = None, card: dict | None = None,
+              objects: list | None = None) -> dict:
     """`card` is the answers kept on the data-meaning card ({cell id: answer}): a column marked there as not addable stops
-    the question before anything is computed, and what the card says rides beside the answer in `evidence`."""
+    the question before anything is computed, and what the card says rides beside the answer in `evidence`. `objects`: a list that is given the start
+    objects that meet every condition (the ones the answer counts before any walk), for a caller that lists them; the answer is the same with or without it."""
     p = normalize_proposal(ontology)
     types, relations = _types(p), {r['key']: r for r in p['relations']}
     label = lambda k: types[k].get('label') or k
@@ -627,6 +629,8 @@ def run_query(ontology: dict, bundle: dict, query: dict, graph: dict | None = No
             (hit if has(i, w) != w.get('not', False) else miss).append(i)
         stages.append((w, len(starts), len(hit), miss))
         starts = hit
+    if objects is not None:
+        objects[:] = starts
     # the objects the answer read rows of: every start object (a filter reads them all) and the ones walked to from the ones left
     used = set(everyone)
     for via in paths:
@@ -889,10 +893,10 @@ def _in_names(ontology: dict, result: dict) -> dict:
 
 
 def answer_query(ontology: dict, bundle: dict, query: dict, question: str, graph: dict | None = None, derived: list | None = None,
-                 card: dict | None = None, also: dict | None = None) -> dict:
+                 card: dict | None = None, also: dict | None = None, objects: list | None = None) -> dict:
     """One question's query run and read for a person: the filters the question never says are marked (`also`: the other names of meanings, see
-    flag_unasked_filters), and a reason is in names."""
-    return _in_names(ontology, flag_unasked_filters(run_query(ontology, bundle, query, graph, derived, card), question, also))
+    flag_unasked_filters), and a reason is in names. `objects`: see run_query."""
+    return _in_names(ontology, flag_unasked_filters(run_query(ontology, bundle, query, graph, derived, card, objects), question, also))
 
 
 def _catalog(ontology: dict, bundle: dict, derived: list | None = None) -> dict:
@@ -911,9 +915,11 @@ def _catalog(ontology: dict, bundle: dict, derived: list | None = None) -> dict:
 
 
 def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = None, purpose_only: bool = False,
-                  derived: list | None = None, card: dict | None = None, answerer=None, definitions: list | None = None, catalog: dict | None = None) -> dict:
+                  derived: list | None = None, card: dict | None = None, answerer=None, definitions: list | None = None, catalog: dict | None = None,
+                  more: tuple[str, str] | None = None) -> dict:
     """`answerer(query, question, used)` works out one question's answer in place of answer_query (the caller reads the rows its own
     way; `used` is the model's `definitions_used`). `definitions` is what the person has confirmed, told to the model; `catalog` replaces the one built from the data.
+    `more`: (its version, its text), what the caller adds to the prompt, after all of it (the English note too) and under a version of its own.
     One call. With question: that question. With purpose_only: the questions the person wrote as the purpose, which
     an upload answers. With neither: the model's own round, asked for on the questions page."""
     request = {'purpose': bundle['decision'], 'ontology': catalog or _catalog(ontology, bundle, derived)}   # `catalog`: what the caller lets the model see (the workspace hides values)
@@ -923,9 +929,11 @@ def ask_questions(ontology: dict, bundle: dict, gateway, question: str | None = 
         request['asked'] = question
     elif purpose_only:
         request['only_purpose'] = True
-    out = {'prompt_version': QUESTION_PROMPT_VERSION, 'model': None, 'asked_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
+    system = QUESTION_SYSTEM_PROMPT + ENGLISH_NOTE if english() else QUESTION_SYSTEM_PROMPT
+    version, system = (QUESTION_PROMPT_VERSION, system) if more is None else (f'{QUESTION_PROMPT_VERSION}+{more[0]}', system + more[1])   # after it, every word of it as it was
+    out = {'prompt_version': version, 'model': None, 'asked_at': datetime.now(timezone.utc).isoformat(timespec='seconds'),
            'items': [], 'answered': 0, 'total': 0, 'error': None}
-    judgement = ask_model(gateway, 'question_writer', QUESTION_PROMPT_VERSION, QUESTION_SYSTEM_PROMPT + ENGLISH_NOTE if english() else QUESTION_SYSTEM_PROMPT, request)
+    judgement = ask_model(gateway, 'question_writer', version, system, request)
     out['model'] = judgement.model
     if judgement.failure == 'request':
         return {**out, 'error': model_failure_text(judgement.message), 'request_failed': True}   # nothing came back: told apart from a reply that could not be read

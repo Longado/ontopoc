@@ -3,6 +3,9 @@ definition, a state, a confirmation snapshot and what it reads (element_dep: the
 
 A view is an object type plus conditions and/or "latest per key":
   conditions   a code column "is" or "is not" one of its meanings (订单.状态码 不是 已取消); all of them must hold
+  formulas     (`derived`, only when a person writes one) a per-row formula of the same type, a derived property of kind function that gives a number or yes/no,
+               compared with a number (高风险 = 1, 风险分 >= 3); the view stands on that property as on a meaning: it is confirmed only once the property is, and
+               goes back for another look when the property changes
   latest       one row per key, the one with the greatest value of an ordering column (库存快照: per 产品编号 the greatest 快照月份); a row with no key stays.
                It is taken first and the conditions are applied to what it leaves, so a later version that is cancelled drops the object, an earlier one does not
                come back. Ties go to the row that comes later in the file.
@@ -18,6 +21,7 @@ is the same idea over the workspace's elements, picked by rows in code (answer_c
 from __future__ import annotations
 
 from ontology_poc_generator.lang import TrMap, tr
+import functools
 import hashlib
 import json
 
@@ -34,6 +38,8 @@ from ontology_poc_generator.type_access import reads_hidden
 from ontology_poc_generator.workspace_store import current_dataset, dataset_records
 
 OPS = TrMap({'is': ('是', 'is'), 'is_not': ('不是', 'is not')})
+FORMULA_OPS = {'equals': '=', 'more_than': '>', 'at_least': '>=', 'less_than': '<', 'at_most': '<='}   # a per-row formula compared with a number
+FORMULA_TYPES = ('integer', 'decimal', 'boolean')
 MAX_FILTERS = 5
 
 
@@ -60,9 +66,31 @@ def _rank(value, numeric: bool) -> tuple:
     return (1, text) if text else (0, '')
 
 
-def kept_positions(records: list[dict], kinds: dict[str, str], labels: dict[str, dict[str, str]], content: dict) -> list[int]:
+@functools.cache
+def _yes_no() -> dict[str, float]:
+    """A yes/no formula's value as derived_properties.text_of keeps it, read as 1 or 0."""
+    from ontology_poc_generator.derived_properties import text_of   # derived_properties reads this module: imported here, where it is used
+    return {text_of(1, 'boolean'): 1.0, text_of(0, 'boolean'): 0.0, 'true': 1.0, 'false': 0.0}
+
+
+def formula_number(value) -> float | None:
+    """A per-row formula's value as the number a view compares: a yes/no as 1 or 0, an empty or unreadable value as None (never kept)."""
+    if isinstance(value, str) and value in _yes_no():
+        return _yes_no()[value]
+    try:
+        return float(str(value).strip()) if value is not None and str(value).strip() else None
+    except ValueError:
+        return None
+
+
+def _formula_holds(value, op: str, bound) -> bool:
+    x, b = formula_number(value), float(bound)
+    return x is not None and {'equals': x == b, 'more_than': x > b, 'at_least': x >= b, 'less_than': x < b, 'at_most': x <= b}[op]
+
+
+def kept_positions(records: list[dict], kinds: dict[str, str], labels: dict[str, dict[str, str]], content: dict, formulas: dict[str, str] | None = None) -> list[int]:
     """The positions (from 1) of the rows of `records` this definition keeps. kinds: {column: inferred type}, labels: {column: {code: label}} of the columns
-    the conditions name."""
+    the conditions name. formulas: {derived property: the column of `records` that holds its value} for the per-row formulas the conditions compare."""
     positions = list(range(1, len(records) + 1))
     latest = content.get('latest')
     if latest:
@@ -81,6 +109,9 @@ def kept_positions(records: list[dict], kinds: dict[str, str], labels: dict[str,
     for f in content['filters']:
         wanted = {normalize_value(code) for code, label in labels[f['column']].items() if label == f['label']}
         positions = [p for p in positions if (normalize_value(records[p - 1].get(f['column'])) in wanted) == (f['op'] == 'is')]
+    for d in content.get('derived') or []:   # a row with no value for the formula is not kept
+        column = (formulas or {})[d['property']]
+        positions = [p for p in positions if _formula_holds(records[p - 1].get(column), d['op'], d['value'])]
     return positions
 
 
@@ -107,15 +138,35 @@ def _read_problems(conn, content: dict) -> tuple[list[str], dict | None, dict]:
     return problems, dataset, cols
 
 
+def _formula_values(conn, content: dict) -> tuple[dict[str, dict], list[str]]:
+    """({derived property: {row number: value}} over every row, the problems) for the per-row formulas a view's conditions compare."""
+    from ontology_poc_generator.derived_properties import derived_id, evaluate   # derived_properties reads this module: imported here, where it is used
+    values, problems = {}, []
+    for d in content.get('derived') or []:
+        row = element_row(conn, derived_id(content['type'], d['property']))
+        if row is None:
+            problems.append(tr(f'派生属性“{d.get("name") or d["property"]}”已经不在了', f'The derived property "{d.get("name") or d["property"]}" is gone'))
+            continue
+        result = evaluate(conn, _content(row), None)
+        if result['problems']:
+            problems += result['problems']
+            continue
+        values[d['property']] = result['values']
+    return values, problems
+
+
 def view_summary(conn, content: dict) -> dict:
     """The definition on the current data: {'problems': [...]} when it cannot be read, else {'problems': [], 'rows': kept, 'of': all, 'dataset', 'version',
     'positions'}."""
     problems, dataset, cols = _read_problems(conn, content)
-    if problems:
-        return {'problems': problems}
+    formulas, more = _formula_values(conn, content) if content.get('derived') else ({}, [])
+    if problems or more:
+        return {'problems': problems + more}
     records = dataset_records(conn, dataset)
+    if formulas:   # each row with the formulas' values beside its own, under names no column has
+        records = [{**r, **{f'\x00{name}': values.get(i) for name, values in formulas.items()}} for i, r in enumerate(records, 1)]
     labels = {f['column']: meaning_labels(conn, content['type'], f['column']) for f in content['filters']}
-    positions = kept_positions(records, {n: c['type'] for n, c in cols.items()}, labels, content)
+    positions = kept_positions(records, {n: c['type'] for n, c in cols.items()}, labels, content, {name: f'\x00{name}' for name in formulas})
     return {'problems': [], 'rows': len(positions), 'of': len(records), 'dataset': dataset['name'], 'version': dataset['version'], 'positions': positions,
             'codes': {c: cols[c]['counts'] or {} for c in dict.fromkeys(f['column'] for f in content['filters'])},
             'signature': _signature(records, positions, content, _content(element_row(conn, type_id(content['type'])))['key'])}
@@ -174,6 +225,7 @@ def describe(content: dict, type_name: str | None = None) -> str:
     """The definition as a sentence: 订单里 状态码 不是 已取消 的行（先取每个 产品编号 里 快照月份 最新的一行）."""
     latest = content.get('latest')
     parts = [tr(f'{f["column"]} {OPS[f["op"]]}「{f["label"]}」', f'{f["column"]} {OPS[f["op"]]} "{f["label"]}"') for f in content['filters']]
+    parts += [tr(f'{d.get("name") or d["property"]} {FORMULA_OPS[d["op"]]} {d["value"]}', f'{d.get("name") or d["property"]} {FORMULA_OPS[d["op"]]} {d["value"]}') for d in content.get('derived') or []]
     first = tr(f'每个「{"」「".join(latest["key"])}」只留「{latest["order"]}」最新的一行', f'for each "{", ".join(latest["key"])}" keep only the row with the latest "{latest["order"]}"') if latest else ''
     return tr(f'{type_name or content["type"]}里', f'{type_name or content["type"]}: ') + (f'{first}' if first else '') + (tr(f'{"，再" if first else ""}只留 {"，且 ".join(parts)} 的行', f'{", then " if first else ""}keep rows where {" and ".join(parts)}') if parts else '')
 
@@ -230,10 +282,38 @@ def check_definition(conn, payload: dict, user: dict | None, name: str | None = 
         if not orderable(cols[order]['type']):
             raise TypeRefused(tr(f'“{order}”里的内容排不出先后（数字、年月、日期才可以）', f'The content of "{order}" cannot be put in order (only numbers, months and dates can)'))
         latest = {'key': list(keys), 'order': order}
-    if not filters and latest is None:
+    from ontology_poc_generator import workspace_questions   # the switch for the newer shapes; it reads this module, so it is imported here
+    formulas = _formula_conditions(conn, type_content, payload.get('derived'), user, len(filters)) if workspace_questions.ROW_ANSWERS else []
+    if not filters and latest is None and not formulas:
         raise TypeRefused(tr('视图要写至少一个条件，或者“每个编号只留最新的一行”', 'A view needs at least one condition, or "keep only the latest row per key"'))
     also = other_names.clean(payload.get('other_names'), tr(f'视图“{name}”', f'the view "{name}"'))
-    return other_names.put({'name': name, 'description': description, 'type': type_content['english_name'], 'filters': filters, 'latest': latest}, also)
+    return other_names.put({'name': name, 'description': description, 'type': type_content['english_name'], 'filters': filters, 'latest': latest, **({'derived': formulas} if formulas else {})}, also)
+
+
+def _formula_conditions(conn, type_content: dict, posted, user: dict | None, filters: int) -> list[dict]:
+    """The per-row formulas a view compares, as a person wrote them: [{'property', 'name', 'op', 'value'}], each a derived property of kind function on the view's
+    own type that this person may see and that gives a number or a yes/no, compared with a number. TypeRefused says what is wrong."""
+    from ontology_poc_generator.derived_properties import derived_id, derived_visible   # derived_properties reads this module: imported here, where it is used
+    if posted in (None, []):
+        return []
+    if not isinstance(posted, list) or not all(isinstance(d, dict) for d in posted) or len(posted) + filters > MAX_FILTERS:
+        raise TypeRefused(tr(f'条件要写成列表，最多 {MAX_FILTERS} 个', f'Conditions must be a list of at most {MAX_FILTERS}'))
+    out = []
+    for d in posted:
+        prop, op, value = d.get('property'), d.get('op'), d.get('value')
+        row = element_row(conn, derived_id(type_content['english_name'], str(prop))) if isinstance(prop, str) else None
+        if row is None or not derived_visible(conn, row, user):
+            raise TypeRefused(tr(f'“{type_content["name"]}”没有派生属性“{prop}”', f'"{type_content["name"]}" has no derived property "{prop}"'))
+        content = _content(row)
+        if content['kind'] != 'function' or content.get('output_type') not in FORMULA_TYPES:
+            raise TypeRefused(tr(f'视图只能用按每一行算的派生属性（函数），而且它算出的是数字或是否；“{content["name"]}”不是', f'A view can only use a derived property worked out on each row (a function) that gives a number or a yes/no; "{content["name"]}" is not one'))
+        if op not in FORMULA_OPS:
+            raise TypeRefused(tr('派生属性的条件只能是 =、>、>=、<、<=', 'A condition on a derived property can only be =, >, >=, < or <='))
+        number = formula_number(value) if not isinstance(value, bool) else None
+        if number is None or isinstance(value, (list, dict)):
+            raise TypeRefused(tr(f'“{content["name"]}”要和一个数比（是否写 1 或 0）', f'"{content["name"]}" must be compared with a number (1 or 0 for a yes/no)'))
+        out.append({'property': content['english_name'], 'name': content['name'], 'op': op, 'value': int(number) if number.is_integer() else number})
+    return out
 
 
 def check_names_free(conn, content: dict) -> None:
@@ -252,7 +332,9 @@ def check_names_free(conn, content: dict) -> None:
 
 def reset_reasons(old: dict, new: dict) -> list[str]:
     """What changed that a confirmation was about: the type, the conditions, the latest rule. The description is not on the list."""
-    return [label for key, label in (('type', tr('对象类型', 'the object type')), ('filters', tr('条件', 'the conditions')), ('latest', tr('“只留最新”的规则', 'the "keep only the latest" rule'))) if old[key] != new[key]]
+    said = [label for key, label in (('type', tr('对象类型', 'the object type')), ('filters', tr('条件', 'the conditions')), ('latest', tr('“只留最新”的规则', 'the "keep only the latest" rule'))) if old[key] != new[key]]
+    formulas = lambda c: [(d['property'], d['op'], d['value']) for d in c.get('derived') or []]
+    return said + ([tr('派生属性的条件', 'the conditions on derived properties')] if formulas(old) != formulas(new) else [])
 
 
 def _evidence(summary: dict) -> str:
@@ -260,7 +342,8 @@ def _evidence(summary: dict) -> str:
 
 
 def _reads(content: dict, summary: dict) -> list[str]:
-    return [type_id(content['type']), f'dataset:{summary["dataset"]}', *(enum_id(content['type'], c) for c in dict.fromkeys(f['column'] for f in content['filters']))]
+    return [type_id(content['type']), f'dataset:{summary["dataset"]}', *(enum_id(content['type'], c) for c in dict.fromkeys(f['column'] for f in content['filters'])),
+            *(f'derived:{content["type"]}:{d["property"]}' for d in content.get('derived') or [])]
 
 
 def _anchors(summary: dict) -> dict:
@@ -382,6 +465,10 @@ def waiting_on(conn, content: dict) -> list[dict]:
         meaning = element_row(conn, enum_id(content['type'], column))
         if meaning is None or meaning['state'] != 'confirmed':
             out.append({'id': f'{content["type"]}:{column}', 'name': f'{_content(type_row)["name"] if type_row else content["type"]}.{column}', 'state': meaning['state'] if meaning else None})
+    for d in content.get('derived') or []:
+        formula = element_row(conn, f'derived:{content["type"]}:{d["property"]}')
+        if formula is None or formula['state'] != 'confirmed':
+            out.append({'id': f'derived:{content["type"]}:{d["property"]}', 'name': f'{_content(type_row)["name"] if type_row else content["type"]}.{d.get("name") or d["property"]}', 'state': formula['state'] if formula else None})
     return out
 
 
@@ -499,7 +586,7 @@ def _line(conn, row: dict, user: dict | None, summary: dict, type_name: str) -> 
     anchors = json.loads(row['anchors_json']) if row['anchors_json'] else None
     limited = restriction(conn, type_id(content['type']), user) is not None   # counts of the whole data are not theirs; list_views puts the counts of their rows in
     return {'id': content['name'], 'name': content['name'], **({'other_names': other_names.of(content)} if other_names.of(content) else {}), 'description': content['description'], 'type': content['type'], 'type_name': type_name,
-            'filters': content['filters'], 'latest': content['latest'], 'says': describe(content, type_name), 'caliber': in_out_text(conn, content), 'problems': summary['problems'],
+            'filters': content['filters'], 'latest': content['latest'], **({'derived': content['derived']} if content.get('derived') else {}), 'says': describe(content, type_name), 'caliber': in_out_text(conn, content), 'problems': summary['problems'],
             'rows': None if limited else summary.get('rows'), 'of': None if limited else summary.get('of'), 'dataset': summary.get('dataset'), 'dataset_version': summary.get('version'),
             'seen': None if limited else seen_of_view(summary), 'anchored': None if limited else anchors, **({'limited_note': limited_note()} if limited else {}), **view_state(conn, row, user)}
 
@@ -530,8 +617,21 @@ def view_form(conn, english_name: str, user: dict | None) -> dict:
     content = _content(type_row)
     dataset = current_dataset(conn, content['dataset'])
     cols = dataset_columns(conn, dataset['id']) if dataset else {}
+    from ontology_poc_generator import workspace_questions   # the switch for the newer shapes; it reads this module, so it is imported here
     return {'codes': [{'column': p['column'], 'name': p['name'], 'labels': sorted(set(meaning_labels(conn, english_name, p['column']).values()))} for p in content['properties'] if p['enum']],
-            'columns': [{'name': n, 'orderable': orderable(c['type'])} for n, c in cols.items()]}
+            'columns': [{'name': n, 'orderable': orderable(c['type'])} for n, c in cols.items()], **({'formulas': _formula_options(conn, english_name, user)} if workspace_questions.ROW_ANSWERS else {})}
+
+
+def _formula_options(conn, english_name: str, user: dict | None) -> list[dict]:
+    """The per-row formulas of this type a view may compare: derived properties of kind function that give a number or a yes/no, with their state."""
+    from ontology_poc_generator.derived_properties import derived_visible   # derived_properties reads this module: imported here, where it is used
+    out = []
+    for (element_id,) in conn.execute("SELECT element_id FROM element_state WHERE substr(element_id, 1, ?) = ? ORDER BY element_id", (len(f'derived:{english_name}:'), f'derived:{english_name}:')).fetchall():
+        row = element_row(conn, element_id)
+        c = _content(row)
+        if c['kind'] == 'function' and c.get('output_type') in FORMULA_TYPES and derived_visible(conn, row, user):
+            out.append({'property': c['english_name'], 'name': c['name'], 'type': c['output_type'], 'state': row['state']})
+    return out
 
 
 def view_log(conn, name: str, user: dict | None) -> list[dict]:
