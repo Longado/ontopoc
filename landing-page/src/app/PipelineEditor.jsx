@@ -72,7 +72,7 @@ function AddStep({ onAdd }) {
   );
 }
 
-/** "Add data" (DIP's 添加数据): the workspace's datasets, each put on the canvas as an input step that already reads it; a filter once the list is long;
+/** "Add data": the workspace's datasets, each put on the canvas as an input step that already reads it; a filter once the list is long;
  * at the bottom, an empty input to choose later. */
 function AddData({ datasets, onPick }) {
   const [open, setOpen, ref] = usePopover();

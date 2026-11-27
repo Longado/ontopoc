@@ -716,62 +716,71 @@ def _insert(conn, rec: dict, who: str | None, user: dict | None, log_after: dict
     return record_id
 
 
-def submit(conn, payload: dict, who: str | None, user: dict | None) -> dict:
-    """{action, key: {column: value}, params: {column: value}, reason?}: a pending record for another builder to approve. Refused (and logged) when the action is not
-    confirmed, the person may not submit it or cannot read the object, a value does not fit, a condition does not hold, nothing would change, a create's key is taken,
-    or a delete has no reason."""
-    row = _action_row(conn, payload.get('action'), user)
+class SubmitRefused(Exception):
+    """A check a submit makes did not pass: str() says why in the words the submit uses, `status` is the HTTP status, `check` names the check."""
+
+    def __init__(self, message: str, status: int = 409, check: str = ''):
+        super().__init__(message)
+        self.status, self.check = status, check
+
+
+def check_submit(conn, row: dict, payload: dict, who: str | None, user: dict | None, hidden_as_missing: bool = False) -> dict:
+    """Every check a submit makes, in its order and its words, writing nothing: SubmitRefused for the first that fails, else {'record', 'log', 'type', 'found'}: the
+    pending record a submit inserts and what its log line says. `row` is the action as _action_row read it for this person. The assistant's drafts
+    (action_drafts) call this too, with `hidden_as_missing`: a create on a key this person may not read goes on as on a key nobody has, where a submit says
+    the key is taken."""
     content, element_id = _content(row), row['element_id']
     kind = kind_of(content)
-    attempt = {'op': 'submit', 'key': payload.get('key'), 'params': payload.get('params')}
-    refuse = lambda message, status=409: _refuse(conn, who, element_id, message, attempt, status)
+
+    def refuse(message, status=409, check=''):
+        raise SubmitRefused(message, status, check)
     if row['state'] != 'confirmed':
-        refuse(tr(f'这个行为{STATE_WORDS.get(row["state"], row["state"])}，要另一位建设者确认之后才能提交', f'This action {STATE_WORDS.get(row["state"], row["state"])}, so another builder must confirm it before it can be submitted'))
+        refuse(tr(f'这个行为{STATE_WORDS.get(row["state"], row["state"])}，要另一位建设者确认之后才能提交', f'This action {STATE_WORDS.get(row["state"], row["state"])}, so another builder must confirm it before it can be submitted'), check='confirmed')
     type_row = element_row(conn, type_id(content['type']))
     t = _content(type_row)
     if type_row['state'] != 'confirmed':
-        refuse(tr(f'“{t["name"]}”现在不是已确认的状态，不能提交', f'"{t["name"]}" is not confirmed now, so this cannot be submitted'))
+        refuse(tr(f'“{t["name"]}”现在不是已确认的状态，不能提交', f'"{t["name"]}" is not confirmed now, so this cannot be submitted'), check='type_confirmed')
     submitters = content.get('submitters') or []
     if submitters and (user is None or user['id'] not in submitters):
         people = {u['id']: u['display_name'] for u in list_users(conn)}
-        refuse(tr(f'只有{tr("、", ", ").join(people.get(i, f"#{i}") for i in submitters)}可以提交这个行为', f'Only {", ".join(people.get(i, f"#{i}") for i in submitters)} can submit this action'), 403)
+        refuse(tr(f'只有{tr("、", ", ").join(people.get(i, f"#{i}") for i in submitters)}可以提交这个行为', f'Only {", ".join(people.get(i, f"#{i}") for i in submitters)} can submit this action'), 403, 'submitter')
     dataset = current_dataset(conn, t['dataset'])
     if dataset is None:
-        refuse(tr(f'数据集“{t["dataset"]}”已经不在了', f'The dataset "{t["dataset"]}" is gone'))
+        refuse(tr(f'数据集“{t["dataset"]}”已经不在了', f'The dataset "{t["dataset"]}" is gone'), check='dataset')
     key = payload.get('key')
     if not isinstance(key, dict) or set(key) != set(t['key']) or any(not isinstance(v, (str, int, float)) or isinstance(v, bool) or not str(v).strip() for v in key.values()):
-        refuse(tr(f'要用主键“{" + ".join(t["key"])}”指定是哪一个对象', f'Name the object with the key "{" + ".join(t["key"])}"'), 400)
+        refuse(tr(f'要用主键“{" + ".join(t["key"])}”指定是哪一个对象', f'Name the object with the key "{" + ".join(t["key"])}"'), 400, 'key')
     reason = _reason(payload)
     if len(reason) > MAX_REASON or '\n' in reason:
-        refuse(tr(f'理由最多 {MAX_REASON} 个字，不能换行', f'The reason must be at most {MAX_REASON} characters, on one line'), 400)
+        refuse(tr(f'理由最多 {MAX_REASON} 个字，不能换行', f'The reason must be at most {MAX_REASON} characters, on one line'), 400, 'reason')
     if kind == 'delete' and not reason:
-        refuse(tr('删除要写理由：删掉的对象之后要能说清为什么删', 'A delete needs a reason, so it can later be explained why the object was deleted'), 400)
+        refuse(tr('删除要写理由：删掉的对象之后要能说清为什么删', 'A delete needs a reason, so it can later be explained why the object was deleted'), 400, 'reason')
     props = {p['column']: p for p in t['properties']}
     names = {c: p['name'] for c, p in props.items()}
     found = _find(conn, t, dataset, key)
     english = content['type']
     if kind == 'create':
-        if found is not None:
+        if found is not None and not (hidden_as_missing and not _may_read(conn, type_row, found, user)):
             refuse(tr(f'已经有 {_object_text(t, {c: found[c] for c in t["key"]})}：新建不会改写已有的对象，要改它请用改的行为', f'{_object_text(t, {c: found[c] for c in t["key"]})} already exists: create does not overwrite an existing object; use a change action to edit it') if _may_read(conn, type_row, found, user)
-                   else tr('这个主键已经被占用了：新建不会改写已有的对象', 'This key is already taken: create does not overwrite an existing object'))
+                   else tr('这个主键已经被占用了：新建不会改写已有的对象', 'This key is already taken: create does not overwrite an existing object'), check='key_taken')
         keyed = {c: str(key[c]).strip() for c in t['key']}
         for c in t['key']:
             if len(keyed[c]) > MAX_VALUE or '\n' in keyed[c] or not _fits(infer_type([keyed[c]]), props[c]['type']):
-                refuse(tr(f'主键“{names[c]}”的值“{keyed[c][:40]}”不能当{TYPE_NAME.get(props[c]["type"], props[c]["type"])}用', f'The value "{keyed[c][:40]}" of the key "{names[c]}" cannot be used as {TYPE_NAME.get(props[c]["type"], props[c]["type"])}'), 400)
+                refuse(tr(f'主键“{names[c]}”的值“{keyed[c][:40]}”不能当{TYPE_NAME.get(props[c]["type"], props[c]["type"])}用', f'The value "{keyed[c][:40]}" of the key "{names[c]}" cannot be used as {TYPE_NAME.get(props[c]["type"], props[c]["type"])}'), 400, 'value')
             labels = meaning_labels(conn, english, c) if props[c]['enum'] else None
             if labels is not None and keyed[c] not in labels:
-                refuse(tr(f'主键“{names[c]}”的值“{keyed[c][:40]}”不是它的含义里的取值：{tr("、", ", ").join(f"{v}（{l}）" for v, l in sorted(labels.items()))}', f'The value "{keyed[c][:40]}" of the key "{names[c]}" is not one of its meanings: {", ".join(f"{v} ({l})" for v, l in sorted(labels.items()))}'), 400)
+                refuse(tr(f'主键“{names[c]}”的值“{keyed[c][:40]}”不是它的含义里的取值：{tr("、", ", ").join(f"{v}（{l}）" for v, l in sorted(labels.items()))}', f'The value "{keyed[c][:40]}" of the key "{names[c]}" is not one of its meanings: {", ".join(f"{v} ({l})" for v, l in sorted(labels.items()))}'), 400, 'value')
         after, wrong = _check_values(conn, content, t, payload.get('params'), user, everyone=False)
         if wrong:
-            refuse(wrong, 400)
+            refuse(wrong, 400, 'value')
         limit = restriction(conn, type_row['element_id'], user)
         if limit is not None and not keeps({**after, **keyed}, limit):
-            refuse(tr('新对象不在你看得到的范围里：行规则会把它挡在你外面，换成你能看到的值', 'The new object would be outside what you can see: a row rule keeps it from you. Use values you can see'), 409)
+            refuse(tr('新对象不在你看得到的范围里：行规则会把它挡在你外面，换成你能看到的值', 'The new object would be outside what you can see: a row rule keeps it from you. Use values you can see'), 409, 'row_rule')
         before, shown = {}, _object_text(t, keyed)
         text = tr(f'{who} 提交“{content["name"]}”：新建 {shown}，{_pairs(conn, english, list(after), after)}', f'{who} submitted "{content["name"]}": create {shown}, {_pairs(conn, english, list(after), after)}')
     else:
         if found is None or not _may_read(conn, type_row, found, user):
-            refuse(tr('没有这个对象，或者你看不到它', 'There is no such object, or you cannot see it'), 404)
+            refuse(tr('没有这个对象，或者你看不到它', 'There is no such object, or you cannot see it'), 404, 'object')
         keyed = {c: found[c] for c in t['key']}
         shown = _object_text(t, keyed)
         failed = [c for c in conditions_of(content) if not _holds(c, found.get(c['column']), props[c['column']]['type'])]
@@ -779,27 +788,41 @@ def submit(conn, payload: dict, who: str | None, user: dict | None) -> dict:
             c = failed[0]
             label = _label(conn, english, c["column"], found.get(c["column"]))
             refuse(tr(f'条件不满足：{shown} 的“{names[c["column"]]}”现在是“{label}”，这个行为要 {_phrase(conn, english, names, c)}',
-                      f'The condition is not met: "{names[c["column"]]}" of {shown} is now "{label}", and this action needs {_phrase(conn, english, names, c)}'))
+                      f'The condition is not met: "{names[c["column"]]}" of {shown} is now "{label}", and this action needs {_phrase(conn, english, names, c)}'), check='condition')
         if kind == 'edit':
             after, wrong = _check_values(conn, content, t, payload.get('params'), user, everyone=False)   # only the values they may read: a refusal tells nothing of the rest
             if wrong:
-                refuse(wrong, 400)
+                refuse(wrong, 400, 'value')
             clash = conflict_with_actions(conn, type_row['element_id'], content['properties'])
             if clash:
-                refuse(clash)
+                refuse(clash, check='rule_clash')
             before = {c: found.get(c) for c in content['properties']}
             if all(_canonical(before[c]) == _canonical(after[c]) for c in after):
-                refuse(tr(f'{shown} 已经是这些值了，没有要改的：{_pairs(conn, english, list(before), before)}', f'{shown} already has these values, so there is nothing to change: {_pairs(conn, english, list(before), before)}'))
+                refuse(tr(f'{shown} 已经是这些值了，没有要改的：{_pairs(conn, english, list(before), before)}', f'{shown} already has these values, so there is nothing to change: {_pairs(conn, english, list(before), before)}'), check='nothing_to_change')
             text = tr(f'{who} 提交“{content["name"]}”：{shown}，{_pairs(conn, english, list(before), before)} → {_pairs(conn, english, list(after), after)}', f'{who} submitted "{content["name"]}": {shown}, {_pairs(conn, english, list(before), before)} → {_pairs(conn, english, list(after), after)}')
         else:
             if payload.get('params') not in (None, {}):
-                refuse(tr('删除行为不带参数：删掉的是整个对象', 'A delete action takes no values: it deletes the whole object'), 400)
+                refuse(tr('删除行为不带参数：删掉的是整个对象', 'A delete action takes no values: it deletes the whole object'), 400, 'value')
             before, after = dict(found), {}   # the whole row, every column: an undo puts this back
             text = tr(f'{who} 提交“{content["name"]}”：删除 {shown}（{_pairs(conn, english, _named_columns(content, t, before), before)}）', f'{who} submitted "{content["name"]}": delete {shown} ({_pairs(conn, english, _named_columns(content, t, before), before)})')
     text += tr(f'（{reason}）', f' ({reason})') if reason else ''
-    record_id = _insert(conn, {'action_id': element_id, 'action_version': row['version'], 'type_id': type_row['element_id'], 'dataset': dataset['name'],
-                               'dataset_version': dataset['version'], 'key': keyed, 'before': before, 'after': after, 'reason': reason, 'op': kind}, who, user,
-                        {'text': text, 'object': shown, 'before': _of_type(t, before), 'after': _of_type(t, after), 'dataset_version': dataset['version'], 'kind': kind})
+    return {'record': {'action_id': element_id, 'action_version': row['version'], 'type_id': type_row['element_id'], 'dataset': dataset['name'],
+                       'dataset_version': dataset['version'], 'key': keyed, 'before': before, 'after': after, 'reason': reason, 'op': kind},
+            'log': {'text': text, 'object': shown, 'before': _of_type(t, before), 'after': _of_type(t, after), 'dataset_version': dataset['version'], 'kind': kind},
+            'type': t, 'type_row': type_row, 'found': found, 'dataset': dataset}
+
+
+def submit(conn, payload: dict, who: str | None, user: dict | None) -> dict:
+    """{action, key: {column: value}, params: {column: value}, reason?}: a pending record for another builder to approve. Refused (and logged) when the action is not
+    confirmed, the person may not submit it or cannot read the object, a value does not fit, a condition does not hold, nothing would change, a create's key is taken,
+    or a delete has no reason (check_submit makes every check, writing nothing; this writes the refusal or the record)."""
+    row = _action_row(conn, payload.get('action'), user)
+    attempt = {'op': 'submit', 'key': payload.get('key'), 'params': payload.get('params')}
+    try:
+        planned = check_submit(conn, row, payload, who, user)
+    except SubmitRefused as no:
+        _refuse(conn, who, row['element_id'], str(no), attempt, no.status)
+    record_id = _insert(conn, planned['record'], who, user, planned['log'])
     return {'record': record_id, 'state': 'pending'}
 
 
