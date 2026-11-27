@@ -41,7 +41,7 @@ class UnnamedProductTests(unittest.TestCase):
                 text = path.read_bytes().decode('utf-8')
             except (OSError, UnicodeDecodeError):
                 continue   # binary or gone from the working tree
-            if '\0' in text or not any(is_name(w) for w in set(WORD.findall(text))):
+            if not any(is_name(w) for w in set(WORD.findall(text))):
                 continue
             found += [f'{path.relative_to(ROOT)}:{n}' for n, line in enumerate(text.splitlines(), 1) if any(is_name(w) for w in WORD.findall(line))]
         self.assertEqual(found, [], 'describe the platform instead of naming it')
