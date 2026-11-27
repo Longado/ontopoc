@@ -263,6 +263,32 @@ class RuleChecksAgainstSql(unittest.TestCase):
         self.assertEqual(keys[3], ['0.09999999999999999999', '-0.10000000000000000001'])
         self.assertEqual(keys[4], ['999999999999999.01', '999999999999999'])
 
+    def test_small_decimal_bounds_whose_float_str_is_scientific_match_plain_python(self):
+        conn = sqlite3.connect(':memory:')
+        conn.execute('CREATE TABLE t ("编号" TEXT, "n" TEXT)')
+        cells = ['0.00001', '0.00001000000000000001', '0.00000999999999999999', '0.00002', '0',
+                 '-0.00001', '-0.00001000000000000001', '-0.00000999999999999999', '1e-5', '', None]
+        rows = [(str(i), c) for i, c in enumerate(cells)]
+        conn.executemany('INSERT INTO t VALUES (?, ?)', rows)
+        props = [{'column': 'n', 'type': 'decimal', 'enum': False}]
+        rules = value_rules.read_rules([
+            {'column': 'n', 'check': 'ge', 'value': 0.00001},
+            {'column': 'n', 'check': 'gt', 'value': '0.00001'},
+            {'column': 'n', 'check': 'le', 'value': 0.00001},
+            {'column': 'n', 'check': 'lt', 'value': 0.00001},
+            {'column': 'n', 'check': 'between', 'low': -0.00001, 'high': 0.00001},
+        ], props, lambda _: False)
+        found = value_rules.run(conn, 't', rules, {'n': 'decimal'}, {}, ['编号'], examples=len(cells))
+        for rule, result in zip(rules, found['rules']):
+            wanted = [r[0] for r in rows if breaks(rule, {'编号': r[0], 'n': r[1]}, ())]
+            self.assertEqual([k[0] for k in result['examples']], wanted, rule)
+            self.assertEqual(result['broken'], len(wanted), rule)
+        # '0.00001' satisfies ge, le, and between, while scientific notation cell '1e-5' still breaks them
+        self.assertNotIn(['0'], found['rules'][0]['examples'])
+        self.assertNotIn(['0'], found['rules'][2]['examples'])
+        self.assertNotIn(['0'], found['rules'][4]['examples'])
+        self.assertIn(['8'], found['rules'][0]['examples'])
+
     def test_spaces_of_every_kind_and_zero_width_characters_make_a_cell_empty(self):
         conn = sqlite3.connect(':memory:')
         conn.execute('CREATE TABLE t ("编号" TEXT, "n" TEXT)')

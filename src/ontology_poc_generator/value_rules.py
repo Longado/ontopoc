@@ -288,8 +288,9 @@ def _holds(s: str, op: str, bound) -> tuple[str, list]:
     """(the cell's number meets `op bound`, its parameters): as floats, except within a hair of the bound, where a float may have lost the digits that decide it
     (0.10000000000000000001 against 0.1) and the decimal text is compared exactly."""
     near = abs(float(bound)) * 1e-9 + 1e-200
+    bound_text = format(Decimal(str(bound)), 'f')
     return (f'(CASE WHEN abs(CAST({s} AS REAL) - ?) <= ? THEN {EXACT}({s}, ?) {op} 0 ELSE CAST({s} AS REAL) {op} ? END)',
-            [float(bound), near, str(bound), float(bound)])
+            [float(bound), near, bound_text, float(bound)])
 
 
 def broken_sql(rule: dict, kinds: dict[str, str], codes: dict[str, list[str]], cell=None) -> tuple[str, list]:
